@@ -119,6 +119,7 @@ failure message if it regresses.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `systest.mjs`, then a smoke run and a bot run,
-on every push and pull request. The whole thing takes well under a minute
-because none of it needs a browser.
+`.github/workflows/ci.yml` runs `systest.mjs`, then a smoke run, a bot run and a
+deep god-bot run, on every push and pull request. The whole thing takes well
+under a minute because none of it needs a browser, and it installs nothing —
+there are no dependencies to install.

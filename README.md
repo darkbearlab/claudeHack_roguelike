@@ -92,6 +92,26 @@ and role, all 26 depths of map generation with a connectivity proof, the save
 format including its object graph, and the win condition. See
 [docs/TESTING.md](docs/TESTING.md).
 
+## Deployment
+
+The repository **is** the site. There is no build step, so GitHub Pages can
+serve `main` directly and every push is published.
+
+One setting has to be turned on once, by hand, in the repository:
+
+> **Settings → Pages → Build and deployment → Source: _Deploy from a branch_**
+> → branch **`main`**, folder **`/ (root)`** → Save.
+
+That is the whole deployment pipeline. A minute later the game is live at
+https://darkbearlab.github.io/claudeHack_roguelike/ and stays current with
+`main` from then on.
+
+<sub>A GitHub Actions deploy workflow was tried first and removed. `actions/configure-pages`
+could not create the Pages site — `Resource not accessible by integration` — because the
+repository's default `GITHUB_TOKEN` is capped to read access, which a workflow's
+`permissions:` block cannot raise. Branch-based Pages needs no token, no workflow and no
+permission grant, which for a repository with no build step is strictly better.</sub>
+
 ## Layout
 
 ```
