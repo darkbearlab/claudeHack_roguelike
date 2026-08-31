@@ -9,7 +9,7 @@ That structural property — **the core never touches `window`, `document` or
 it silently disables every check below.
 
 ```bash
-node tools/systest.mjs                 # 21 assertions. The contract.
+node tools/systest.mjs                 # 22 assertions. The contract.
 node tools/smoketest.mjs 40 3000       # random-input crash fuzzing
 node tools/botrun.mjs 12 30000         # a bot that plays to win
 node tools/botrun.mjs --god 3 20000    # an unkillable bot, to reach level 26
@@ -49,6 +49,7 @@ instruments.
 | permadeath | death ends the run and deletes the save |
 | 6 roles | each starts alive, equipped, lit, unencumbered and not inside a wall |
 | determinism | one seed produces identical dungeons and identical identity shuffles |
+| resting | #rest heals to full, stops the instant a hostile is in view, and will not rest you into starvation |
 | the Sanctum vault | exactly one locked door and no other opening, across 15 seeds |
 | special rooms | 20 whole dungeons produce every special room type, and at least 19 contain a shop |
 

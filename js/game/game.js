@@ -510,6 +510,8 @@ export class Game {
     switch (key) {
       case '.': case ' ': case 'numpad5': return this.doRest();
       case 's': return this.doSearch(1);
+      case 'A': return await this.restUntil('heal');      // "await" recovery
+      case 'C-s': return await this.restUntil('search');
       case 'S': await this.doSaveAndQuit(); return false;
 
       case ',': case 'g': return await this.doPickup();
@@ -763,6 +765,46 @@ export class Game {
 
   doRest() {
     return true;
+  }
+
+  /**
+   * Wait, repeatedly, until something worth noticing happens.
+   *
+   * Regeneration is deliberately slow - about one hit point every nineteen
+   * turns at experience level 1 - which is right for the pacing and impossible
+   * to sit through one keypress at a time. On a touch screen it is not merely
+   * tedious, it is unusable. This is the standard roguelike answer: a repeat
+   * that stops on its own the moment anything changes.
+   *
+   * The stop conditions are the point. It must never keep resting through
+   * damage, through a monster arriving, or into starvation.
+   */
+  async restUntil(kind) {
+    const p = this.player;
+    const startHp = p.hp;
+    let turns = 0;
+    const limit = 800;
+
+    while (this.running && turns < limit) {
+      if (this.visibleThreat()) { this.msg('You stop; something is nearby.', 'warn'); break; }
+      if (p.hp < startHp) { this.msg('You stop.', 'bad'); break; }
+      if (p.nutrition < 50) { this.msg('You are too hungry to rest.', 'warn'); break; }
+      if (kind === 'heal' && p.hp >= p.hpMax && p.pw >= p.pwMax) break;
+      if (kind === 'search') this.doSearch(1, true);
+
+      turns++;
+      await this.endPlayerTurn();
+      if (turns % 25 === 0) { this.ui.render(); await this.ui.sleep(0); }
+    }
+
+    if (kind === 'heal') {
+      this.msg(p.hp >= p.hpMax
+        ? `You feel rested.  (${turns} turns)`
+        : `You rest for ${turns} turns.`, p.hp >= p.hpMax ? 'good' : '');
+    } else {
+      this.msg(`You search the walls around you.  (${turns} turns)`);
+    }
+    return false;                  // endPlayerTurn was already called per turn
   }
 
   doSearch(times = 1, silent = false) {
@@ -1674,9 +1716,10 @@ export class Game {
 
   async doExtended() {
     const cmds = [
+      { key: 'rest',      label: '#rest - wait until healed or interrupted' },
+      { key: 'search',    label: '#search - search here until interrupted' },
       { key: 'pray',      label: '#pray - call on your god for help' },
       { key: 'sit',       label: '#sit - sit down where you are' },
-      { key: 'force',     label: '#force - force a lock' },
       { key: 'name',      label: '#name - call an object type something' },
       { key: 'terrain',   label: '#terrain - show the map you remember' },
       { key: 'quit',      label: '#quit - give up this game' },
@@ -1685,6 +1728,8 @@ export class Game {
       cmds.map((x, i) => ({ obj: x, letter: INV_LETTERS[i], label: x.label })));
     if (!c) return false;
     switch (c.key) {
+      case 'rest':   return await this.restUntil('heal');
+      case 'search': return await this.restUntil('search');
       case 'pray': return this.doPray();
       case 'sit':  return this.doSit();
       case 'name': return await this.doName();

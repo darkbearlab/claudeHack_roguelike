@@ -472,6 +472,47 @@ await checkAsync('the Amulet can be taken and carried out to win', async () => {
   return `score ${g.gameOver.score}`;
 });
 
+await checkAsync('resting heals, and stops the moment anything happens', async () => {
+  // Heals when left alone.
+  const g = freshGame('rest');
+  g.player.hp = 3;
+  const t0 = g.turn;
+  await g.restUntil('heal');
+  assert(g.player.hp === g.player.hpMax, `rest left HP at ${g.player.hp}/${g.player.hpMax}`);
+  assert(g.turn > t0, 'resting spent no turns');
+
+  // Stops immediately with a hostile in view. This is the half that matters:
+  // a rest that runs through an approaching monster is a death sentence.
+  const g2 = freshGame('rest2');
+  g2.player.hp = 3;
+  // Place it where the hero can actually see it. freeNear() only guarantees a
+  // walkable square, which can easily be around a corner - and a monster the
+  // hero cannot see is correctly *not* a reason to stop resting.
+  let spot = null;
+  for (const d of DIRS) {
+    const x = g2.player.x + d.dx, y = g2.player.y + d.dy;
+    if (g2.level.walkable(x, y) && !g2.level.monsterAt(x, y)) { spot = { x, y }; break; }
+  }
+  assert(spot, 'no square next to the hero to place the interrupting monster');
+  const m = new Monster('jackal', g2.rng);
+  g2.level.addMonster(m, spot.x, spot.y);
+  m.asleep = false;
+  g2.afterMove();
+  assert(g2.level.isVisible(m.x, m.y), 'precondition: the jackal should be visible');
+  const t1 = g2.turn;
+  await g2.restUntil('heal');
+  assert(g2.turn - t1 < 3, `rested ${g2.turn - t1} turns with a jackal beside the hero`);
+
+  // Never rests into starvation.
+  const g3 = freshGame('rest3');
+  g3.player.hp = 1;
+  g3.player.nutrition = 20;
+  await g3.restUntil('heal');
+  assert(g3.running, 'resting starved the hero to death');
+  assert(g3.player.nutrition > -400, 'resting ran the hunger clock out');
+  return 'heals, interrupts, and will not starve you';
+});
+
 check('leaving level 1 without the Amulet does not win', () => {
   const g = freshGame('nowin');
   g.player.x = g.level.upStair.x; g.player.y = g.level.upStair.y;

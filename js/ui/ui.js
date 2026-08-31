@@ -74,7 +74,7 @@ export class UI {
       const key = normaliseKey(ev);
       if (key === null) return;
       // Let the browser keep its own shortcuts.
-      if (ev.metaKey || (ev.ctrlKey && !['C-f', 'C-x', 'C-p'].includes(key))) return;
+      if (ev.metaKey || (ev.ctrlKey && !['C-f', 'C-x', 'C-p', 'C-s'].includes(key))) return;
       ev.preventDefault();
       this.feed(key);
     }, { passive: false });
@@ -531,7 +531,8 @@ export class UI {
       </div>`;
 
     ov.innerHTML = `<h2>Commands</h2>
-      ${group('Act', [[',', 'Pick up'], ['i', 'Inventory'], ['.', 'Rest a turn'], ['s', 'Search'],
+      ${group('Act', [[',', 'Pick up'], ['i', 'Inventory'], ['.', 'Rest a turn'], ['s', 'Search once'],
+                      ['A', 'Rest until healed'], ['C-s', 'Search until found'],
                       ['>', 'Go down'], ['<', 'Go up'], ['o', 'Open door'], ['c', 'Close door']])}
       ${group('Use', [['q', 'Quaff potion'], ['r', 'Read'], ['z', 'Zap wand'], ['Z', 'Cast spell'],
                       ['e', 'Eat'], ['a', 'Apply tool'], ['t', 'Throw'], ['f', 'Fire'], ['Q', 'Ready ammo']])}

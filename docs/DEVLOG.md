@@ -328,7 +328,7 @@ because it says something about where care pays off.
 ## Final state
 
 ```
-21 system checks             PASS
+22 system checks             PASS
 250 fuzz seeds x 4000        1,000,000 commands, 0 crashes
 20 bot runs                  0 crashes, deepest level 9
 god-bot runs                 0 crashes, deepest level 26, Sanctum generated
