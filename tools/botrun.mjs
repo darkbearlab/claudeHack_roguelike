@@ -16,7 +16,7 @@ import { Game } from '../js/game/game.js';
 import { RNG } from '../js/core/rng.js';
 import { ROLES } from '../js/data/roles.js';
 import { flowField, stepAlong, astar } from '../js/sys/path.js';
-import { T, isDown, isWalkable } from '../js/map/tiles.js';
+import { T, isDown, isUp, isWalkable } from '../js/map/tiles.js';
 import { objBase } from '../js/game/obj.js';
 import { DIRS, dist } from '../js/core/util.js';
 
@@ -97,18 +97,28 @@ function stepUsable(game, x, y) {
   return !(m && m.alive && m.peaceful);
 }
 
-/** One decision. Returns the key to press. */
-function decide(game, ui, rng) {
+/**
+ * One decision. Returns the key to press.
+ *
+ * `blocked` holds keys that were just refused - the game declined the command
+ * and no turn passed. Without it the bot loops forever on any legitimate
+ * refusal; the one that actually happened was pressing W to wear body armour
+ * while wearing a cloak, which the game rightly rejects every single time.
+ * A general guard is better than a special case for each refusal the game can
+ * produce, because there are many and the bot cannot know them all.
+ */
+function decide(game, ui, rng, blocked) {
   const p = game.player;
   const lvl = game.level;
+  const use = (key) => (blocked.has(key) ? null : key);
 
   // 1. Emergency healing.
-  if (p.hp < p.hpMax * 0.35) {
+  if (p.hp < p.hpMax * 0.35 && !blocked.has('q')) {
     const pot = p.inventory.find(isHealingPotion);
     if (pot) { ui.intent = { match: (o) => o === pot }; return 'q'; }
   }
   // 2. Do not starve.
-  if (p.nutrition < 60) {
+  if (p.nutrition < 60 && !blocked.has('e')) {
     const food = p.inventory.find(isFood) || p.inventory.find((o) => o.cls === 'food');
     if (food) { ui.intent = { match: (o) => o === food }; return 'e'; }
   }
@@ -120,16 +130,41 @@ function decide(game, ui, rng) {
     const pick = safe.length ? safe[0] : null;
     if (pick) return pick.d.key;
   }
-  // 4. Wear armour that is lying unused, once, early.
-  if (!p.equip.body && p.inventory.some((o) => o.cls === 'armor' && objBase(o)?.slot === 'body' && !o.worn)) {
+  // 4. Wear armour that is lying unused, once, early. Body armour cannot go on
+  //     over a cloak, so do not even try while one is worn.
+  if (!p.equip.body && !p.equip.cloak && !blocked.has('W') &&
+      p.inventory.some((o) => o.cls === 'armor' && objBase(o)?.slot === 'body' && !o.worn)) {
     ui.intent = { match: (o) => o.cls === 'armor' && objBase(o)?.slot === 'body' && !o.worn };
     return 'W';
   }
   // 5. Pick up what is underfoot.
-  if (lvl.itemsAt(p.x, p.y).length && p.encumbrance() < 2) { ui.intent = null; return ','; }
+  if (lvl.itemsAt(p.x, p.y).length && p.encumbrance() < 2 && !blocked.has(',')) {
+    ui.intent = null; return ',';
+  }
+
+  // --- carrying the Amulet: the run is now about getting out ----------------
+  if (p.hasAmulet) {
+    if (isUp(lvl.at(p.x, p.y)) && !blocked.has('<')) return '<';
+    if (lvl.upStair) {
+      const path = astar(lvl, p.x, p.y, lvl.upStair.x, lvl.upStair.y, { maxNodes: 6000 });
+      if (path?.length && stepUsable(game, path[0].x, path[0].y)) {
+        const k = keyFor(path[0].x - p.x, path[0].y - p.y);
+        if (k) return k;
+      }
+    }
+  }
 
   // 6. On the stairs: take them.
-  if (isDown(lvl.at(p.x, p.y))) return '>';
+  if (isDown(lvl.at(p.x, p.y)) && !blocked.has('>')) return '>';
+
+  // 6b. A locked door next to us is a kick, not a wall. Without this the bot
+  //     stalls in front of the ~16% of levels whose route down is locked.
+  for (const d of DIRS) {
+    if (lvl.at(p.x + d.dx, p.y + d.dy) === T.DOOR_LOCKED) {
+      ui.intent = { dir: { dx: d.dx, dy: d.dy } };
+      return 'o';                 // 'o' on a locked door offers to kick it
+    }
+  }
 
   // 7. Head for the stairs if they are known.
   if (lvl.downStair && lvl.isSeen(lvl.downStair.x, lvl.downStair.y)) {
@@ -157,8 +192,36 @@ function decide(game, ui, rng) {
     }
   }
 
+  // 8b. Nothing reachable is unexplored, but a locked door might be hiding the
+  //     rest of the level - including the Amulet's vault on the bottom floor,
+  //     which is a sealed room with one locked door. Walk to it and kick.
+  //
+  //     One flow field over every square that faces a locked door, not an A*
+  //     per door: the per-door version ran 1680 x 4 searches per decision and
+  //     took a god run from seconds to minutes.
+  {
+    const goals = [];
+    for (let y = 0; y < lvl.h; y++) {
+      for (let x = 0; x < lvl.w; x++) {
+        if (lvl.at(x, y) !== T.DOOR_LOCKED) continue;
+        for (const d of DIRS) {
+          if (d.dx && d.dy) continue;                 // must approach head-on
+          if (lvl.passable(x + d.dx, y + d.dy)) goals.push({ x: x + d.dx, y: y + d.dy });
+        }
+      }
+    }
+    if (goals.length) {
+      const field = flowField(lvl, goals, { maxDist: 400 });
+      const step = stepAlong(lvl, field, p.x, p.y);
+      if (step && stepUsable(game, step.x, step.y)) {
+        const k = keyFor(step.x - p.x, step.y - p.y);
+        if (k) return k;
+      }
+    }
+  }
+
   // 9. Nothing new: search for secret doors, then wander.
-  if (rng.oneIn(3)) return 's';
+  if (rng.oneIn(3)) return use('s') ?? '.';
   return rng.pick(DIRS).key;
 }
 
@@ -187,16 +250,32 @@ async function runBot(seed, maxTurns, god = false) {
 
   let steps = 0;
   let stallTurn = game.turn, stallSteps = 0;
+  const blocked = new Set();
   while (game.running && steps < maxTurns) {
     if (god) { game.player.hp = game.player.hpMax; game.player.nutrition = 2000; }
-    const key = decide(game, ui, rng);
+    const before = game.turn;
+    const key = decide(game, ui, rng, blocked);
     await game.command(key);
     ui.intent = null;
     steps++;
+    if (game.turn === before) blocked.add(key); else blocked.clear();
     // A command that spends no turn is fine; two hundred in a row is a bug,
     // in the bot or in the game, and is worth reporting rather than spinning.
     if (game.turn === stallTurn) {
-      if (++stallSteps > 200) throw new Error(`stalled at turn ${game.turn} on dlvl ${game.player.depth}`);
+      if (++stallSteps > 200) {
+        const p = game.player, lvl = game.level;
+        const around = [];
+        for (let dy = -1; dy <= 1; dy++) {
+          const row = [];
+          for (let dx = -1; dx <= 1; dx++) {
+            const m = lvl.monsterAt(p.x + dx, p.y + dy);
+            row.push(lvl.at(p.x + dx, p.y + dy) + (m ? '/' + m.specKey : ''));
+          }
+          around.push(row.join(' '));
+        }
+        throw new Error(`stalled at turn ${game.turn} on dlvl ${p.depth} at ${p.x},${p.y}` +
+          ` last key "${key}" msgs="${ui.messages.slice(-3).join(' | ')}" around=[${around.join(' / ')}]`);
+      }
     } else { stallTurn = game.turn; stallSteps = 0; }
   }
   return {

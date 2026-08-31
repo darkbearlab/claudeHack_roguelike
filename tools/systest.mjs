@@ -95,7 +95,7 @@ console.log('--- map generation ---------------------------------------------');
 check('all 26 depths generate, are connected, and have stairs', () => {
   const problems = [];
   const kinds = new Map();
-  let effortful = 0;
+  let effortful = 0, hard = 0;
   for (let s = 0; s < 12; s++) {
     for (let d = 1; d <= DUNGEON_DEPTH; d++) {
       const rng = new RNG(`gen:${s}:${d}`);
@@ -122,7 +122,12 @@ check('all 26 depths generate, are connected, and have stairs', () => {
       // into them, kicks locked ones and searches out secret ones, so the hard
       // requirement is reachability through *any* door, and needing to kick or
       // search is merely noted.
-      const flood = (allowDoors) => {
+      // `mode` is how much effort the hero is assumed to spend on doors:
+      //   'open'   - only what is already walkable (passable() lets the hero
+      //              through a closed door, so this is genuinely "no work")
+      //   'closed' - plus locked doors, which can be kicked
+      //   'any'    - plus secret doors and corridors, which can be searched out
+      const flood = (mode) => {
         const seen = new Uint8Array(lvl.w * lvl.h);
         const stack = [lvl.idx(up.x, up.y)];
         seen[stack[0]] = 1;
@@ -135,29 +140,64 @@ check('all 26 depths generate, are connected, and have stairs', () => {
             const j = lvl.idx(nx, ny);
             if (seen[j]) continue;
             const t = lvl.at(nx, ny);
-            const open = lvl.passable(nx, ny) ||
-                         (allowDoors && (t === T.DOOR_CLOSED || t === T.DOOR_LOCKED ||
-                                         t === T.SDOOR || t === T.SCORR));
-            if (!open) continue;
+            let ok = lvl.passable(nx, ny);
+            if (!ok && mode !== 'open') ok = t === T.DOOR_LOCKED;
+            if (!ok && mode === 'any') ok = t === T.SDOOR || t === T.SCORR;
+            if (!ok) continue;
             seen[j] = 1; stack.push(j);
           }
         }
         return seen;
       };
       if (down) {
-        const hard = flood(true);
-        if (!hard[lvl.idx(down.x, down.y)]) {
-          problems.push(`d${d}/s${s}: down stair unreachable even through doors`);
-        } else if (!flood(false)[lvl.idx(down.x, down.y)]) {
-          effortful++;
+        const goal = lvl.idx(down.x, down.y);
+        if (!flood('any')[goal]) {
+          problems.push(`d${d}/s${s}: down stair unreachable even through every door`);
+        } else if (!flood('open')[goal]) {
+          // Reachable, but something has to be done to a door first. Opening a
+          // closed door is nothing; kicking a locked one or searching out a
+          // secret one is a real demand on the player, so they are counted
+          // separately.
+          if (flood('closed')[goal]) effortful++;
+          else hard++;    // asserted to be zero below
         }
       }
       if (d === DUNGEON_DEPTH && !lvl.amuletSpot) problems.push(`d${d}/s${s}: sanctum has no amulet spot`);
     }
   }
   assert(problems.length === 0, problems.slice(0, 5).join('; ') + (problems.length > 5 ? ` (+${problems.length - 5} more)` : ''));
-  return `${12 * DUNGEON_DEPTH} levels; ${effortful} need a door opened, kicked or found; kinds: ` +
+  assert(hard === 0, `${hard} levels require finding a secret door just to descend`);
+  return `${12 * DUNGEON_DEPTH} levels; ${effortful} need a locked door kicked, ` +
+         `${hard} need a secret found; kinds: ` +
          [...kinds.entries()].map(([k, v]) => `${k}=${v}`).join(' ');
+});
+
+check('the Sanctum vault keeps exactly one door', () => {
+  // The Amulet sits in a sealed room with one locked door. An earlier version
+  // of ensureConnected treated that door as a wall, decided the vault was an
+  // unreachable region, and tunnelled through its wall to "fix" it.
+  for (let s = 0; s < 15; s++) {
+    const lvl = generateLevel(DUNGEON_DEPTH, new RNG(`vault:${s}`));
+    const vault = lvl.rooms.find((r) => r.type === 'vault');
+    assert(vault, `seed ${s}: no vault`);
+
+    let doors = 0, holes = 0;
+    for (let y = vault.y - 1; y <= vault.y + vault.h; y++) {
+      for (let x = vault.x - 1; x <= vault.x + vault.w; x++) {
+        const onEdge = x === vault.x - 1 || x === vault.x + vault.w ||
+                       y === vault.y - 1 || y === vault.y + vault.h;
+        if (!onEdge) continue;
+        const t = lvl.at(x, y);
+        if (t === T.DOOR_LOCKED) doors++;
+        else if (t !== T.WALL) holes++;
+      }
+    }
+    assert(doors === 1, `seed ${s}: vault has ${doors} locked doors, expected 1`);
+    assert(holes === 0, `seed ${s}: vault wall has ${holes} openings that are not its door`);
+    assert(lvl.at(lvl.amuletSpot.x, lvl.amuletSpot.y) === T.ALTAR,
+           `seed ${s}: the Amulet's pedestal is missing`);
+  }
+  return '15 seeds, one locked door each';
 });
 
 check('secret doors are never the only way through', () => {

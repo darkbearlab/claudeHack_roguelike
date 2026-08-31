@@ -51,6 +51,7 @@ export function generateLevel(depth, rng, opts = {}) {
   fillNoise(lvl, rng);
   ensureConnected(lvl, rng);
   placeStairs(lvl, rng, depth);
+  ensureDescentWithoutSearching(lvl);
   return lvl;
 }
 
@@ -392,7 +393,19 @@ function keepLargestRegion(lvl) {
   }
 }
 
-function floodRegion(lvl, sx, sy, seen) {
+/**
+ * Flood a connected region.
+ *
+ * `throughDoors` decides which question is being asked. Cavern trimming wants
+ * strictly walkable cells. Connectivity wants the hero's answer, and to the
+ * hero a door - closed, locked or secret - is a way through, just a slower one.
+ *
+ * Getting this wrong had a specific and bad consequence: the Sanctum's vault
+ * is a sealed room with exactly one locked door, so with doors treated as walls
+ * it looked like an unreachable region and ensureConnected obligingly tunnelled
+ * a hole through its wall. The Amulet's vault is supposed to have one door.
+ */
+function floodRegion(lvl, sx, sy, seen, throughDoors = false) {
   const out = [];
   const stack = [lvl.idx(sx, sy)];
   seen[stack[0]] = 1;
@@ -404,7 +417,11 @@ function floodRegion(lvl, sx, sy, seen) {
       const nx = x + dx, ny = y + dy;
       if (!lvl.inBounds(nx, ny)) continue;
       const j = lvl.idx(nx, ny);
-      if (seen[j] || !isWalkable(lvl.tiles[j])) continue;
+      if (seen[j]) continue;
+      const t = lvl.tiles[j];
+      const ok = isWalkable(t) ||
+                 (throughDoors && t >= T.DOOR_CLOSED && t <= T.SCORR);
+      if (!ok) continue;
       seen[j] = 1; stack.push(j);
     }
   }
@@ -489,7 +506,7 @@ function ensureConnected(lvl, rng) {
       for (let x = 0; x < lvl.w; x++) {
         const i = lvl.idx(x, y);
         if (seen[i] || !isWalkable(lvl.tiles[i])) continue;
-        regions.push(floodRegion(lvl, x, y, seen));
+        regions.push(floodRegion(lvl, x, y, seen, true));
       }
     }
     if (regions.length <= 1) return;
@@ -510,6 +527,51 @@ function tunnel(lvl, x0, y0, x1, y1) {
     if (t === T.STONE || t === T.WALL) lvl.set(x, y, T.CORRIDOR);
   }
   wallInPassages(lvl);
+}
+
+/**
+ * Guarantee that the way down never *requires* finding a secret door.
+ *
+ * Secret doors are good: they hide side rooms, vaults and shortcuts, and they
+ * are the reason the search command exists. Secret doors on the critical path
+ * are something else - they turn a level into "walk every wall pressing s",
+ * which is tedium rather than difficulty. Measured before this was added, 18%
+ * of levels demanded exactly that.
+ *
+ * A locked door on the path is deliberately still allowed. Kicking is one
+ * command, always available, and it makes noise - that is a real decision with
+ * a real cost, not a chore.
+ */
+function ensureDescentWithoutSearching(lvl) {
+  if (!lvl.upStair || !lvl.downStair) return;
+  const W = lvl.w, H = lvl.h;
+  const goal = lvl.idx(lvl.downStair.x, lvl.downStair.y);
+
+  for (let guard = 0; guard < 40; guard++) {
+    const seen = new Uint8Array(W * H);
+    const frontier = [];                       // secret tiles touching the reached area
+    const stack = [lvl.idx(lvl.upStair.x, lvl.upStair.y)];
+    seen[stack[0]] = 1;
+    while (stack.length) {
+      const i = stack.pop();
+      const x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!lvl.inBounds(nx, ny)) continue;
+        const j = lvl.idx(nx, ny);
+        if (seen[j]) continue;
+        const t = lvl.tiles[j];
+        if (t === T.SDOOR || t === T.SCORR) { frontier.push(j); continue; }
+        // Locked doors count as passable here: they can be kicked.
+        if (!isWalkable(t) && t !== T.DOOR_CLOSED && t !== T.DOOR_LOCKED) continue;
+        seen[j] = 1; stack.push(j);
+      }
+    }
+    if (seen[goal]) return;
+    if (!frontier.length) return;              // nothing left to reveal; already handled upstream
+    const j = frontier[0];
+    lvl.tiles[j] = lvl.tiles[j] === T.SDOOR ? T.DOOR_CLOSED : T.CORRIDOR;
+  }
 }
 
 function placeStairs(lvl, rng, depth) {

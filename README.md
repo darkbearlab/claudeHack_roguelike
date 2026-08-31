@@ -14,6 +14,13 @@ no server, no dependencies.
  \___|_|\__,_|\__,_|\__,_|\___|_| |_| |_|\__,_|\___|_|\_\
 ```
 
+![The same dungeon in tile mode](docs/img/tiles.png)
+![...and in ASCII mode](docs/img/ascii.png)
+
+<sub>The same level twice. Tile mode draws the generated sprites; ASCII mode draws
+glyphs. They are one renderer with a branch per cell, so the two can never
+disagree about what the hero can see.</sub>
+
 ## What it is
 
 Descend 26 dungeon levels, take the Amulet of Yendor out of the Sanctum at the
@@ -75,6 +82,14 @@ python tools/devserver.py 8778
 Then open http://localhost:8778. `tools/devserver.py` sends `Cache-Control:
 no-store` and is threaded, which matters when iterating — see
 [docs/DEVLOG.md](docs/DEVLOG.md) for why both of those cost time to learn.
+
+It also accepts `POST /__shot/<name>.png` from the page and writes the body
+(base64 PNG) into `docs/img/`, which is how the screenshots above were taken:
+
+```js
+fetch('/__shot/tiles.png', { method: 'POST',
+  body: document.getElementById('map').toDataURL('image/png').split(',')[1] })
+```
 
 ## Tests
 
