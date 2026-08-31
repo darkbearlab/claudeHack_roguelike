@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "name": "item_bow",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "a wooden longbow with a taut string",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single a wooden longbow with a taut string, seen in full, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only upward-facing surfaces are visible: the top of the head or the top face of the object, and the upper surfaces of anything that projects from it. No front face and no side faces are visible, and a face or frontal detail cannot be seen at all. The subject is extremely foreshortened, so it reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_bow.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_bow.src.png",
+    "source_sha256": "9b68490aa30b38986e9f0416b7a0c7ace58bf285c3e0684b9d771de4e80c0527",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_07.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+    "palette_sha256": "e871e6d9fbc2effc4cb88c193a29d7b411d01f7571308038e3739ae3f116fd82",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 21.6699
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 32.1817
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 9.2285
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 16.6212
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 18.3008
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 9.4804
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 26.187
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 8.8288
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 16.3441
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 17.5667
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 15.2437
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 28.4134
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "1d52bf3e549b94198c383ab84ceffbcd979a8878e76f4d30559f15704ff30f38"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_bow.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 6.199,
+    "palette_fit_delta_e76": 12.8507,
+    "warnings": [
+      "HIGH_QUANT_ERROR",
+      "PALETTE_SET_POOR_FIT"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\item_bow.qa.json"
+  },
+  "created": "20260901_012628",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.05
+}

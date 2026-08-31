@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "name": "mon_minotaur",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "a brown minotaur with a great axe",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single a brown minotaur with a great axe, seen in full, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only upward-facing surfaces are visible: the top of the head or the top face of the object, and the upper surfaces of anything that projects from it. No front face and no side faces are visible, and a face or frontal detail cannot be seen at all. The subject is extremely foreshortened, so it reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_minotaur.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_minotaur.src.png",
+    "source_sha256": "7ae7ee08a3a254b15ff67cbeb65d4bbccc67abc14072b4e92a16d79cb16063a0",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_05.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+    "palette_sha256": "d77531b17df5047eee60de3057ff6af3a8af6814336793c87b0e7ac2a0c8888e",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 22.8565
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 33.6154
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 8.1514
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 8.8827
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 11.333
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 5.7486
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 35.5667
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 10.3995
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 18.6882
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 11.2845
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 10.9375
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 21.0302
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "024278c60ee0faf427688ac4e43a26014bb1ae6166dff6037ddbbfd20e7c25c4"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_minotaur.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 4.9817,
+    "palette_fit_delta_e76": 6.7831,
+    "warnings": [
+      "BACKDROP_COLOUR_IN_PALETTE"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\mon_minotaur.qa.json"
+  },
+  "created": "20260901_012653",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.06
+}

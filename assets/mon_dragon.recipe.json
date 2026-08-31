@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "name": "mon_dragon",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "a red dragon with spread wings",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single a red dragon with spread wings, seen in full, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only upward-facing surfaces are visible: the top of the head or the top face of the object, and the upper surfaces of anything that projects from it. No front face and no side faces are visible, and a face or frontal detail cannot be seen at all. The subject is extremely foreshortened, so it reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_dragon.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_dragon.src.png",
+    "source_sha256": "0a0881a2fe3e95861f024e58b03dc9087768a3731b447b038c44b9b29da0e014",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_06.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+    "palette_sha256": "12727bd7c96c1b3db6d2736e54d5ca82c9754b7d212f4ec62c9e2b220db82a70",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 15.2953
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 48.6579
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 15.4895
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 32.2155
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 49.9484
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 37.4542
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 1.7375
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 8.5695
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 6.6804
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 49.969
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 14.871
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 61.8669
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "f159bd91f4dd8262f0ce1f63e44ab4780214b23bc9b6fb0223b0eeb1cdd77010"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_dragon.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 0.932,
+    "palette_fit_delta_e76": 1.9417,
+    "warnings": [],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\mon_dragon.qa.json"
+  },
+  "created": "20260901_012646",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.06
+}

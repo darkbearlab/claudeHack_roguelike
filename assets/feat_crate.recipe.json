@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "name": "unit-topdown_wooden-crate-iron_64",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "wooden crate with iron bands",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single standing wooden crate with iron bands, full body, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only the top of the head, the tops of both shoulders, the upper surfaces of the arms and the tops of the boots are visible. The face is not visible at all. The body is extremely foreshortened, so the figure reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\unit-topdown_wooden-crate-iron_64.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\unit-topdown_wooden-crate-iron_64.src.png",
+    "source_sha256": "b6103ee066f34cb410a5e800be430efbff35f8fc39a670f909fe33b0404ed685",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_02.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+    "palette_sha256": "61104c3cd294fce063d71d3b2e9c600548bb710cf3215f1f969ab169f6685aff",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 24.15
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 30.2115
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 8.0247
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 20.0231
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 14.2108
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 14.1472
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 35.5929
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 10.311
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 21.914
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 26.2438
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 16.765
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 31.9676
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "fe57e772a3b75ff18b497464affff72191d61de01d8483292dbd559601048e36"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\unit-topdown_wooden-crate-iron_64.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 4.8466,
+    "palette_fit_delta_e76": 7.2213,
+    "warnings": [],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\unit-topdown_wooden-crate-iron_64.qa.json"
+  },
+  "created": "20260901_012712",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.07
+}

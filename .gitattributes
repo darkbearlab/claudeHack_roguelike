@@ -1,0 +1,5 @@
+# Keep everything LF in the working tree as well as in the repository. The
+# shell scripts under tools/ are run by bash on this machine, and CRLF line
+# endings break them in ways that look like the script is missing.
+* text=auto eol=lf
+*.png binary

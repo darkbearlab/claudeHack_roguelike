@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The game core has no DOM dependency, so the whole suite runs headless.
+      # No install step: there are no dependencies.
+      - name: System tests
+        run: node tools/systest.mjs
+
+      - name: Crash fuzzing
+        run: node tools/smoketest.mjs 60 3000
+
+      - name: Bot playthroughs
+        run: node tools/botrun.mjs 12 30000
+
+      - name: Deep-dungeon bot (reaches the Sanctum)
+        run: node tools/botrun.mjs --god 2 15000

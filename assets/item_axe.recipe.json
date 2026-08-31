@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "name": "item_axe",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "an iron battle axe with a wooden haft",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single an iron battle axe with a wooden haft, seen in full, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only upward-facing surfaces are visible: the top of the head or the top face of the object, and the upper surfaces of anything that projects from it. No front face and no side faces are visible, and a face or frontal detail cannot be seen at all. The subject is extremely foreshortened, so it reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_axe.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_axe.src.png",
+    "source_sha256": "2c2b1ba86dde08347b258eeb9210129198fcc559f3a47c5c2a16a85022990e74",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_02.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+    "palette_sha256": "61104c3cd294fce063d71d3b2e9c600548bb710cf3215f1f969ab169f6685aff",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 31.5838
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 31.8709
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 5.7807
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 7.95
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 8.8782
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 8.0685
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 37.0432
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 9.6117
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 21.5332
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 22.7441
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 12.2724
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 22.4552
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "fe57e772a3b75ff18b497464affff72191d61de01d8483292dbd559601048e36"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\item_axe.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 4.1669,
+    "palette_fit_delta_e76": 5.2923,
+    "warnings": [],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\item_axe.qa.json"
+  },
+  "created": "20260901_012624",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.04
+}

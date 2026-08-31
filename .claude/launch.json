@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "claudehack",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["tools/devserver.py", "8778"],
+      "port": 8778
+    }
+  ]
+}

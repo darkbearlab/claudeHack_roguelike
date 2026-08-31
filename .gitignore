@@ -1,0 +1,6 @@
+# Local playtesting output only; nothing here is part of the game.
+tools/*.log
+tools/status_*.txt
+.DS_Store
+Thumbs.db
+node_modules/

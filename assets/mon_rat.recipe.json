@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "name": "mon_rat",
+  "style": "topdown-flat",
+  "kind": "unit-topdown",
+  "desc": "a giant brown rat",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nA single a giant brown rat, seen in full, centred in frame, on a fully transparent background.\n\nSeen from directly overhead, looking straight down at the ground. Only upward-facing surfaces are visible: the top of the head or the top face of the object, and the upper surfaces of anything that projects from it. No front face and no side faces are visible, and a face or frontal detail cannot be seen at all. The subject is extremely foreshortened, so it reads as a compact shape rather than a tall one, as seen from a camera mounted on the ceiling directly above.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_rat.src.png",
+    "source_origin": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_rat.src.png",
+    "source_sha256": "15ead8579972c1b7fe54f1734e2d564ec2d35b2b3a0f48b571798a73caf89553",
+    "cost_usd": 0.0,
+    "meta": {
+      "reused": true,
+      "backend": "gpt-image"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_05.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+    "palette_sha256": "d77531b17df5047eee60de3057ff6af3a8af6814336793c87b0e7ac2a0c8888e",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 15.2856
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 29.8843
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 9.4928
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 9.0328
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 13.315
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 4.4277
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 31.9167
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 8.741
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 15.9833
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 9.5739
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 10.7908
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 19.7247
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "024278c60ee0faf427688ac4e43a26014bb1ae6166dff6037ddbbfd20e7c25c4"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\mon_rat.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 3.0128,
+    "palette_fit_delta_e76": 4.2313,
+    "warnings": [
+      "BACKDROP_COLOUR_IN_PALETTE"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\mon_rat.qa.json"
+  },
+  "created": "20260901_012658",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 1.06
+}

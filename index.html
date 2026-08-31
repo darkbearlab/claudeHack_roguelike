@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>claudeHack — a roguelike in the NetHack tradition</title>
+<meta name="description" content="claudeHack: a browser roguelike in the NetHack tradition. 26 dungeon levels, permadeath, item identification, no install.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>@</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <span id="title">claudeHack</span>
+    <span id="topinfo"></span>
+    <span id="topbtns">
+      <button id="btn-mode"  title="Toggle tiles / ASCII (T)">Tiles</button>
+      <button id="btn-zoom"  title="Zoom (+ / -)">Zoom</button>
+      <button id="btn-pad"   title="Show or hide the on-screen controls">Pad</button>
+      <button id="btn-help"  title="Commands (?)">?</button>
+      <button id="btn-save"  title="Save and quit (S)">Save</button>
+    </span>
+  </header>
+
+  <div id="msgbar"><div id="msglines"></div></div>
+
+  <main id="viewport">
+    <canvas id="map" tabindex="0"></canvas>
+    <div id="overlay" hidden></div>
+    <div id="tooltip" hidden></div>
+  </main>
+
+  <footer id="status">
+    <div id="status1"></div>
+    <div id="status2"></div>
+  </footer>
+
+  <nav id="touchpad" hidden>
+    <div class="tp-grid">
+      <button data-cmd="y">↖</button><button data-cmd="k">↑</button><button data-cmd="u">↗</button>
+      <button data-cmd="h">←</button><button data-cmd=".">·</button><button data-cmd="l">→</button>
+      <button data-cmd="b">↙</button><button data-cmd="j">↓</button><button data-cmd="n">↘</button>
+    </div>
+    <div class="tp-acts">
+      <button data-cmd="i">Inv</button>
+      <button data-cmd=",">Pick</button>
+      <button data-cmd="&gt;">&gt;</button>
+      <button data-cmd="&lt;">&lt;</button>
+      <button data-cmd="s">Srch</button>
+      <button data-cmd="q">Quaff</button>
+      <button data-cmd="r">Read</button>
+      <button data-cmd="z">Zap</button>
+      <button data-cmd="f">Fire</button>
+      <button data-cmd="ESC">Esc</button>
+    </div>
+  </nav>
+
+</div>
+
+<div id="splash">
+  <div class="splash-inner">
+    <pre id="splash-logo">
+      _                 _      _   _   _            _
+  ___| | __ _ _   _  __| | ___| | | | | | __ _  ___| | __
+ / __| |/ _` | | | |/ _` |/ _ \ |_| |_| |/ _` |/ __| |/ /
+| (__| | (_| | |_| | (_| |  __/  _   _  | (_| | (__|   &lt;
+ \___|_|\__,_|\__,_|\__,_|\___|_| |_| |_|\__,_|\___|_|\_\
+</pre>
+    <p class="tagline">A roguelike in the NetHack tradition. It is not fair. It keeps no promises. Deaths are permanent.</p>
+    <div id="splash-body"></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
