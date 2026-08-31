@@ -9,7 +9,7 @@ That structural property — **the core never touches `window`, `document` or
 it silently disables every check below.
 
 ```bash
-node tools/systest.mjs                 # 19 assertions. The contract.
+node tools/systest.mjs                 # 21 assertions. The contract.
 node tools/smoketest.mjs 40 3000       # random-input crash fuzzing
 node tools/botrun.mjs 12 30000         # a bot that plays to win
 node tools/botrun.mjs --god 3 20000    # an unkillable bot, to reach level 26
@@ -49,12 +49,16 @@ instruments.
 | permadeath | death ends the run and deletes the save |
 | 6 roles | each starts alive, equipped, lit, unencumbered and not inside a wall |
 | determinism | one seed produces identical dungeons and identical identity shuffles |
+| the Sanctum vault | exactly one locked door and no other opening, across 15 seeds |
+| special rooms | 20 whole dungeons produce every special room type, and at least 19 contain a shop |
 
-The connectivity check runs in two tiers, because `Level.passable()` answers a
-*monster's* question and a closed door is a wall to something without hands. The
-hard requirement is reachability through any door; needing to open, kick or
-search one is counted and reported (currently 2 levels in 312), because that is
-NetHack-ish texture rather than a defect.
+The connectivity check runs in three tiers, by how much work the hero has to do
+about doors: what is already walkable, plus locked doors that can be kicked,
+plus secret doors that have to be searched out. Reachability through *any* door
+is required; needing to kick a locked one is counted and allowed (currently
+about 70 levels in 312, and kicking is one command); needing to **find a secret
+door** is asserted to be zero, because searching every wall to reach the stairs
+is tedium rather than difficulty.
 
 ### `smoketest.mjs` — does it ever throw?
 

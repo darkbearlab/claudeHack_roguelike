@@ -97,7 +97,7 @@ There is no test framework; the game core has no DOM dependency, so it runs
 under Node directly with a stub UI.
 
 ```bash
-node tools/systest.mjs                 # 19 system checks; the real suite
+node tools/systest.mjs                 # 21 system checks; the real suite
 node tools/smoketest.mjs 40 3000       # random-input crash fuzzing
 node tools/botrun.mjs 12 30000         # a greedy bot that plays to win
 node tools/botrun.mjs --god 3 20000    # an unkillable bot, to reach level 26

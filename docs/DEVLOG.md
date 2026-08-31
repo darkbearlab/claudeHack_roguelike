@@ -234,6 +234,77 @@ Both are commented in the file, at the top, where the next person will hit them.
 
 ---
 
+## The second pass: bugs the tests found only after other bugs were fixed
+
+Three of the most interesting problems were invisible until something else was
+fixed first. That is worth recording, because it is an argument for fixing
+things properly rather than working around them: each proper fix made the *next*
+problem measurable.
+
+### 9. The Amulet's vault had a hole punched in its wall
+
+`ensureConnected` guarantees the whole walkable map is one region, tunnelling
+where it is not. It flooded through walkable tiles only — and the Sanctum's
+vault is a sealed room whose single entrance is a *locked door*, which is not
+walkable. So every Sanctum generated looked like it had an unreachable region,
+and the generator obligingly dug a corridor through the vault wall.
+
+Nothing failed. The Amulet was still there, still guarded, still reachable. It
+was simply not the room it was designed to be. Found by writing a test for a
+property nobody had checked — "the vault has exactly one door and no other
+opening" — while investigating something else.
+
+### 10. Fixing that made an existing problem measurable
+
+With connectivity flooding through doors, `ensureConnected` stopped digging
+detours around every closed door. The connectivity test's "needs a door opened,
+kicked or found" count jumped from 2 levels in 312 to 107.
+
+That number had always been the truth; the generator had just been papering over
+it. Splitting it into "needs a locked door kicked" (51) and "needs a secret door
+found" (56) made the decision obvious:
+
+- A locked door is fine. Kicking is one command, always available, and it makes
+  noise that wakes the level — a real decision with a real cost.
+- A secret door on the only route down is not fine. It turns a level into "walk
+  every wall pressing `s`", which is tedium wearing difficulty's clothes.
+
+So generation now reveals secret doors along one route to the down staircase,
+and leaves every other secret alone. The test asserts **zero** levels require a
+search to descend. Secret doors still hide side rooms, vaults and shortcuts,
+which is what they are for.
+
+### 11. Shops were a coin flip
+
+`specialRooms` picked a random room, then asked whether it could be a shop. A
+shop needs a room with exactly one door, and only about 40% of rooms have one,
+so the intended 12% chance became roughly 5% per level — a 28% chance of a whole
+dungeon with no shop in it.
+
+Found by looking for a shop to screenshot and failing to find one in 26 levels.
+Rolling the type first and then finding a room to suit it took shops from about
+1 per dungeon to about 3.6, and the test now asserts the *rate* rather than the
+code path: 20 dungeons must produce at least one of every special room type, and
+at least 19 of 20 must contain a shop.
+
+### 12. The bot found a UI dead end the fuzzer never could
+
+The stall detector fired: 200 consecutive commands spending no turn. The
+diagnostic printed the last key and the last three messages:
+
+```
+stalled at turn 43 on dlvl 1 last key "W"
+msgs="You must take off your cloak first. | ... | ..."
+```
+
+The bot wanted to wear body armour, was wearing a cloak, and the game correctly
+refused — every single time, forever. The fix worth making was not "teach the
+bot about cloaks" but a general guard: any command that spends no turn is
+blocked until one does. There are many legitimate refusals in a roguelike and a
+bot cannot know them all.
+
+---
+
 ## Things that went right first time
 
 Not everything was a bug hunt, and it is worth noting what did not need fixing,
@@ -257,10 +328,11 @@ because it says something about where care pays off.
 ## Final state
 
 ```
-19 system checks           PASS
-40 fuzz seeds x 3000       0 crashes
-12 bot runs                0 crashes, deepest level 8
-3 god-bot runs             0 crashes, deepest level 26, Sanctum generated
+21 system checks             PASS
+250 fuzz seeds x 4000        1,000,000 commands, 0 crashes
+20 bot runs                  0 crashes, deepest level 9
+god-bot runs                 0 crashes, deepest level 26, Sanctum generated
+312 generated levels         all connected, 0 requiring a search to descend
 ```
 
 | | |
@@ -277,10 +349,12 @@ Run `node tools/systest.mjs` first. It takes eight seconds and it is the
 contract. If it is green, the game works; if you change something and it goes
 red, the message tells you which of the eighteen invariants you broke.
 
-The three things most likely to be "simplified" back into bugs, all commented in
+The four things most likely to be "simplified" back into bugs, all commented in
 place:
 
 1. Merging `gainEnergy()` and `canAct()` in `js/game/actors.js`.
 2. Adding a constant back to the to-hit target in `js/game/combat.js`.
 3. Re-implementing the diagonal-doorway rule locally instead of calling
    `diagonalOk()` in `js/map/tiles.js`.
+4. Making `Level.passable()` treat the hero like a monster in `js/map/level.js` —
+   a closed door is a wall to one and a door to the other.
