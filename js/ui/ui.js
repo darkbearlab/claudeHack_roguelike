@@ -542,7 +542,7 @@ export class UI {
                        ['C-f', 'Explore'], ['\\', 'Discoveries'], ['C-x', 'Attributes'],
                        ['#', 'Extended...'], ['E', 'Engrave']])}
       ${group('Meta', [['?', 'Full help'], ['S', 'Save and quit'], ['p', 'Pay shopkeeper'],
-                       ['v', 'Version']])}
+                       ['C-p', 'Message history'], ['v', 'Version']])}
       <div class="menu-foot"><button class="btn" data-act="close">Close</button></div>`;
 
     const done = () => this.closeOverlay();

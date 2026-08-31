@@ -551,6 +551,7 @@ export class Game {
       case '\\': await this.showDiscoveries(); return false;
       case '?': await this.ui.showHelp(); return false;
       case 'C-x': await this.showEnlightenment(); return false;
+      case 'C-p': await this.showMessageHistory(); return false;
       case 'C-f': return await this.doAutoExplore();
       case 'v': await this.ui.showText('Version', ['claudeHack ' + VERSION,
                   'A NetHack-like, written for the browser.', `Seed: ${this.seed}`]); return false;
@@ -841,9 +842,14 @@ export class Game {
       this.level.removeItem(o);
       if (o.shopOwned) {
         const shop = this.shopOwning(o);
-        o.shopPrice = shopPriceOf(o, p);
+        // Name it before pricing it: objName() appends "(unpaid, N zorkmids)"
+        // once shopPrice is set, and the quote would read
+        // "the crossbow (unpaid, 53 zorkmids) will cost 53 zorkmids".
+        const quoted = objName(o, this.disc, { article: 'the' });
+        const price = shopPriceOf(o, p);
         if (shop && !shop.abandoned) {
-          this.msg(`"For you, ${objName(o, this.disc, { article: 'the' })} will cost ${o.shopPrice} zorkmids."`, 'warn');
+          o.shopPrice = price;
+          this.msg(`"For you, ${quoted} will cost ${price} zorkmids."`, 'warn');
         } else o.shopPrice = 0;
         o.shopOwned = false;
       }
@@ -1642,6 +1648,11 @@ export class Game {
       lines.push('Spells known: ' + p.spells.map((s) => s.key).join(', ') + '.');
     }
     await this.ui.showText('Enlightenment', lines);
+  }
+
+  async showMessageHistory() {
+    const lines = this.messages.slice(-120).map((m) => `${String(m.turn).padStart(6)}  ${m.text}`);
+    await this.ui.showText('Message history', lines.length ? lines : ['Nothing has happened yet.']);
   }
 
   async showDiscoveries() {

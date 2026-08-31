@@ -470,6 +470,34 @@ check('every role starts legal and equipped', () => {
   return `${ROLES.length} roles`;
 });
 
+check('special rooms actually turn up across a dungeon', () => {
+  // Shops in particular are easy to make accidentally rare: they need a room
+  // with exactly one door, and if the room is chosen before the type is rolled
+  // that requirement silently multiplies the chance down. This asserts the
+  // rate rather than the code path.
+  const seen = new Map();
+  let dungeonsWithAShop = 0;
+  const DUNGEONS = 20;
+  for (let s = 0; s < DUNGEONS; s++) {
+    const g = freshGame('special:' + s);
+    let shopHere = 0;
+    for (let d = 1; d <= DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      shopHere += lvl.shops.length;
+      for (const r of lvl.rooms) {
+        if (r.type !== 'ordinary') seen.set(r.type, (seen.get(r.type) ?? 0) + 1);
+      }
+    }
+    if (shopHere) dungeonsWithAShop++;
+  }
+  for (const kind of ['shop', 'zoo', 'graveyard', 'barracks', 'treasure']) {
+    assert(seen.get(kind), `no ${kind} generated in ${DUNGEONS} whole dungeons`);
+  }
+  assert(dungeonsWithAShop >= DUNGEONS - 1,
+         `only ${dungeonsWithAShop}/${DUNGEONS} dungeons contained a shop`);
+  return `${DUNGEONS} dungeons: ` + [...seen.entries()].map(([k, v]) => `${k}=${v}`).join(' ');
+});
+
 check('the same seed produces the same dungeon and the same shuffle', () => {
   const a = freshGame('repeat-me', 'wizard');
   const b = freshGame('repeat-me', 'wizard');

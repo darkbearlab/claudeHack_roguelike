@@ -127,14 +127,25 @@ function specialRooms(game, lvl) {
     r.type === 'ordinary' && r.w >= 3 && r.h >= 2 && !containsStairs(lvl, r));
   if (!candidates.length) return;
 
+  // Roll the *type* first, then find a room that suits it.
+  //
+  // The original order was the other way round - pick a random room, then ask
+  // whether it could be a shop - and a shop needs a room with exactly one door.
+  // Since only about 40% of rooms have one door, that quietly multiplied the
+  // 12% shop chance down to about 5% a level, which is a 28% chance of a
+  // dungeon with no shop in it at all. Shops are a signature feature; they
+  // should not be a coin flip.
   const roll = rng.rn2(100);
-  const room = rng.pick(candidates);
 
-  if (depth >= 2 && roll < 12 && countDoors(lvl, room) === 1) makeShop(game, lvl, room);
-  else if (depth >= 4 && roll < 20) makeZoo(game, lvl, room);
-  else if (depth >= 5 && roll < 26) makeGraveyard(game, lvl, room);
-  else if (depth >= 6 && roll < 32) makeBarracks(game, lvl, room);
-  else if (depth >= 8 && roll < 36) makeTreasureRoom(game, lvl, room);
+  if (depth >= 2 && roll < 20) {
+    const oneDoor = candidates.filter((r) => countDoors(lvl, r) === 1);
+    if (oneDoor.length) { makeShop(game, lvl, rng.pick(oneDoor)); return; }
+    // No suitable room; fall through and make something else instead.
+  }
+  if (depth >= 4 && roll < 30) { makeZoo(game, lvl, rng.pick(candidates)); return; }
+  if (depth >= 5 && roll < 38) { makeGraveyard(game, lvl, rng.pick(candidates)); return; }
+  if (depth >= 6 && roll < 45) { makeBarracks(game, lvl, rng.pick(candidates)); return; }
+  if (depth >= 8 && roll < 50) { makeTreasureRoom(game, lvl, rng.pick(candidates)); return; }
 }
 
 function containsStairs(lvl, r) {

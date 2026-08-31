@@ -48,7 +48,8 @@ _          travel to a chosen spot           Z e a cast, eat, apply
 Ctrl-F     explore automatically             t f   throw, fire
 ;  :       examine a spot / look here        E p   engrave, pay
 \  Ctrl-X  discoveries / attributes          #     extended commands
-?          help          S  save and quit    v     version
+Ctrl-P     message history                   v     version
+?          help                              S     save and quit
 ```
 
 ### Touch
