@@ -182,6 +182,44 @@ body { overflow: hidden; }
 .note { color: var(--dim); font-size: 11.5px; line-height: 1.55; }
 .note code { color: var(--accent); }
 
+/* ---------------------------------------------------------------- guide ---
+   The in-game manual. It is fifteen sections long, so it gets a table of
+   contents: on a phone, reaching section 12 by scrolling is not reasonable. */
+#overlay h4 { margin: 14px 0 4px; font-size: 13px; color: var(--fg); }
+#overlay p { margin: 6px 0; }
+#overlay p.note {
+  color: var(--dim); font-size: 12px; line-height: 1.6;
+  border-left: 2px solid var(--line); padding-left: 9px; margin: 8px 0;
+}
+#overlay ul, #overlay ol { margin: 6px 0; padding-left: 22px; }
+#overlay li { margin: 3px 0; }
+#overlay code {
+  color: var(--accent); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 3px;
+  padding: 0 4px; font-size: 12px; white-space: nowrap;
+}
+#overlay .toc {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 4px; margin: 10px 0 4px;
+}
+#overlay .toc-item {
+  text-align: left; font-size: 12px; padding: 7px 9px; min-height: 34px;
+}
+#overlay table.guide { margin: 8px 0; font-size: 12.5px; }
+#overlay table.guide th {
+  text-align: left; color: var(--dim); font-weight: 400; font-size: 11.5px;
+  border-bottom: 1px solid var(--line); padding: 3px 8px 4px 0;
+}
+#overlay table.guide td {
+  padding: 4px 8px 4px 0; vertical-align: top;
+  border-bottom: 1px solid rgba(38,45,56,.5);
+}
+#overlay table.guide td:first-child { white-space: normal; }
+@media (max-width: 560px) {
+  #overlay table.guide { font-size: 12px; }
+  #overlay .toc { grid-template-columns: 1fr 1fr; }
+}
+
 /* -------------------------------------------------------------- compact ---
    On a phone every row of chrome is a row of dungeon you cannot see, so the
    bars shrink and the d-pad tightens. The controls stay at 40px minimum: below

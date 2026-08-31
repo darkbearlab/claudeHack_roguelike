@@ -49,10 +49,13 @@ function render() {
     </div>
     <div class="splash-row">
       <button class="big-btn" id="btn-start">Enter the dungeon</button>
+      <button class="btn" id="btn-guide-zh">中文遊戲指南</button>
       <button class="btn" id="btn-help">How to play</button>
     </div>
 
     <div class="note" style="margin-top:18px">
+      <p><b>沒玩過 NetHack?</b> 按上面的「中文遊戲指南」,那是一份寫給新手的完整說明 &mdash;
+      看畫面、打架、鑑定物品、常見死法都有。遊戲中隨時按 <code>?</code> 也叫得出來。</p>
       <p><b>Two words on what this is.</b> A roguelike in the NetHack tradition: one life,
       no undo, a dungeon that is different every run, and objects whose identities are
       shuffled at the start of each game. The same <i>seed</i> always produces the same
@@ -67,7 +70,8 @@ function render() {
     b.addEventListener('click', () => { chosenRole = b.dataset.role; render(); });
   }
   body.querySelector('#btn-start').addEventListener('click', startNew);
-  body.querySelector('#btn-help').addEventListener('click', showHelpEarly);
+  body.querySelector('#btn-help').addEventListener('click', () => showDocFromSplash('en'));
+  body.querySelector('#btn-guide-zh').addEventListener('click', () => showDocFromSplash('zh'));
   body.querySelector('#btn-continue')?.addEventListener('click', continueRun);
   body.querySelector('#btn-abandon')?.addEventListener('click', () => {
     if (confirm('Delete the saved run? This cannot be undone.')) { clearSave(); render(); }
@@ -137,13 +141,22 @@ function spriteOf(o) {
   return t?.sprite ?? null;
 }
 
-async function showHelpEarly() {
-  const game = new Game(null);
-  const ui = new UI(game);
+// Reading the manual before starting needs a UI object, because that is where
+// the overlay lives - but not a running game. One inert UI is built lazily and
+// reused; building a fresh one per click would stack duplicate key listeners,
+// and the previous version dodged that by reloading the page afterwards, which
+// threw away whatever the player had already typed into the name and seed
+// fields.
+let docUI = null;
+
+async function showDocFromSplash(which) {
+  if (!docUI) docUI = new UI(new Game(null));
   splash.hidden = true;
-  await ui.showHelp();
-  splash.hidden = false;
-  location.reload();
+  try {
+    await (which === 'zh' ? docUI.showGuideZh() : docUI.showHelpEn());
+  } finally {
+    splash.hidden = false;
+  }
 }
 
 function randomName() {

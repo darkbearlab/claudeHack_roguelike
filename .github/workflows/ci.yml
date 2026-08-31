@@ -18,6 +18,13 @@ jobs:
 
       # The game core has no DOM dependency, so the whole suite runs headless.
       # No install step: there are no dependencies.
+      # docs/GUIDE.zh-TW.md is generated from js/ui/guide-zh.js. If someone
+      # edits the guide and forgets to regenerate, the in-game manual and the
+      # repository document silently disagree - which is exactly the failure
+      # mode keeping one source was meant to prevent.
+      - name: Chinese guide is in sync
+        run: node tools/build_guide.mjs --check
+
       - name: System tests
         run: node tools/systest.mjs
 

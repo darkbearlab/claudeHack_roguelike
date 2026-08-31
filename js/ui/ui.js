@@ -17,6 +17,7 @@ import { HUNGER, VERSION, groupInventory } from '../game/game.js';
 import { objName } from '../game/obj.js';
 import { T, TILE, tileName } from '../map/tiles.js';
 import { saveSettings, loadSettings } from '../game/save.js';
+import { GUIDE_ZH, GUIDE_ZH_TITLE, GUIDE_ZH_INTRO } from './guide-zh.js';
 
 // How many message lines the bar shows. A phone gets two; the third would cost
 // a row of map for a line that is usually blank.
@@ -515,8 +516,58 @@ export class UI {
   // help and palette
   // =========================================================================
 
+  /** `?` opens whichever language was last read. */
   async showHelp() {
-    await this.showText('claudeHack - how to play', HELP_HTML);
+    if ((this.settings.helpLang ?? 'en') === 'zh') return this.showGuideZh();
+    return this.showHelpEn();
+  }
+
+  async showHelpEn() {
+    this.settings.helpLang = 'en';
+    saveSettings(this.settings);
+    await this.showDoc('claudeHack - how to play', HELP_HTML,
+                       { label: '中文說明', go: () => this.showGuideZh() });
+  }
+
+  async showGuideZh() {
+    this.settings.helpLang = 'zh';
+    saveSettings(this.settings);
+    await this.showDoc(GUIDE_ZH_TITLE, renderGuide(GUIDE_ZH, GUIDE_ZH_INTRO),
+                       { label: 'English', go: () => this.showHelpEn() });
+  }
+
+  /**
+   * A long document with a language switch and, if it has sections, a table of
+   * contents. The contents matter more than they look: the guide is fifteen
+   * sections long and on a phone that is a lot of scrolling to reach section 12.
+   */
+  showDoc(title, html, other) {
+    return new Promise((resolve) => {
+      const ov = this.el.overlay;
+      ov.hidden = false;
+      ov.innerHTML = `<h2>${escapeHtml(title)}</h2>${html}
+        <div class="menu-foot">
+          <button class="btn" data-act="close">關閉 / Close  (Esc)</button>
+          ${other ? `<button class="btn" data-act="other">${escapeHtml(other.label)}</button>` : ''}
+        </div>`;
+      const done = () => { this.closeOverlay(); resolve(); };
+      ov.querySelector('[data-act=close]').addEventListener('click', done);
+      // Switching language chains rather than resolving: showDoc's promise
+      // means "the reader is finished with the manual", not "this particular
+      // page closed". The splash screen relies on that to know when to come
+      // back, and toggling zh/en three times must not bring it back early.
+      ov.querySelector('[data-act=other]')?.addEventListener('click', () => {
+        this.closeOverlay();
+        Promise.resolve(other.go()).then(resolve);
+      });
+      for (const a of ov.querySelectorAll('[data-goto]')) {
+        a.addEventListener('click', () => {
+          ov.querySelector(`#sec-${a.dataset.goto}`)?.scrollIntoView({ block: 'start' });
+        });
+      }
+      ov.scrollTop = 0;
+      this.pending = { onKey: (k) => { if (k === 'Escape' || k === '?') done(); } };
+    });
   }
 
   async showCommandPalette() {
@@ -542,13 +593,26 @@ export class UI {
       ${group('Look', [[';', 'Examine a spot'], [':', 'Look here'], ['_', 'Travel to...'],
                        ['C-f', 'Explore'], ['\\', 'Discoveries'], ['C-x', 'Attributes'],
                        ['#', 'Extended...'], ['E', 'Engrave']])}
-      ${group('Meta', [['?', 'Full help'], ['S', 'Save and quit'], ['p', 'Pay shopkeeper'],
+      ${group('Meta', [['?', 'Help / 說明'], ['S', 'Save and quit'], ['p', 'Pay shopkeeper'],
                        ['C-p', 'Message history'], ['v', 'Version']])}
+      <h3>說明書</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:5px">
+        <button class="btn" data-doc="zh" style="text-align:left;padding:9px 8px">中文遊戲指南<br>
+          <span style="color:var(--dim);font-size:10px">新手看這份</span></button>
+        <button class="btn" data-doc="en" style="text-align:left;padding:9px 8px">English help<br>
+          <span style="color:var(--dim);font-size:10px">?</span></button>
+      </div>
       <div class="menu-foot"><button class="btn" data-act="close">Close</button></div>`;
 
     const done = () => this.closeOverlay();
     ov.querySelectorAll('button[data-k]').forEach((b) =>
       b.addEventListener('click', () => { done(); this.feed(b.dataset.k); }));
+    ov.querySelectorAll('button[data-doc]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const which = b.dataset.doc;
+        done();
+        if (which === 'zh') this.showGuideZh(); else this.showHelpEn();
+      }));
     ov.querySelector('button[data-act=close]').addEventListener('click', done);
     this.pending = { onKey: (k) => { if (k === 'Escape' || k === '?') done(); } };
   }
@@ -666,6 +730,52 @@ function normaliseKey(ev) {
   if (ev.code?.startsWith('Numpad') && /^[0-9]$/.test(k)) return 'numpad' + k;
   if (k.length === 1) return k;
   return null;
+}
+
+/**
+ * Render the structured guide to HTML.
+ *
+ * The same blocks are rendered to Markdown by tools/build_guide.mjs, which is
+ * why the guide is stored as data rather than as an HTML string: one authored
+ * source, two outputs, no chance of the in-game text and the repository
+ * document drifting apart.
+ */
+export function renderGuide(sections, intro) {
+  const out = [];
+  if (intro) out.push(`<p>${inline(intro)}</p>`);
+
+  out.push('<div class="toc">');
+  for (const s of sections) {
+    out.push(`<button class="btn toc-item" data-goto="${s.id}">${escapeHtml(s.title)}</button>`);
+  }
+  out.push('</div>');
+
+  for (const s of sections) {
+    out.push(`<h3 id="sec-${s.id}">${escapeHtml(s.title)}</h3>`);
+    for (const b of s.body) out.push(block(b));
+  }
+  return out.join('');
+}
+
+function block(b) {
+  if (b.h) return `<h4>${inline(b.h)}</h4>`;
+  if (b.p) return `<p>${inline(b.p)}</p>`;
+  if (b.note) return `<p class="note">${inline(b.note)}</p>`;
+  if (b.ul) return `<ul>${b.ul.map((i) => `<li>${inline(i)}</li>`).join('')}</ul>`;
+  if (b.ol) return `<ol>${b.ol.map((i) => `<li>${inline(i)}</li>`).join('')}</ol>`;
+  if (b.table) {
+    const { head, rows } = b.table;
+    return `<table class="guide"><thead><tr>${head.map((h) => `<th>${inline(h)}</th>`).join('')}</tr></thead>` +
+           `<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+  return '';
+}
+
+/** Escape first, then apply the two inline markers. Order matters. */
+function inline(text) {
+  return escapeHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 function escapeHtml(s) {

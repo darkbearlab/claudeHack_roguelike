@@ -108,6 +108,13 @@ and role, all 26 depths of map generation with a connectivity proof, the save
 format including its object graph, and the win condition. See
 [docs/TESTING.md](docs/TESTING.md).
 
+The Chinese guide is generated rather than written twice:
+
+```bash
+node tools/build_guide.mjs           # regenerate docs/GUIDE.zh-TW.md
+node tools/build_guide.mjs --check   # CI: fail if it is out of date
+```
+
 ## Deployment
 
 The repository **is** the site. There is no build step, so GitHub Pages can
@@ -147,6 +154,10 @@ docs/                 design notes, development log, asset write-up
 
 ## Documentation
 
+- **[docs/GUIDE.zh-TW.md](docs/GUIDE.zh-TW.md) — 中文遊戲指南**。寫給沒玩過 NetHack 的人:
+  看懂畫面、戰鬥、物品鑑定、飢餓、商店、職業選擇、新手最常見的死法,以及完整指令表和英中對照。
+  遊戲中按 <kbd>?</kbd> 或標題畫面的「中文遊戲指南」按鈕可以直接叫出同一份內容 —— 它們是同一個
+  來源(`js/ui/guide-zh.js`),由 `tools/build_guide.mjs` 產生。
 - **[docs/DESIGN.md](docs/DESIGN.md)** — the decisions and the reasoning: the
   turn model, the identification game, the memory model, why terrain is drawn
   procedurally while everything else is a sprite.
