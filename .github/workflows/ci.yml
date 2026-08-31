@@ -27,5 +27,9 @@ jobs:
       - name: Bot playthroughs
         run: node tools/botrun.mjs 12 30000
 
-      - name: Deep-dungeon bot (reaches the Sanctum)
-        run: node tools/botrun.mjs --god 2 15000
+      # Kept small on purpose. systest already generates all 26 depths across 12
+      # seeds and drives the win path end to end; this is only here to prove the
+      # bot's own deep-dungeon path still runs, and a longer run was by far the
+      # slowest thing in the workflow for no extra coverage.
+      - name: Deep-dungeon bot
+        run: node tools/botrun.mjs --god 1 6000
