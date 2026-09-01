@@ -6,36 +6,32 @@
 // backwards, which in a game about reading which way a brute is about to swing
 // is not a cosmetic problem.
 //
-// The generated art is NOT consistent, and it cannot be - the prompt asked for
-// a straight overhead view where "a face or frontal detail cannot be seen at
-// all", so the model had no reason to pick a consistent forward direction. Most
-// of what came back reads as a front view (you see the visor, the muzzle, the
-// chest) and so points SOUTH. A couple read as back views (you see the quiver,
-// the wings from behind) and point NORTH.
-//
-// The original code assumed north for everything. Combined with the default
+// The original code assumed north for every sprite. Combined with the resting
 // facing being south, that meant a character standing still was drawn rotated a
-// full 180 degrees - upside down - which is what made this visible in the first
-// place.
+// full 180 degrees - upside down - which is what made this visible at all.
+//
+// Audited by eye against tools/facing.html, one sprite at a time: **all of it
+// points south.** That is not a coincidence, it is what the asset prompt
+// produced - it asked for a straight overhead view in which "a face or frontal
+// detail cannot be seen at all", and what came back was consistently a front
+// view. I had read two of these as back views from the static art (the ranger's
+// quiver, the dragon's wings) and was wrong about both; the person looking at
+// them move is the one who can tell.
+//
+// The table is kept even though every row currently agrees with the default,
+// because "checked, and it is south" and "nobody has looked at this one" are
+// different states and the file should say which is which. New art goes in with
+// its own value rather than inheriting a default nobody verified.
 //
 // Values are compass points: 'N' 'NE' 'E' 'SE' 'S' 'SW' 'W' 'NW'.
-// Anything not listed uses DEFAULT_ART_FACING.
-//
-// To re-check these by eye, open tools/facing.html - it draws every sprite as
-// the game would draw it in all eight directions and lets you flip each one.
 
 export const DEFAULT_ART_FACING = 'S';
 
 export const ART_FACING = {
-  // Back views: you are looking at the quiver and the shoulder blades.
-  hero_ranger: 'N',
-  mon_dragon: 'N',
-
-  // Front views. Listed explicitly rather than left to the default, because
-  // "we checked this one and it really is south" and "nobody has looked at this
-  // one yet" are different states and the table should say which is which.
+  hero_ranger: 'S',
   hero_fighter: 'S',
   mon_jackal: 'S',
+  mon_spider: 'S',    // radially symmetric; any value is equally correct
   mon_zombie: 'S',
   mon_skeleton: 'S',
   mon_soldier: 'S',
@@ -43,10 +39,7 @@ export const ART_FACING = {
   mon_lich: 'S',
   mon_troll: 'S',
   mon_minotaur: 'S',
-
-  // Radially symmetric - there is no front to get wrong, and any value here is
-  // equally correct. Kept in the table so nobody spends time squinting at it.
-  mon_spider: 'S',
+  mon_dragon: 'S',
 };
 
 const VECTORS = {
