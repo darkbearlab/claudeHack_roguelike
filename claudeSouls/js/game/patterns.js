@@ -12,6 +12,7 @@
 // south-east really is three tiles, not two overlapping ones.
 
 import { DIRS } from '../../../engine/util.js';
+import { artVector } from '../data/sprites.js';
 
 const SQ = Math.SQRT1_2;   // 0.7071
 
@@ -109,10 +110,30 @@ export function snapDir(dx, dy) {
   return { dx: x, dy: y };
 }
 
-/** The facing angle in radians, for rotating a sprite drawn pointing north. */
+/**
+ * The angle, in radians, of a direction - measured so that north is 0.
+ *
+ * This is the *absolute* angle of a heading, not the rotation to apply to a
+ * sprite. Those were the same thing only while every piece of art was assumed
+ * to point north, which turned out not to be true of the generated art at all.
+ * See spriteRotation() below and js/data/sprites.js.
+ */
 export function facingAngle(dx, dy) {
   if (!dx && !dy) return 0;
   return Math.atan2(dy, dx) + Math.PI / 2;
+}
+
+/**
+ * How far to rotate a sprite so it faces the way its owner is facing.
+ *
+ * The art already points somewhere; rotating by the full facing angle assumes
+ * that somewhere is north. Subtracting the art's own heading is the whole fix -
+ * art that already points south, on a character facing south, now comes out
+ * unrotated instead of upside down.
+ */
+export function spriteRotation(dx, dy, sprite) {
+  const art = artVector(sprite);
+  return facingAngle(dx, dy) - facingAngle(art.dx, art.dy);
 }
 
 export { DIRS };

@@ -14,7 +14,8 @@ import { generateLevel } from '../js/map/mapgen.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
-import { attackTiles, snapDir, PATTERNS } from '../js/game/patterns.js';
+import { attackTiles, snapDir, PATTERNS, spriteRotation } from '../js/game/patterns.js';
+import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -195,6 +196,33 @@ check('one step back is not a universal answer', () => {
     }
   }
   return 'lines punish retreat, sweeps punish the sidestep, rings need a roll';
+});
+
+check('a sprite facing the way it is drawn is not rotated', () => {
+  // The bug this pins: every sprite was rotated as if its art pointed north,
+  // but most of the generated art is a front view and points south - and the
+  // resting facing is south too, so a character standing still was drawn
+  // rotated a full 180 degrees. Upside down, in a game about reading which way
+  // something is about to swing.
+  for (const [sprite, dir] of Object.entries(ART_FACING)) {
+    const v = { N: [0, -1], NE: [1, -1], E: [1, 0], SE: [1, 1],
+                S: [0, 1], SW: [-1, 1], W: [-1, 0], NW: [-1, -1] }[dir];
+    const r = spriteRotation(v[0], v[1], sprite);
+    assert(Math.abs(Math.atan2(Math.sin(r), Math.cos(r))) < 1e-9,
+           `${sprite} is drawn facing ${dir} but rotates ${(r * 180 / Math.PI).toFixed(0)}deg to face ${dir}`);
+  }
+
+  // And turning by a quarter turn must rotate by a quarter turn, whatever the
+  // art's own heading is.
+  for (const sprite of Object.keys(ART_FACING)) {
+    const seen = new Set();
+    for (const d of DIRS) {
+      const r = spriteRotation(d.dx, d.dy, sprite);
+      seen.add(Math.round(((r * 180 / Math.PI) % 360 + 360) % 360));
+    }
+    assert(seen.size === 8, `${sprite} collapses eight facings into ${seen.size} rotations`);
+  }
+  return `${Object.keys(ART_FACING).length} sprites, all eight facings each`;
 });
 
 check('snapDir returns one of the eight directions for any vector', () => {

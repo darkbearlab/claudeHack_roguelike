@@ -68,8 +68,27 @@ body { overflow: hidden; }
 .m-warn { color: var(--ember); } .m-magic { color: #c9a2ff; }
 
 /* --------------------------------------------------------------- viewport */
-#viewport { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #000; }
-#map { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+/* The map is square.
+   Letting the canvas fill a non-square area means the horizontal field of view
+   is wider than the vertical one, so an enemy to your left becomes visible
+   sooner than the identical enemy above you. In a game whose whole skill is
+   reading what is about to reach you, an asymmetric view is an asymmetric
+   warning. The canvas is therefore the largest square that fits, centred, and
+   the leftover is just background. */
+#viewport {
+  position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
+}
+/* Fallback for browsers without container query units: the old stretch-to-fill.
+   Wrong aspect, but a visible map beats a zero-sized one. */
+#map { display: block; outline: none; touch-action: none; width: 100%; height: 100%; }
+/* The largest square that fits, said directly. `aspect-ratio` alone does not do
+   it here: `height: 100%` is a definite size and wins over the ratio, which is
+   how the canvas ended up 375x513 on a phone. */
+@supports (width: 1cqmin) {
+  #map { width: 100cqmin; height: 100cqmin; }
+}
 
 /* A red wash when you die, so a reset is never ambiguous. */
 #flash { position: absolute; inset: 0; pointer-events: none; background: var(--blood); opacity: 0; }
@@ -160,18 +179,27 @@ body { overflow: hidden; }
   #statusline { font-size: 10.5px; }
   #statusline .roomy { display: none; }
   #msgbar { min-height: 30px; max-height: 52px; font-size: 12px; }
-  /* Stack the footer on a phone.
-     Side by side, the d-pad took 134 of the 375 available pixels and the skill
-     buttons came out 70px wide - not enough for a shape icon AND the skill's
-     name, so the names were being clipped to "Str" and "Lung". Full width gives
-     each button ~119px, which fits both. The map does not lose any tile size
-     for it: the cell is limited by width (375/9), not by height. */
-  #controls { flex-direction: column; align-items: stretch; gap: 6px; }
-  #skillbar { order: 1; }
-  #pad { order: 2; grid-template-columns: repeat(3, 42px); justify-content: center; }
+  /* Movement on the left, skills on the right - the original arrangement.
+     I had stacked these to buy width for the skill icons, which moved the
+     movement keys out from under the thumb to pay for a label. Wrong trade:
+     the layout is muscle memory and the label is not. The buttons shrink to
+     fit instead - icon and number stay, the name drops on the narrowest
+     screens, and the icon is the part that says what the skill does anyway. */
+  #pad { grid-template-columns: repeat(3, 42px); }
   #pad button { height: 37px; }
-  .skill { height: 37px; }
-  .skill .ico { height: 22px; margin-right: 7px; }
+  .skill { height: 37px; padding: 2px 4px; }
+  .skill .ico { height: 20px; margin-right: 5px; }
+  .skill .nm { font-size: 11px; padding-left: 7px; }
+  .skill .num { font-size: 8px; }
+  .skill .cost { font-size: 9px; }
+
+  /* Under ~400px there is no honest way to fit a shape icon and a word on a
+     third of the width. The icon wins: it is the thing that says what the
+     skill does, and the number still maps to the keyboard. */
+  @media (max-width: 400px) {
+    .skill .nm { display: none; }
+    .skill .ico { margin: 0 auto; }
+  }
   #hpbar i { width: 9px; height: 9px; }
 }
 

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>claudeSouls — sprite 面向清點</title>
+<style>
+  :root {
+    --bg: #131316; --panel: #1b1b20; --line: #33333c;
+    --fg: #e8e2d6; --dim: #8f8879; --ember: #f0963c; --cool: #79b8e8; --good: #79c079;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 14px; background: var(--bg); color: var(--fg);
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; color: var(--ember); }
+  p  { margin: 0 0 10px; color: var(--dim); max-width: 74ch; }
+  b  { color: var(--fg); }
+  a  { color: var(--cool); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .num {
+    background: var(--ember); color: #16161a; font-weight: 700;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; flex: 0 0 auto;
+  }
+  .name { font-weight: 700; }
+  .used { color: var(--dim); font-size: 12px; }
+  .now  { margin-left: auto; color: var(--good); }
+
+  .row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .raw { text-align: center; }
+  .raw canvas { image-rendering: pixelated; background: #0c0c0f; border: 1px solid var(--line); border-radius: 6px; }
+  .cap { color: var(--dim); font-size: 11px; margin-top: 2px; }
+
+  .eight { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; flex: 1 1 340px; min-width: 280px; }
+  .eight figure { margin: 0; text-align: center; }
+  .eight canvas {
+    image-rendering: pixelated; width: 100%; height: auto; aspect-ratio: 1;
+    background: #0c0c0f; border: 1px solid var(--line); border-radius: 5px; display: block;
+  }
+  .eight figcaption { font-size: 11px; color: var(--dim); }
+
+  .pick { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+  .pick button {
+    font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer;
+    background: #23232a; color: var(--fg); border: 1px solid var(--line); border-radius: 5px;
+  }
+  .pick button.on { background: var(--ember); color: #16161a; border-color: var(--ember); font-weight: 700; }
+
+  #out {
+    width: 100%; height: 190px; background: #0c0c0f; color: var(--good);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+    font: inherit; font-size: 12px; white-space: pre;
+  }
+  .bar { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  .bar button {
+    font: inherit; padding: 6px 12px; cursor: pointer;
+    background: var(--ember); color: #16161a; border: 0; border-radius: 6px; font-weight: 700;
+  }
+  @media (max-width: 620px) { .eight { grid-template-columns: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
+
+<h1>sprite 面向清點</h1>
+<p>
+  每張圖上的<b style="color:var(--cool)">青色箭頭</b>是<b>目前程式認定的「正面」</b>。
+  右邊八格是遊戲真的會怎麼畫牠——朝八個方向時的樣子,每格角落的小箭頭是<b>應該</b>朝的方向。
+  <b>對照這兩者:小箭頭指哪邊,角色的正面就該指哪邊。</b>
+  不對的話按下面那排改,右邊會立刻重畫。全部挑完按「複製結果」,把那段貼給我就好。
+</p>
+<p>
+  原本程式假設<b>每一張圖都朝北</b>,而角色靜止時的預設面向是<b>朝南</b>——所以站著不動的
+  主角被轉了整整 180 度,是上下顛倒的。這就是你看到「臉朝後」的原因。
+</p>
+
+<div class="bar">
+  <button id="copy">複製結果</button>
+  <span class="cap" id="msg"></span>
+</div>
+<textarea id="out" readonly spellcheck="false"></textarea>
+
+<div id="list"></div>
+
+<script type="module">
+import { ART_FACING, DEFAULT_ART_FACING, COMPASS } from '../js/data/sprites.js';
+import { ENEMIES } from '../js/data/enemies.js';
+
+// Every sprite this game rotates, and what uses it - so a wrong call can be
+// traced to the thing on screen that looks wrong.
+const USERS = new Map();
+const add = (sprite, who) => {
+  if (!sprite) return;
+  if (!USERS.has(sprite)) USERS.set(sprite, []);
+  USERS.get(sprite).push(who);
+};
+add('hero_ranger', '主角(輕裝)');
+add('hero_fighter', '主角(重甲)');
+for (const e of ENEMIES) add(e.sprite, e.name);
+
+const SPRITES = [...USERS.keys()];
+const chosen = new Map(SPRITES.map((s) => [s, ART_FACING[s] ?? DEFAULT_ART_FACING]));
+
+const VEC = {
+  N: [0, -1], NE: [1, -1], E: [1, 0], SE: [1, 1],
+  S: [0, 1], SW: [-1, 1], W: [-1, 0], NW: [-1, -1],
+};
+const angleOf = (dx, dy) => Math.atan2(dy, dx) + Math.PI / 2;
+
+function load(name) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = `../../assets/${name}.png`;
+  });
+}
+
+/** The raw art, with an arrow showing which way we currently call its front. */
+function drawRaw(cv, img, facing) {
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const s = Math.min(cv.width / img.width, cv.height / img.height) * 0.82;
+  const w = img.width * s, h = img.height * s;
+  ctx.drawImage(img, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
+
+  const [dx, dy] = VEC[facing];
+  const cx = cv.width / 2, cy = cv.height / 2;
+  const len = Math.min(cv.width, cv.height) * 0.42;
+  const n = Math.hypot(dx, dy);
+  const ex = cx + (dx / n) * len, ey = cy + (dy / n) * len;
+  ctx.strokeStyle = '#79b8e8'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(cx - (dx / n) * len * 0.6, cy - (dy / n) * len * 0.6);
+  ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.save();
+  ctx.translate(ex, ey); ctx.rotate(Math.atan2(dy, dx));
+  ctx.fillStyle = '#79b8e8';
+  ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/** Exactly what the game does: rotate by facing minus the art's own heading. */
+function drawFacing(cv, img, artFacing, dir) {
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const [adx, ady] = VEC[artFacing];
+  const [ddx, ddy] = VEC[dir];
+  const rot = angleOf(ddx, ddy) - angleOf(adx, ady);
+
+  const s = Math.min(cv.width / img.width, cv.height / img.height) * 0.72;
+  const w = img.width * s, h = img.height * s;
+  ctx.save();
+  ctx.translate(cv.width / 2, cv.height / 2);
+  ctx.rotate(rot);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+
+  // The direction it is *supposed* to be facing, pinned to the edge.
+  const n = Math.hypot(ddx, ddy);
+  const r = cv.width * 0.40;
+  const ex = cv.width / 2 + (ddx / n) * r, ey = cv.height / 2 + (ddy / n) * r;
+  ctx.save();
+  ctx.translate(ex, ey); ctx.rotate(Math.atan2(ddy, ddx));
+  ctx.fillStyle = '#f0963c';
+  ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-5, -5); ctx.lineTo(-5, 5);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+const list = document.getElementById('list');
+const out = document.getElementById('out');
+
+function refreshOut() {
+  const lines = SPRITES.map((s) => `  ${s}: '${chosen.get(s)}',`);
+  out.value = 'export const ART_FACING = {\n' + lines.join('\n') + '\n};';
+}
+
+(async () => {
+  for (let i = 0; i < SPRITES.length; i++) {
+    const name = SPRITES[i];
+    const img = await load(name);
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="head">
+        <span class="num">${i + 1}</span>
+        <span class="name">${name}</span>
+        <span class="used">${USERS.get(name).join('、')}</span>
+        <span class="now" data-now>現在:${chosen.get(name)}</span>
+      </div>
+      <div class="row">
+        <div class="raw">
+          <canvas width="150" height="180"></canvas>
+          <div class="cap">原圖 + 目前認定的正面</div>
+        </div>
+        <div class="eight"></div>
+      </div>
+      <div class="pick"></div>`;
+    list.appendChild(card);
+
+    if (!img) { card.querySelector('.cap').textContent = '讀不到圖'; continue; }
+
+    const rawCv = card.querySelector('.raw canvas');
+    const eight = card.querySelector('.eight');
+    const cvs = COMPASS.map((dir) => {
+      const fig = document.createElement('figure');
+      fig.innerHTML = `<canvas width="88" height="88"></canvas><figcaption>${dir}</figcaption>`;
+      eight.appendChild(fig);
+      return fig.querySelector('canvas');
+    });
+
+    const redraw = () => {
+      const f = chosen.get(name);
+      drawRaw(rawCv, img, f);
+      COMPASS.forEach((dir, k) => drawFacing(cvs[k], img, f, dir));
+      card.querySelector('[data-now]').textContent = `現在:${f}`;
+      card.querySelectorAll('.pick button').forEach((b) => {
+        b.classList.toggle('on', b.dataset.dir === f);
+      });
+      refreshOut();
+    };
+
+    const pick = card.querySelector('.pick');
+    for (const dir of COMPASS) {
+      const b = document.createElement('button');
+      b.textContent = dir;
+      b.dataset.dir = dir;
+      b.addEventListener('click', () => { chosen.set(name, dir); redraw(); });
+      pick.appendChild(b);
+    }
+    redraw();
+  }
+  refreshOut();
+})();
+
+document.getElementById('copy').addEventListener('click', async () => {
+  const msg = document.getElementById('msg');
+  try {
+    await navigator.clipboard.writeText(out.value);
+    msg.textContent = '已複製';
+  } catch {
+    out.select();
+    msg.textContent = '請手動選取上面那段複製';
+  }
+  setTimeout(() => { msg.textContent = ''; }, 2500);
+});
+</script>
+</body>
+</html>

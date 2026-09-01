@@ -24,7 +24,7 @@
 
 import { T, TILE, isDoor, isBonfire } from '../map/tiles.js';
 import { hash2 } from '../../../engine/util.js';
-import { facingAngle } from '../game/patterns.js';
+import { spriteRotation } from '../game/patterns.js';
 import { STATE } from '../game/actors.js';
 
 const SPRITE_DIR = '../assets/';
@@ -86,8 +86,11 @@ export class Renderer {
       // instead of ~29, which is the difference between recognising a brute by
       // its sprite and having to read the message log to find out what hit you.
       // Only binds on small screens: on a desktop the 92px cap below wins.
-      const MIN_COLS = 9, MIN_ROWS = 6;
-      base = Math.min(W / MIN_COLS, H / MIN_ROWS);
+      // One number for both axes: the canvas is square (see #viewport in the
+      // CSS), so guaranteeing nine columns and six rows would have promised an
+      // asymmetric view on a square surface.
+      const MIN_TILES = 9;
+      base = Math.min(W, H) / MIN_TILES;
       base = Math.max(18 * this.dpr, Math.min(base, 92 * this.dpr));
     }
     const cell = Math.max(6, Math.floor(base * this.zoom));
@@ -403,7 +406,7 @@ export class Renderer {
       this.facingPip(ctx, e.facing, px, py, cell, e.colour);
     } else {
       const img = this.sprite(e.sprite);
-      if (img) this.blit(ctx, img, px, py, cell, spent ? 0.62 : 1, 1, facingAngle(e.facing.dx, e.facing.dy));
+      if (img) this.blit(ctx, img, px, py, cell, spent ? 0.62 : 1, 1, spriteRotation(e.facing.dx, e.facing.dy, e.sprite));
       else this.glyph(ctx, e.glyph, e.colour, px, py, cell, spent ? 0.6 : 1);
     }
 
@@ -454,7 +457,7 @@ export class Renderer {
       this.facingPip(ctx, p.facing, px, py, cell, '#ffd75f');
     } else {
       const img = this.sprite(p.sprite);
-      if (img) this.blit(ctx, img, px, py, cell, 1, 1, facingAngle(p.facing.dx, p.facing.dy));
+      if (img) this.blit(ctx, img, px, py, cell, 1, 1, spriteRotation(p.facing.dx, p.facing.dy, p.sprite));
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
   }
