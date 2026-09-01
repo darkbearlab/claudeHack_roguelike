@@ -23,6 +23,8 @@ export const T = {
   BONFIRE:     9,
   RUBBLE:     10,   // blocks movement, not sight - cover you can shoot over
   PIT:        11,   // blocks movement for walkers, projectiles fly over
+  CHEST:      12,   // walk onto it, then press the context button
+  CORPSE:     13,   // where you died, holding what you had not banked
 };
 
 const def = (name, glyph, colour, walk, opaque, extra = {}) =>
@@ -41,11 +43,17 @@ TILE[T.STAIRS_UP]   = def('stairs up',    '<', '#e8e2d0', true,  false);
 TILE[T.BONFIRE]     = def('bonfire',      '&', '#ff9a3c', true,  false, { bonfire: true });
 TILE[T.RUBBLE]      = def('rubble',       '*', '#8a8378', false, false);
 TILE[T.PIT]         = def('pit',          '^', '#2a2a30', false, false, { pit: true });
+// Both are walkable: you stand on them and then take what is there. Making
+// them obstacles would mean a guard could body-block the loot forever.
+TILE[T.CHEST]       = def('chest',        '(', '#c08a3c', true,  false, { chest: true });
+TILE[T.CORPSE]      = def('your remains', '%', '#c8c0b0', true,  false, { corpse: true });
 
 export const isWalkable = (t) => TILE[t].walk;
 export const isOpaque   = (t) => TILE[t].opaque;
 export const isDoor     = (t) => !!TILE[t].door;
 export const isBonfire  = (t) => t === T.BONFIRE;
+export const isChest    = (t) => t === T.CHEST;
+export const isCorpse   = (t) => t === T.CORPSE;
 export const tileName   = (t) => TILE[t].name;
 
 /** Can a projectile pass through? Rubble is cover you shoot over; walls are not. */

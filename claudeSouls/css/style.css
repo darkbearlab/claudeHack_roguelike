@@ -208,6 +208,8 @@ body { overflow: hidden; }
 .skill.action.is-rest    { border-color: #6a5320; background: #241f14; }
 .skill.action.is-descend { border-color: #3f5a6a; background: #16202a; }
 .skill.action.is-descend .act-name { color: var(--cool); }
+.skill.action.is-take    { border-color: #6a5a28; background: #23200f; }
+.skill.action.is-take .act-name { color: #e8c25a; }
 .skill.action.is-cancel  { border-color: #6a3a34; background: #2a1a18; }
 .skill.action.is-cancel .act-name { color: var(--blood); }
 .skill.action.is-pack { border-color: #4a4230; background: #1e1c17; }

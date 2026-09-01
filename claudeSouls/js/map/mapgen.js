@@ -29,6 +29,7 @@ export function generateLevel(depth, rng) {
   placeStairs(lvl, rng, depth);
   placeBonfires(lvl, rng);
   scatterCover(lvl, rng);
+  placeStoreroom(lvl, rng, depth);
   // Last, and that matters: a long single-width corridor turns most of the
   // combat system off, and scatterCover drops rubble and pits that BLOCK
   // movement - so widening before it runs lets it narrow the map straight back
@@ -396,4 +397,90 @@ export function openAlcoves(lvl, rng, maxRun = MAX_STRAIT - 1) {
       }
     }
   }
+}
+
+// ===========================================================================
+// Storerooms.
+//
+// The first reason to explore a floor rather than walk to the stairs.
+//
+// Everything about one is derived from `seed#depth`, like the terrain and the
+// monsters: whether the floor has a storeroom at all, which room it is, what is
+// in the chest, and what is standing in front of it. That is not just tidiness
+// - floors here are persistent, so "this seed has a storeroom on four" becomes
+// something the player *keeps*, the same way the layout does. And because the
+// contents come from the seed rather than from the kill, nothing about the loot
+// is farmable: resting brings the guards back, not the chest.
+//
+// The chest itself is only "taken" once per run, tracked by the game rather
+// than the level, since the level is rebuilt from the seed every time you die.
+
+/**
+ * How likely a floor is to hide one.
+ *
+ * Floor 1 never does - it is the tutorial. Nor does the last floor: `populate`
+ * returns early there because the boss is placed by hand, so a chest down there
+ * would be an unguarded freebie sitting next to the finale.
+ */
+function wantsStore(depth, rng) {
+  if (depth <= 1 || depth >= DUNGEON_DEPTH) return false;
+  return rng.oneIn(depth >= 8 ? 2 : 3);
+}
+
+/**
+ * What could be in a chest at this depth.
+ *
+ * Deliberately not "tier N items": later floors offer the *committal* things -
+ * the two-handers, the tower shield, the plate - because in this game depth
+ * cannot mean bigger numbers, only harder choices.
+ */
+const STORE_TABLE = [
+  { upto: 3, keys: ['rags', 'brigandine', 'bone', 'buckler', 'blades', 'hatchet', 'sword', 'knife'] },
+  { upto: 7, keys: ['spear', 'mace', 'falchion', 'halberd', 'kite', 'mail', 'brigandine',
+                    'firebomb', 'whetstone', 'blink'] },
+  { upto: 99, keys: ['greataxe', 'warhammer', 'pike', 'tower', 'plate', 'bow', 'ward', 'blink'] },
+];
+
+function lootFor(depth, rng) {
+  const row = STORE_TABLE.find((r) => depth <= r.upto) ?? STORE_TABLE[STORE_TABLE.length - 1];
+  return rng.pick(row.keys);
+}
+
+/**
+ * Pick a room, put a chest in it, and stand something in the way.
+ *
+ * The guard is placed between the chest and the room's centre, and starts
+ * awake. Both matter: a guard that has to be woken up reads as "this room has
+ * more monsters in it", and one standing behind the chest is scenery. It should
+ * be the thing you have to get past.
+ */
+export function placeStoreroom(lvl, rng, depth) {
+  if (!wantsStore(depth, rng)) return;
+
+  // Never the room you arrive in, and never the one with the fire in it.
+  const taken = new Set();
+  for (const b of lvl.bonfires) taken.add(roomAt(lvl, b.x, b.y)?.id);
+  if (lvl.upStair) taken.add(roomAt(lvl, lvl.upStair.x, lvl.upStair.y)?.id);
+  if (lvl.downStair) taken.add(roomAt(lvl, lvl.downStair.x, lvl.downStair.y)?.id);
+
+  const options = lvl.rooms.filter((r) => !taken.has(r.id) && r.w >= 4 && r.h >= 3);
+  if (!options.length) return;
+  const room = rng.pick(options);
+  room.type = 'store';
+
+  // The chest goes in a corner, so there is a wrong side to approach from.
+  const corners = [
+    { x: room.x, y: room.y },
+    { x: room.x + room.w - 1, y: room.y },
+    { x: room.x, y: room.y + room.h - 1 },
+    { x: room.x + room.w - 1, y: room.y + room.h - 1 },
+  ].filter((c) => lvl.at(c.x, c.y) === T.FLOOR);
+  if (!corners.length) return;
+  const spot = rng.pick(corners);
+  lvl.set(spot.x, spot.y, T.CHEST);
+  lvl.store = { x: spot.x, y: spot.y, loot: lootFor(depth, rng), room: room.id };
+}
+
+function roomAt(lvl, x, y) {
+  return lvl.rooms.find((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) ?? null;
 }

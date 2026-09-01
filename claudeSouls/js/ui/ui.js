@@ -29,7 +29,7 @@ import { DIRS, DIR_BY_KEY, capitalise, fmtDuration } from '../../../engine/util.
 import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
-import { T, isBonfire } from '../map/tiles.js';
+import { T, isBonfire, isChest, isCorpse } from '../map/tiles.js';
 import { SLOT, ITEM_BY_KEY, slotsFor, isConsumable, CONSUMABLE_BY_KEY } from '../data/items.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
@@ -267,6 +267,13 @@ export class UI {
     }
     const p = g.player;
     const here = g.level.at(p.x, p.y);
+    if (isChest(here)) {
+      return { name: 'Open', sub: 'chest', cmd: 'g', kind: 'take' };
+    }
+    if (isCorpse(here)) {
+      const n = g.corpse?.items?.length ?? 0;
+      return { name: 'Take back', sub: `${n} item${n === 1 ? '' : 's'}`, cmd: 'g', kind: 'take' };
+    }
     if (isBonfire(here)) {
       return { name: 'Rest', sub: 'bonfire', cmd: 'e', kind: 'rest' };
     }
@@ -284,7 +291,7 @@ export class UI {
     el.querySelector('.act-sub').textContent = a.sub ?? '';
     el.disabled = !a.cmd;
     el.classList.toggle('idle', !a.cmd);
-    for (const k of ['cancel', 'rest', 'descend']) el.classList.toggle(`is-${k}`, a.kind === k);
+    for (const k of ['cancel', 'rest', 'descend', 'take']) el.classList.toggle(`is-${k}`, a.kind === k);
   }
 
   /** A skill, or one of the two prepared slots dressed up as one. */

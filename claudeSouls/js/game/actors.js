@@ -53,6 +53,7 @@ export class Player {
     this.warded = 0;                  // blows a ward will still absorb
     this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
+    this.unbanked = [];               // picked up since the last fire; dropped on death
 
     // A cooldown slot for *every* skill in the game, not just the ones you can
     // currently use. Cooldowns therefore survive a weapon swap, which matters:

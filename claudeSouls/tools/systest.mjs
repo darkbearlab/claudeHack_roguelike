@@ -11,7 +11,7 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
-import { T, isWalkable } from '../js/map/tiles.js';
+import { T, isWalkable, isChest, isCorpse } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -997,6 +997,166 @@ check('blink goes through bodies but not through rock', () => {
   }
   assert(isWalkable(g.level.at(p.x, p.y)), 'landed inside rock');
   return 'over bodies, never into stone';
+});
+
+check('storerooms come from the seed, are guarded, and are not on floor one', () => {
+  let floors = 0, stores = 0, guarded = 0, cornered = 0;
+  for (let s = 0; s < 8; s++) {
+    const g = freshGame(`store:${s}`);
+    for (let d = 1; d <= DUNGEON_DEPTH; d++) {
+      floors++;
+      const lvl = g.levelAt(d);
+      if (!lvl.store) continue;
+      assert(d > 1, 'floor one has a storeroom; it is the tutorial');
+      // populate() returns early on the boss floor, so a chest there would sit
+      // unguarded next to the finale.
+      assert(d < DUNGEON_DEPTH, 'the boss floor has a storeroom, and nothing is watching it');
+      stores++;
+      assert(isChest(lvl.at(lvl.store.x, lvl.store.y)), 'the storeroom has no chest in it');
+      assert(ITEM_BY_KEY[lvl.store.loot] || CONSUMABLE_BY_KEY[lvl.store.loot],
+             `chest holds "${lvl.store.loot}", which is not a thing`);
+
+      // The guard has to be between the chest and the room, and already awake.
+      const guards = lvl.enemies.filter((e) => e.guarding);
+      if (guards.length) {
+        guarded++;
+        assert(guards.every((e) => e.aware),
+               'a guard has to be woken up, which reads as "more monsters" rather than "a guard"');
+        const near = guards.some((e) =>
+          Math.max(Math.abs(e.x - lvl.store.x), Math.abs(e.y - lvl.store.y)) <= 1);
+        assert(near, 'nothing is actually standing in front of the chest');
+      }
+      const room = lvl.rooms.find((r) => r.id === lvl.store.room);
+      if (room) {
+        const corner = (lvl.store.x === room.x || lvl.store.x === room.x + room.w - 1) &&
+                       (lvl.store.y === room.y || lvl.store.y === room.y + room.h - 1);
+        if (corner) cornered++;
+      }
+    }
+  }
+  assert(stores > 0, 'no floor in eight runs had a storeroom');
+  assert(guarded === stores, `${stores - guarded} storerooms are unguarded`);
+  assert(cornered === stores, 'a chest is not in a corner, so there is no wrong side to come from');
+  return `${stores} storerooms over ${floors} floors, all guarded`;
+});
+
+check('a chest gives up its contents once per run, and death does not refill it', () => {
+  const g = freshGame('chest');
+  let depth = 0;
+  for (let d = 2; d < DUNGEON_DEPTH; d++) if (g.levelAt(d).store) { depth = d; break; }
+  assert(depth, 'this seed has no storeroom to test with');
+
+  g.gotoLevel(depth, 'up');
+  const store = g.level.store;
+  const p = g.player;
+  p.x = store.x; p.y = store.y;
+
+  const before = p.pack.length;
+  assert(g.openChest() === true, 'the chest would not open');
+  assert(p.pack.length === before + 1, 'opening the chest gave nothing');
+  assert(p.pack.includes(store.loot), 'the wrong thing came out');
+  assert(p.unbanked.includes(store.loot), 'what came out was already safe');
+  assert(!isChest(g.level.at(store.x, store.y)), 'the chest is still there');
+
+  // The floor is rebuilt from its seed on death - the chest must NOT come back.
+  g.respawnLevel(depth);
+  assert(!isChest(g.levelAt(depth).at(store.x, store.y)),
+         'dying refilled a chest you had already emptied');
+  return `${store.loot}, once`;
+});
+
+check('death drops what you had not banked, and you can go and get it', () => {
+  // The Souls loop with items instead of a currency: worn equipment is never
+  // touched, only what you have picked up and not yet carried home.
+  const g = freshGame('corpse');
+  const p = g.player;
+  g.gotoLevel(2, 'up');
+  const worn = { ...p.equip };
+  g.gain('greataxe', 'test');
+  g.gain('plate', 'test');
+  assert(p.unbanked.length === 2, 'picking things up did not mark them unbanked');
+
+  const died = { depth: p.depth, x: p.x, y: p.y };
+  g.hurtPlayer(999, 'a test');
+
+  assert(g.corpse, 'death left no remains');
+  assert(g.corpse.items.length === 2, 'the remains are empty');
+  assert(!p.pack.includes('greataxe'), 'kept what should have been dropped');
+  assert(JSON.stringify(p.equip) === JSON.stringify(worn), 'lost something you were wearing');
+  assert(isCorpse(g.levelAt(died.depth).at(died.x, died.y)), 'nothing marks the spot');
+
+  // Walk back and take it.
+  g.gotoLevel(died.depth, 'up');
+  p.x = died.x; p.y = died.y;
+  assert(g.reclaim() === true, 'could not pick your own remains back up');
+  assert(p.pack.includes('greataxe') && p.pack.includes('plate'), 'did not get everything back');
+  assert(!g.corpse, 'the remains are still there');
+  return 'dropped, marked, recovered';
+});
+
+check('dying again before you reach it is how things are actually lost', () => {
+  const g = freshGame('corpse2');
+  const p = g.player;
+  g.gotoLevel(2, 'up');
+  g.gain('greataxe', 'test');
+  g.hurtPlayer(999, 'a test');
+  const first = g.corpse;
+  assert(first?.items.includes('greataxe'), 'first death dropped nothing');
+
+  g.gain('plate', 'test');
+  g.hurtPlayer(999, 'a test');
+  assert(g.corpse !== first, 'the second death did not move the remains');
+  assert(!g.corpse.items.includes('greataxe'), 'the first pile survived; nothing is ever lost');
+  assert(g.corpse.items.includes('plate'), 'the second pile is wrong');
+  return 'one pile at a time';
+});
+
+check('dying on the square a chest was on still leaves remains you can take', () => {
+  // Both the emptied-chest cleanup and the corpse are painted back on after a
+  // floor is rebuilt from its seed, and they were writing to the same tile in
+  // the wrong order - so a death on top of a looted chest erased the remains
+  // and everything on them was gone with no way to get it back.
+  const g = freshGame('corpse-on-chest');
+  let depth = 0;
+  for (let d = 2; d < DUNGEON_DEPTH; d++) if (g.levelAt(d).store) { depth = d; break; }
+  assert(depth, 'this seed has no storeroom to test with');
+
+  g.gotoLevel(depth, 'up');
+  const store = g.level.store;
+  const p = g.player;
+  p.x = store.x; p.y = store.y;
+  assert(g.openChest(), 'the chest would not open');
+  g.gain('greataxe', 'test');
+
+  g.hurtPlayer(999, 'a test');
+  assert(g.corpse, 'death on a looted chest left no remains');
+  assert(isCorpse(g.levelAt(depth).at(store.x, store.y)),
+         'the chest cleanup painted over the remains');
+
+  g.gotoLevel(depth, 'up');
+  p.x = store.x; p.y = store.y;
+  assert(g.reclaim(), 'could not take the remains back');
+  assert(p.pack.includes('greataxe'), 'the remains gave nothing back');
+  assert(!isCorpse(g.level.at(store.x, store.y)), 'the remains are still on the map');
+  assert(isWalkable(g.level.at(store.x, store.y)), 'the tile underneath was left broken');
+  return 'the two writes no longer fight over the same tile';
+});
+
+check('sitting at a fire makes what you are carrying safe', () => {
+  const g = freshGame('bank');
+  const p = g.player;
+  g.gain('greataxe', 'test');
+  assert(p.unbanked.length === 1, 'nothing was marked unbanked');
+
+  const b = g.level.bonfires[0];
+  p.x = b.x; p.y = b.y;
+  g.rest();
+  assert(p.unbanked.length === 0, 'resting did not bank what you were carrying');
+
+  g.hurtPlayer(999, 'a test');
+  assert(!g.corpse, 'dropped something that had already been banked');
+  assert(p.pack.includes('greataxe'), 'lost a banked item');
+  return 'the walk back is the point';
 });
 
 // ===========================================================================

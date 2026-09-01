@@ -25,7 +25,7 @@ import { DIRS, DIR_BY_KEY, dist, capitalise } from '../../../engine/util.js';
 import { computeFOV, hasLOS } from '../../../engine/fov.js';
 import { astar } from '../../../engine/path.js';
 import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
-import { T, isBonfire, tileName, isWalkable } from '../map/tiles.js';
+import { T, isBonfire, tileName, isWalkable, isChest, isCorpse } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
@@ -79,6 +79,8 @@ export class Game {
     this.levels = new Map();
     this.messages = [];
     this.stats = { kills: 0, deaths: 0, deepest: 1, rests: 0 };
+    this.opened = new Set();            // chest ids taken this run
+    this.corpse = null;                 // where the last death left things
     this.running = true;
     this.gameOver = null;
     this.aiming = null;                 // {skillKey} while a skill is selected
@@ -128,6 +130,14 @@ export class Game {
     if (old) fresh.seen.set(old.seen);
     this.levels.set(depth, fresh);
     if (this.player.depth === depth) this.level = fresh;
+    // The floor comes back from the seed, so anything that is not in the seed
+    // has to be painted on again - any chest you already emptied, and then your
+    // remains. Order matters: the chest cleanup writes a tile, so doing it
+    // second erased a corpse lying on the square where the chest had been.
+    if (fresh.store && this.opened.has(`${depth}:${fresh.store.x},${fresh.store.y}`)) {
+      fresh.set(fresh.store.x, fresh.store.y, T.FLOOR);
+    }
+    this.restoreCorpse(depth);
     return fresh;
   }
 
@@ -328,6 +338,7 @@ export class Game {
       case '>': return this.descend();
       case '<': return this.ascend();
       case 'e': case 'E': return this.rest();
+      case 'g': case ',': return this.openChest() || this.reclaim();
       case ':': return this.lookHere();
       case 'S': saveGame(this); this.ui?.showSaved?.(); return false;
       case '?': await this.ui?.showHelp?.(); return false;
@@ -414,6 +425,113 @@ export class Game {
     if (!lvl) return false;
     for (const e of lvl.enemies) if (e.alive && e.aware) return true;
     return lvl.projectiles.some((p) => !p.fromPlayer);
+  }
+
+  // ------------------------------------------------------------- picking up
+
+  /**
+   * Open the chest you are standing on.
+   *
+   * Taken-ness is tracked on the *run*, not on the level, because the level is
+   * rebuilt from the seed every time you die - a chest stored as empty terrain
+   * would refill itself the first time you were killed. Keyed by depth and
+   * position, which is stable for exactly the same reason the floor is.
+   */
+  openChest() {
+    const p = this.player;
+    const lvl = this.level;
+    if (!isChest(lvl.at(p.x, p.y))) return false;
+    const id = `${p.depth}:${p.x},${p.y}`;
+    if (this.opened.has(id) || !lvl.store) {
+      this.msg('The chest is empty.');
+      lvl.set(p.x, p.y, T.FLOOR);
+      return false;
+    }
+    this.opened.add(id);
+    lvl.set(p.x, p.y, T.FLOOR);
+    this.gain(lvl.store.loot, 'You lever the chest open');
+    return true;
+  }
+
+  /**
+   * Take something into the pack, and remember that it is not safe yet.
+   *
+   * `unbanked` is the whole death penalty: everything you have picked up since
+   * you last sat at a fire is dropped where you die. Wearing something protects
+   * it - you never lose the sword in your hand, only the one you have not had
+   * time to carry home.
+   */
+  gain(key, how = 'You take') {
+    const it = ITEM_BY_KEY[key] ?? CONSUMABLE_BY_KEY[key];
+    if (!it) return false;
+    this.player.pack.push(key);
+    this.player.unbanked.push(key);
+    this.msg(`${how}: ${it.name}.`, 'good');
+    return true;
+  }
+
+  /**
+   * Pick your own remains back up.
+   *
+   * One corpse at a time, and dying again before you reach it loses what was on
+   * it. That is the Souls loop with items instead of a currency, which is worth
+   * doing this way round: the drop system had to exist anyway, and it means the
+   * thing you are walking back for is the specific sword you wanted, not a
+   * number.
+   */
+  /** Paint the corpse back on after a floor is rebuilt from its seed. */
+  restoreCorpse(depth) {
+    const c = this.corpse;
+    if (!c || c.depth !== depth) return;
+    const lvl = this.levels.get(depth);
+    if (!lvl) return;
+    // Do not re-read `under` from a corpse we already painted, or the tile
+    // underneath would become CORPSE and survive being picked up.
+    const here = lvl.at(c.x, c.y);
+    if (!isCorpse(here)) c.under = here;
+    lvl.set(c.x, c.y, T.CORPSE);
+  }
+
+  reclaim() {
+    const p = this.player;
+    const c = this.corpse;
+    if (!c || c.depth !== p.depth || c.x !== p.x || c.y !== p.y) return false;
+    for (const key of c.items) this.gain(key, 'You take back');
+    this.level.set(p.x, p.y, c.under ?? T.FLOOR);
+    this.corpse = null;
+    return true;
+  }
+
+  /** Everything you are carrying is safe now. Called when you sit down. */
+  bank() {
+    if (this.player.unbanked.length) this.msg('What you found is safe now.');
+    this.player.unbanked = [];
+  }
+
+  /**
+   * Leave a corpse holding whatever had not been banked.
+   *
+   * Worn equipment is never touched. Only one corpse exists at a time, so dying
+   * on the way back to the first one is how you actually lose things.
+   */
+  dropUnbanked() {
+    const p = this.player;
+    const items = p.unbanked.filter((k) => p.pack.includes(k));
+    p.unbanked = [];
+    if (!items.length) return;
+
+    for (const k of items) {
+      const i = p.pack.indexOf(k);
+      if (i >= 0) p.pack.splice(i, 1);
+    }
+    // The old one is gone. This is the only way to permanently lose anything.
+    if (this.corpse) this.msg('What you left behind is gone.', 'bad');
+
+    const lvl = this.levelAt(p.depth);
+    const under = lvl.at(p.x, p.y);
+    lvl.set(p.x, p.y, T.CORPSE);
+    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, under };
+    this.msg(`You drop what you were carrying. (${items.length})`, 'bad');
   }
 
   // ------------------------------------------------------------- equipment
@@ -686,6 +804,7 @@ export class Game {
     p.hp = p.hpMax;
     p.stamina = p.staminaMax;
     p.refillCharges();
+    this.bank();
     for (const s of p.skills) s.cd = 0;
     this.stats.rests++;
 
@@ -746,6 +865,11 @@ export class Game {
     p.deaths++;
     this.stats.deaths++;
     this.msg(`You are killed by ${source}.`, 'bad');
+
+    // Before anything else: this is where you died, and this is where what you
+    // were carrying stays. Has to happen before the level is rebuilt and before
+    // you are moved.
+    this.dropUnbanked();
 
     const b = p.bonfire;
     if (!b) { this.finish('lost', source); return; }

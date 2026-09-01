@@ -42,7 +42,7 @@ import { astar } from '../../engine/path.js';
 import { STATE } from '../js/game/actors.js';
 import { SKILL_BY_KEY } from '../js/data/skills.js';
 import { ITEM_BY_KEY } from '../js/data/items.js';
-import { T, isBonfire } from '../js/map/tiles.js';
+import { T, isBonfire, isChest, isCorpse } from '../js/map/tiles.js';
 
 const store = new Map();
 globalThis.localStorage = {
@@ -329,6 +329,11 @@ function act(game, rng) {
     if (!exposed && afterwards >= rollCost) return { kind: 'skill', key: 'prep:item', dir: null };
   }
 
+  // 4c. Standing on something worth taking. Free, and it exercises the whole
+  //     loot-and-lose-it loop in every run rather than only in the tests.
+  const here = lvl.at(p.x, p.y);
+  if (isChest(here) || isCorpse(here)) return { kind: 'take' };
+
   // 5. Head down. Rest whenever a bonfire is underfoot and we are hurt.
   if (isBonfire(lvl.at(p.x, p.y)) && p.hp < p.hpMax) return { kind: 'rest' };
 
@@ -447,6 +452,7 @@ async function run(seed, maxTurns, vow) {
       case 'move':    await game.command(a.dir.key); break;
       case 'wait':    await game.command('.'); break;
       case 'rest':    await game.command('e'); break;
+      case 'take':    await game.command('g'); break;
       case 'descend': await game.command('>'); break;
       default:        await game.command('.'); break;
     }

@@ -39,6 +39,11 @@ export function saveGame(game) {
       vow: game.vow,
       turn: game.turn,
       stats: game.stats,
+      // Neither of these is in the floor seed, so neither survives without
+      // being written down: which chests are already empty, and where the
+      // last death left what you were carrying.
+      opened: [...game.opened],
+      corpse: game.corpse,
       elapsed: (game.elapsedBefore ?? 0) + (Date.now() - game.startedAt),
       player: {
         name: p.name, x: p.x, y: p.y, depth: p.depth, maxDepth: p.maxDepth,
@@ -48,6 +53,7 @@ export function saveGame(game) {
         // armour, and storing a derived value is how a save and a rules change
         // quietly start disagreeing.
         equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
+        unbanked: p.unbanked,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -106,6 +112,7 @@ export function loadGame(game) {
     sprite: d.player.sprite, skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
+    unbanked: d.player.unbanked ?? [],
     prep: { ...p.prep, ...(d.player.prep ?? {}) },
     charges: d.player.charges ?? {},
     deaths: d.player.deaths, kills: d.player.kills, turns: d.player.turns,
@@ -113,6 +120,8 @@ export function loadGame(game) {
   });
   p.hp = Math.min(p.hp, p.hpMax);
   game.player = p;
+  game.opened = new Set(d.opened ?? []);
+  game.corpse = d.corpse ?? null;
 
   // Rebuild every floor from the seed, then paint the remembered map back on.
   for (const [depth, seen] of d.seen ?? []) {

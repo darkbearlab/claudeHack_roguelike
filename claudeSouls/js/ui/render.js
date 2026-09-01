@@ -250,6 +250,8 @@ export class Renderer {
     else if (t === T.STAIRS_DOWN) this.feature(ctx, 'feat_stairs_down', '>', '#e8e2d0', px, py, cell, dim);
     else if (t === T.STAIRS_UP) this.feature(ctx, 'feat_stairs_up', '<', '#e8e2d0', px, py, cell, dim);
     else if (isBonfire(t)) this.drawBonfire(ctx, px, py, cell, dim);
+    else if (t === T.CHEST) this.feature(ctx, 'feat_chest', '(', '#c08a3c', px, py, cell, dim);
+    else if (t === T.CORPSE) this.feature(ctx, 'item_bones', '%', '#d8d0c0', px, py, cell, dim);
   }
 
   floor(ctx, px, py, cell, n, dim, corridor) {

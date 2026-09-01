@@ -26,6 +26,8 @@ export function populate(game, lvl, rng) {
   const depth = lvl.depth;
   if (depth === DUNGEON_DEPTH) return;      // the boss floor is placed by hand
 
+  placeGuards(game, lvl, rng);
+
   // Grows slowly. Doubling the count is not how this game gets harder.
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
 
@@ -109,4 +111,64 @@ export function spawnBoss(game, lvl) {
     if (s) spawn(game, lvl, pickEnemy(rng, DUNGEON_DEPTH - 1).key, s.x, s.y, rng, true);
   }
   lvl.name = 'the Ember Hall';
+}
+
+/**
+ * Whatever is standing in front of the chest.
+ *
+ * Two things matter and both are easy to get wrong. The guard is placed
+ * **between the chest and the rest of the room**, not next to it or behind it -
+ * behind the chest it is scenery, and the point is that it is the thing you
+ * have to get past. And it starts **awake**, because a guard you have to walk
+ * up and wake reads as "this room happens to have more monsters in it".
+ *
+ * The species is chosen to match what is being guarded, so the fight teaches
+ * you something about the prize: something with reach in front of a spear,
+ * something that punishes standing still in front of heavy armour.
+ */
+const GUARD_FOR = {
+  spear: 'sentinel', pike: 'sentinel', halberd: 'swordsman',
+  mail: 'brute', plate: 'brute', tower: 'brute',
+  bow: 'archer', hatchet: 'archer', knife: 'archer',
+  warhammer: 'warden', greataxe: 'warden',
+};
+
+export function placeGuards(game, lvl, rng) {
+  const store = lvl.store;
+  if (!store) return;
+  const room = lvl.rooms.find((r) => r.id === store.room);
+  if (!room) return;
+
+  const key = GUARD_FOR[store.loot] ?? (lvl.depth >= 6 ? 'swordsman' : 'husk');
+  const cx = room.x + (room.w >> 1), cy = room.y + (room.h >> 1);
+
+  // Walk from the chest toward the middle of the room and stand there.
+  const dx = Math.sign(cx - store.x), dy = Math.sign(cy - store.y);
+  const spots = [
+    { x: store.x + dx, y: store.y + dy },
+    { x: store.x + dx, y: store.y },
+    { x: store.x, y: store.y + dy },
+  ];
+  let placed = 0;
+  for (const s of spots) {
+    if (placed) break;
+    if (!lvl.inBounds(s.x, s.y) || lvl.at(s.x, s.y) !== T.FLOOR) continue;
+    if (lvl.enemyAt(s.x, s.y)) continue;
+    const e = new Enemy(key, rng);
+    e.aware = true;                       // it already knows you are coming
+    e.guarding = true;
+    lvl.addEnemy(e, s.x, s.y);
+    placed++;
+  }
+
+  // Deeper floors get a second one, so a storeroom stays a fight rather than a
+  // toll booth once you outgrow the first guard.
+  if (placed && lvl.depth >= 5) {
+    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true });
+    if (spot && Math.abs(spot.x - store.x) <= room.w && Math.abs(spot.y - store.y) <= room.h) {
+      const e = new Enemy(key, rng);
+      e.aware = true; e.guarding = true;
+      lvl.addEnemy(e, spot.x, spot.y);
+    }
+  }
 }
