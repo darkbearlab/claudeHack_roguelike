@@ -424,3 +424,36 @@ possible it should be done (the guide is generated and CI checks it; the skill
 icons are generated from the pattern table). Where it is not — design rationale,
 rejected options — the fix is not discipline, it is putting the volatile claims
 where a reader will see them next to the thing that supersedes them.
+
+## The anti-drift lesson, and then drifting again
+
+The section above says the documentation that never went stale is the part that
+was derived rather than written. Having written that, I let claudeSouls's design
+document go stale twice more — far enough that it still claimed "nothing in the
+dungeon drops anything" after storerooms, guarded chests, corpses you walk back
+for, elites and a soul economy had all shipped.
+
+So the lesson needed sharpening. "Keep the docs updated" is not a practice, it
+is a wish. What actually worked, both times I fixed it:
+
+**Build the current-state section from the modules.** Every number in it - depth
+count, species count, how many attacks have a second stage, how many of those
+re-aim, the longest corridor a floor can contain - is read out of the live data
+before the section is written, not recalled. Recalled numbers are the ones that
+rot, and they rot silently because nothing contradicts them.
+
+**Say which half of the document is which.** The design doc is now explicitly
+two things: what the game is today, and how it got here. The second half is
+allowed to be wrong, and superseded passages are labelled as historical
+snapshots rather than deleted - a document that keeps only the conclusions that
+turned out right reads as though every decision was correct first time, which is
+a lie and invites the next person to make the same mistakes.
+
+**Keep a section for mistakes that will recur.** claudeSouls now has one, and
+its entries are all shaped the same way: a step function whose edge landed on
+the standard loadout, every automated check sharing one starting kit so an
+entire class of equipment bug was structurally invisible, four rounds of
+guessing beaten by one line of diagnostics, and a probe that measured nothing
+for forty turns because the state it set decays after twelve. None of those are
+things you avoid by being careful. They are things you avoid by having read that
+they happened before.

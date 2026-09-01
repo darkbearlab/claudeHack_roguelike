@@ -50,6 +50,16 @@ jobs:
         working-directory: classic
         run: node tools/botrun.mjs --god 1 6000
 
+      # The design document's 現況 section is meant to be built from the modules
+      # rather than recalled, and recalled numbers rot silently because nothing
+      # contradicts them. This has gone stale three times - far enough that the
+      # document still claimed nothing in the dungeon dropped anything after
+      # storerooms, elites and a soul economy had all shipped. Prose cannot be
+      # generated, but the counts inside it can be checked.
+      - name: claudeSouls - design doc still describes the game
+        working-directory: claudeSouls
+        run: node tools/doccheck.mjs
+
       - name: claudeSouls - system tests
         working-directory: claudeSouls
         run: node tools/systest.mjs

@@ -34,12 +34,20 @@ you cannot tank damage; you can only be somewhere else.
 clock from turns to stamina, and every moment becomes the same question: one
 more hit, or keep enough to get out?
 
-Not every attack is announced, and which ones are is fixed per attack rather
-than rolled — an enemy that sometimes warns you cannot be learned. Attacks have
-**shapes**: lines punish retreating along them, two-part sweeps punish the
-instinctive sidestep, and the boss's ring cannot be left in a single step. And
-**poise** decides what can be interrupted, so a cheap jab can no longer postpone
-a heavy blow forever.
+**Every blow is announced.** What stops that from becoming a shuffle is
+commitment rather than concealment: attacks have **shapes** — lines punish
+retreating along them, two-part sweeps punish the instinctive sidestep, the
+boss's ring cannot be left in a single step — and some second stages **re-aim**,
+turning to face wherever you dodged to. Two enemies standing side by side are a
+wall as far as walking is concerned, so getting out of a pincer costs a roll,
+and a roll costs stamina.
+
+A weapon is a set of verbs rather than a damage number: each carries a primary
+and a secondary skill, the off hand grants only the primary, and swapping costs
+a turn. Weight decides how dearly you roll and how slowly you recover. Souls buy
+stamina and carrying capacity — never health, never damage, never flasks — and a
+run has to be winnable without buying anything, which is a test rather than an
+intention.
 
 **A weapon is a set of verbs, not a damage number.** Attacks always land and
 damage is fixed, so a "+2 sword" would only make existing fights blunter; a
@@ -50,9 +58,14 @@ you face — one direction for a buckler, three for a tower shield — and weigh
 makes rolling dearer and recovery slower rather than taking either away.
 
 Ten floors, eleven enemy species, bonfires that heal you and resurrect
-everything, and floors derived from the run seed — so a floor you have died on
-is a floor you have learned. Press a skill and drag out from your character to
-aim; release to commit.
+everything — but only when nothing is hunting you. Floors come from the run
+seed, so a floor you have died on is a floor you have learned, and so does
+everything on it worth taking: which floors hide a guarded storeroom, and what
+the elite on each one is carrying. Dying drops everything you have picked up
+since you last sat down, and the souls you were carrying, where you fell.
+
+Press a skill and drag out from your character to aim; release to commit. How
+far you drag decides how far you roll.
 
 The design document's [現況](claudeSouls/docs/DESIGN.md#現況) section is the
 current state in one place; the rest is how it got there, including three
