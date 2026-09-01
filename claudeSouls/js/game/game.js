@@ -183,7 +183,7 @@ export class Game {
   worldTurn() {
     this.turn++;
     this.player.turns++;
-    this.player.tick();
+    this.player.tick(this.inCombat());
 
     stepProjectiles(this);
     if (!this.running) return;
@@ -311,7 +311,7 @@ export class Game {
     const s = this.player.skill(key);
     if (!def || !s) return;
     if (s.cd > 0) { this.msg(`${def.name} is not ready (${s.cd}).`, 'warn'); return; }
-    const cost = key === 'roll' ? this.player.rollCost() : def.stamina;
+    const cost = this.player.costOf(key);
     if (!this.player.canAfford(cost)) { this.msg(`Not enough stamina for ${def.name}.`, 'warn'); return; }
     this.aiming = key;
     this.msg(`${def.name}: pick a direction.`);
@@ -351,6 +351,22 @@ export class Game {
   }
 
   wait() { return true; }
+
+  /**
+   * Is anything currently hunting you?
+   *
+   * "Out of combat" has to mean something recoverable, or the fast refill never
+   * fires and the weight rule becomes an exploration tax after all. Awareness
+   * decays (see ai.js), so this is a live question rather than a floor-wide
+   * latch: once you have broken away and nothing has seen you for a while, the
+   * bar comes back.
+   */
+  inCombat() {
+    const lvl = this.level;
+    if (!lvl) return false;
+    for (const e of lvl.enemies) if (e.alive && e.aware) return true;
+    return lvl.projectiles.some((p) => !p.fromPlayer);
+  }
 
   // ------------------------------------------------------------- equipment
 
@@ -399,7 +415,7 @@ export class Game {
     if (!p.hasSkill(key)) { this.msg(`You are not holding anything that does that.`, 'warn'); return false; }
     if (slot.cd > 0) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
 
-    const cost = key === 'roll' ? p.rollCost() : def.stamina;
+    const cost = p.costOf(key);
     if (!p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
 
     p.face(dir.dx, dir.dy);

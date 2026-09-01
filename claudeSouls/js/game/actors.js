@@ -126,28 +126,76 @@ export class Player {
   /** Health comes from the armour you are wearing. */
   get hpMax() { return this.item(SLOT.ARMOUR)?.hp ?? PLAYER.hpMax; }
 
+  /**
+   * What weight costs you.
+   *
+   * The design conversation landed here after two dead ends, and both are worth
+   * remembering because both sound reasonable.
+   *
+   * "Movement costs stamina above a weight threshold" taxes *exploration* -
+   * most turns in this game are walking across an empty floor, so you would
+   * arrive at every fight on half a bar. That is precisely the failure the bot
+   * exhibited before it learned to walk back to a bonfire, and it punishes the
+   * wrong activity. It also creates a locked state: heavy, empty bar, a hound
+   * next to you, and no legal move at all. So **walking is always free.**
+   *
+   * Weight instead makes you *recover* slower and *dodge* dearer, which is a
+   * continuous pressure rather than a cliff, and leaves you always able to move.
+   */
+  // The first few points are free: a light kit should cost you nothing extra to
+  // dodge in, or "light" is just "slightly less punished". Everything above
+  // that adds a point per four.
+  get rollExtra() { return Math.floor(Math.max(0, this.weight - 4) / 4); }
+
   rollCost() {
-    const s = SKILL_BY_KEY.roll;
-    return this.heavyArmour ? s.staminaHeavy : s.stamina;
+    return SKILL_BY_KEY.roll.stamina + this.rollExtra;
   }
 
   /**
-   * How far a roll carries you.
+   * Everyone rolls two tiles.
    *
-   * Heavy armour rolls one tile, not two, and that number is doing real work.
-   * With both vows rolling the same distance, heavy was strictly better: flat
-   * -1 damage against 2-to-5 damage hits is enormous, and paying more stamina
-   * per roll cost nothing because walking out of a telegraph is free. A perfect
-   * player took zero damage all run in heavy and died repeatedly in light,
-   * which means it was not a choice.
+   * Heavy armour used to roll one, and that number was doing something nobody
+   * intended. Against the attack shapes that arrived later - a five-tile arc, a
+   * six-tile lane, the boss's solid 5x5 - **two tiles is the minimum that
+   * escapes anything**, so a one-tile roll was not "dodging less well", it was
+   * not dodging at all. Heavy survived by tanking with its damage reduction,
+   * which is the opposite of what the vow was supposed to feel like.
    *
-   * Halving the distance makes the trade real: heavy cannot reposition, so it
-   * has to read earlier and hold ground, spending health where light spends
-   * movement.
+   * Distance is a cliff; stamina is a slope. So the weight is expressed in the
+   * stamina economy, where it can be tuned, and everyone gets a roll that works.
    */
-  rollDistance() {
-    const s = SKILL_BY_KEY.roll;
-    return this.heavyArmour ? s.dashHeavy : s.dash;
+  rollDistance() { return SKILL_BY_KEY.roll.dash; }
+
+  /**
+   * Carrying a shield makes every action cost more, whether or not you block.
+   *
+   * This is the answer to the problem that killed the parry: enemies telegraph,
+   * so a defensive reaction is always correctly timed, so charging for the
+   * *use* of a block cannot make it a real decision. Charging for *having the
+   * option* can. You pay this whether or not the shield ever comes up.
+   */
+  get actionSurcharge() { return this.item(SLOT.OFF)?.kind === 'shield' ? 1 : 0; }
+
+  /** What a skill actually costs, with everything you are carrying. */
+  costOf(key) {
+    if (key === 'roll') return this.rollCost();
+    const def = SKILL_BY_KEY[key];
+    if (!def) return 0;
+    return def.stamina + this.actionSurcharge;
+  }
+
+  /**
+   * Stamina comes back slowly under load, and only while nothing has seen you.
+   *
+   * The second half is the important one. Out of a fight the bar refills fast,
+   * so exploration is not a tax and you do not arrive at a fight already spent.
+   * The moment something notices you, it becomes the scarce thing it is meant to
+   * be. `inCombat` is decided by the game, not here, because it depends on the
+   * level.
+   */
+  regenRate(inCombat) {
+    const base = Math.max(1, PLAYER.staminaRegen - Math.floor(Math.max(0, this.weight - 5) / 6));
+    return inCombat ? base : base * 4;
   }
 
   canAfford(cost) { return this.stamina >= cost; }
@@ -155,8 +203,8 @@ export class Player {
   spend(cost) { this.stamina = Math.max(0, this.stamina - cost); }
 
   /** Called once per turn, after everything has acted. */
-  tick() {
-    this.stamina = Math.min(this.staminaMax, this.stamina + this.staminaRegen);
+  tick(inCombat = true) {
+    this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
     for (const s of this.skills) if (s.cd > 0) s.cd--;
   }
 
@@ -202,6 +250,7 @@ export class Enemy {
     this.attackTiles = null;        // resolved at wind-up start, shown to the player
     this.attackDir = null;
     this.aware = false;
+    this.lost = 0;              // turns since it last had eyes on you
     this.lastKnown = null;
   }
 

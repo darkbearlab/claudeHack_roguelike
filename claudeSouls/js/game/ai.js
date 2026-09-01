@@ -60,6 +60,9 @@ export function tickEnemyState(game, e) {
   return false;
 }
 
+/** Turns out of sight before something gives up looking for you. */
+const FORGET_AFTER = 12;
+
 export function enemyTurn(game, e) {
   if (!e.alive) return;
   if (e.state === STATE.WINDUP || e.state === STATE.RECOVER || e.state === STATE.RESTING) return;
@@ -67,7 +70,16 @@ export function enemyTurn(game, e) {
   const lvl = game.level;
 
   const seen = canSee(game, e);
-  if (seen) { e.aware = true; e.lastKnown = { x: p.x, y: p.y }; }
+  if (seen) { e.aware = true; e.lost = 0; e.lastKnown = { x: p.x, y: p.y }; }
+  else if (e.aware) {
+    // Awareness has to decay, or it is a latch: one glimpse on arriving at a
+    // floor and every enemy on it hunts you for the rest of the run. That
+    // matters more than it sounds, because "out of combat" is what refills the
+    // stamina bar - without forgetting, the fast refill would never fire once
+    // and the weight rule would quietly become a tax on exploring.
+    e.lost = (e.lost ?? 0) + 1;
+    if (e.lost > FORGET_AFTER) { e.aware = false; e.lastKnown = null; }
+  }
 
   if (!e.aware) { idle(game, e); return; }
 

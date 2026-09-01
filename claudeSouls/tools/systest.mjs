@@ -258,19 +258,76 @@ check('attacking advances the turn and costs stamina', () => {
   return 'costs stamina, spends the turn';
 });
 
-check('the two vows are a real trade, not a strictly better option', () => {
+check('weight is the trade, and it never takes rolling away', () => {
   const light = freshGame('v1', 'light').player;
   const heavy = freshGame('v2', 'heavy').player;
+
+  // Everyone rolls two tiles. Heavy used to roll one, and against a five-tile
+  // arc or a six-tile lane that is not "dodging less well", it is not dodging -
+  // two tiles is the minimum that escapes anything in the roster.
+  assert(light.rollDistance() === 2 && heavy.rollDistance() === 2,
+         'a roll that cannot clear an attack shape is not a roll');
+
   const lRolls = Math.floor(light.staminaMax / light.rollCost());
   const hRolls = Math.floor(heavy.staminaMax / heavy.rollCost());
-  assert(lRolls >= 5, `light gets only ${lRolls} rolls`);
-  assert(hRolls >= 2 && hRolls <= 3, `heavy gets ${hRolls} rolls, wanted 2-3`);
+  assert(lRolls >= 4, `light gets only ${lRolls} rolls`);
+  assert(hRolls >= 2, `heavy gets only ${hRolls} rolls - that is not a trade, it is a wall`);
+  assert(lRolls >= hRolls * 2, `light ${lRolls} rolls vs heavy ${hRolls} - not enough of a gap`);
   assert(heavy.hpMax > light.hpMax, 'heavy is not tougher');
-  const lGround = lRolls * light.rollDistance();
-  const hGround = hRolls * heavy.rollDistance();
-  assert(hGround * 2 <= lGround,
-         `heavy covers ${hGround} tiles a bar vs light's ${lGround} - not enough of a trade`);
-  return `light ${lGround} tiles/bar & ${light.hpMax} hp, heavy ${hGround} & ${heavy.hpMax}`;
+  assert(heavy.regenRate(true) < light.regenRate(true),
+         'weight does not slow recovery, so the two kits regenerate identically');
+
+  return `light ${lRolls} rolls @${light.rollCost()} regen ${light.regenRate(true)}, ` +
+         `heavy ${hRolls} @${heavy.rollCost()} regen ${heavy.regenRate(true)}`;
+});
+
+check('a shield taxes every action, not just blocking', () => {
+  // The answer to the problem that killed the parry: enemies telegraph, so a
+  // defensive reaction is always correctly timed, so charging for the *use* of
+  // a block cannot make it a decision. Charging for carrying the option can.
+  const g = freshGame('shield', 'light');
+  const p = g.player;
+  const bare = p.costOf('strike');
+  p.equipItem(SLOT.OFF, 'buckler');
+  assert(p.actionSurcharge === 1, 'a shield costs nothing to carry');
+  assert(p.costOf('strike') === bare + 1, 'the surcharge is not applied to attacks');
+  assert(p.costOf('roll') > SKILL_BY_KEY.roll.stamina, 'a shield does not make rolling dearer');
+  return `strike ${bare} -> ${p.costOf('strike')} with a buckler`;
+});
+
+check('walking is always free, however loaded you are', () => {
+  // Two dead ends from the design conversation, both of which sound reasonable.
+  // Taxing movement taxes *exploration* - most turns are spent crossing an
+  // empty floor - so you would arrive at every fight already spent. And it
+  // creates a locked state: heavy, empty bar, something fast next to you, and
+  // no legal move at all.
+  const g = freshGame('walk', 'heavy');
+  const p = g.player;
+  p.equipItem(SLOT.OFF, 'tower');
+  p.stamina = 0;
+  const before = { x: p.x, y: p.y };
+  for (const d of DIRS) {
+    if (!g.level.passable(p.x + d.dx, p.y + d.dy)) continue;
+    g.step(d.dx, d.dy);
+    break;
+  }
+  assert(p.x !== before.x || p.y !== before.y,
+         'a fully loaded player at zero stamina could not move at all');
+  return 'no locked states';
+});
+
+check('stamina comes back fast until something notices you', () => {
+  const g = freshGame('aggro', 'light');
+  for (const e of g.level.enemies) { e.aware = false; e.lost = 0; }
+  assert(!g.inCombat(), 'nothing has seen the player, but the game says combat');
+  const calm = g.player.regenRate(g.inCombat());
+
+  g.level.livingEnemies()[0].aware = true;
+  assert(g.inCombat(), 'an aware enemy does not count as combat');
+  const fight = g.player.regenRate(g.inCombat());
+
+  assert(calm > fight, `out of combat regen ${calm} is not better than ${fight}`);
+  return `${fight}/turn hunted, ${calm}/turn otherwise`;
 });
 
 check('stamina regen is just under one light roll', () => {

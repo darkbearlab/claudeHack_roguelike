@@ -250,7 +250,7 @@ export class UI {
     const slot = this.game.player.skill(skillKey);
     if (!def || !slot) return;
     if (slot.cd > 0) { this.pushMessage(`${def.name} is not ready (${slot.cd}).`, 'warn'); return; }
-    const cost = skillKey === 'roll' ? this.game.player.rollCost() : def.stamina;
+    const cost = this.game.player.costOf(skillKey);
     if (this.game.player.stamina < cost) {
       this.pushMessage(`Not enough stamina for ${def.name}.`, 'warn');
       return;
@@ -349,7 +349,7 @@ export class UI {
 
     this.renderer.aim = { dir, tiles: this.previewTiles(this.aimSkill, dir) };
     const def = SKILL_BY_KEY[this.aimSkill];
-    const cost = this.aimSkill === 'roll' ? this.game.player.rollCost() : def.stamina;
+    const cost = this.game.player.costOf(this.aimSkill);
     // The readout goes in the message line because a finger covers the tiles.
     this.renderMessages(`${def.name} → ${dirName(dir)}   (${cost} stamina` +
       `${def.advancesTurn === false ? ', free turn' : ''})   release to commit`);
@@ -577,7 +577,7 @@ export class UI {
       const key = b.dataset.skill;
       const def = SKILL_BY_KEY[key];
       const slot = p.skill(key);
-      const cost = key === 'roll' ? p.rollCost() : def.stamina;
+      const cost = p.costOf(key);
       b.querySelector('.cost').textContent = `${cost}`;
       b.querySelector('.cd').textContent = slot && slot.cd > 0 ? slot.cd : '';
       b.classList.toggle('cooling', !!slot && slot.cd > 0);

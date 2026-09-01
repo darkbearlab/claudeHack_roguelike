@@ -17,9 +17,10 @@
 //   * Shields go in the off hand and block an arc around the way you are
 //     facing - one direction for a small shield, three for a big one.
 //
-// Weight is declared here and does nothing yet; the stamina economy that reads
-// it lands in the next slice. It is written down now because guessing weights
-// while also tuning them is how you end up unable to tell which one was wrong.
+// Weight is the axis everything defensive is balanced on. It makes rolling
+// dearer and recovery slower (see Player.rollCost / regenRate), and the gap
+// between the two armours is deliberately wide - with a narrow spread the two
+// kits came out on identical regeneration, which is no trade at all.
 
 export const SLOT = { MAIN: 'main', OFF: 'off', ARMOUR: 'armour' };
 
@@ -97,11 +98,11 @@ export const ITEMS = [
 
   // ---- armour -------------------------------------------------------------
   armour('leathers', {
-    name: 'leathers', weight: 3, hp: 12, reduce: 0, heavy: false,
+    name: 'leathers', weight: 2, hp: 12, reduce: 0, heavy: false,
     desc: '打不起,但可以一直閃。',
   }),
   armour('mail', {
-    name: 'mail', weight: 9, hp: 16, reduce: 1, heavy: true,
+    name: 'mail', weight: 12, hp: 16, reduce: 1, heavy: true,
     desc: '受到的傷害 −1,但你得看得更遠、更早決定。',
   }),
 ];
