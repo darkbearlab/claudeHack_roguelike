@@ -41,6 +41,14 @@ instinctive sidestep, and the boss's ring cannot be left in a single step. And
 **poise** decides what can be interrupted, so a cheap jab can no longer postpone
 a heavy blow forever.
 
+**A weapon is a set of verbs, not a damage number.** Attacks always land and
+damage is fixed, so a "+2 sword" would only make existing fights blunter; a
+weapon that arrives carrying a two-tile reach or a three-tile lane changes where
+you have to stand. Each has a primary and a secondary skill, the off hand grants
+only the primary, and swapping costs a turn. Shields cover an arc around the way
+you face — one direction for a buckler, three for a tower shield — and weight
+makes rolling dearer and recovery slower rather than taking either away.
+
 Ten floors, eleven enemy species, bonfires that heal you and resurrect
 everything, and floors derived from the run seed — so a floor you have died on
 is a floor you have learned. Press a skill and drag out from your character to
