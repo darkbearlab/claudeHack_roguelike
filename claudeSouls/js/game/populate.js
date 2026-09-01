@@ -21,6 +21,7 @@ import { Enemy } from './actors.js';
 import { pickEnemy, ENEMY_BY_KEY } from '../data/enemies.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T } from '../map/tiles.js';
+import { DIRS } from '../../../engine/util.js';
 
 export function populate(game, lvl, rng) {
   const depth = lvl.depth;
@@ -37,7 +38,11 @@ export function populate(game, lvl, rng) {
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
 
-  let placed = 0;
+  // Packs first, and they come out of the same budget - a floor with a pack on
+  // it is not a floor with more enemies, it is a floor where some of them are
+  // standing together and threatening overlapping ground.
+  let placed = placePacks(game, lvl, rng, want);
+
   for (let guard = 0; placed < want && guard < want * 12; guard++) {
     placed += place(pickEnemy(rng, depth).key);
   }
@@ -171,4 +176,102 @@ export function placeGuards(game, lvl, rng) {
       lvl.addEnemy(e, spot.x, spot.y);
     }
   }
+}
+
+// ===========================================================================
+// Packs.
+//
+// The point is not "more enemies". It is **overlapping telegraphs**.
+//
+// Now that every blow in the game is announced, several enemies winding up at
+// once is a readable object rather than noise: a lane, an arc and a reach drawn
+// on the floor in red, with a gap somewhere in them. Finding the gap - and
+// getting to it before it closes - is a different question from reading any one
+// attack, and it is a question that only became askable when concealment went
+// away. A saturated field you cannot read is just damage.
+//
+// So the members of a pack are chosen for **complementary shapes and different
+// rhythms**, not for being individually dangerous:
+//
+//   a lane and something that punishes leaving it slowly
+//   a wall in front and a long poke, so the gap is diagonal
+//   something that keeps its distance and something that makes closing expensive
+//
+// They are placed together, in one room, so their threatened areas actually
+// overlap. Scattered across a floor they would just be a head count.
+
+const PACKS = [
+  {
+    name: 'lane and flush', minDepth: 2, weight: 12,
+    // The sentinel paints a three-tile lane; the hounds pounce, and their
+    // wind-up carries them forward, so backing down the lane is the one thing
+    // that does not work. You have to leave sideways, immediately.
+    members: ['sentinel', 'hound', 'hound'],
+  },
+  {
+    name: 'wall and reach', minDepth: 3, weight: 12,
+    // An arc directly in front and a two-tile poke beside it. Neither covers
+    // the diagonal between them.
+    members: ['husk', 'crawler', 'crawler'],
+  },
+  {
+    name: 'crossfire', minDepth: 4, weight: 10,
+    // You want to close on the archer. The brute's five-tile arc is the price
+    // of the approach, and it steps forward as it swings.
+    members: ['archer', 'brute'],
+  },
+  {
+    name: 'two blades', minDepth: 5, weight: 10,
+    // Two overlapping semicircles on different beats. Dodging one sweep's
+    // second half is how you walk into the other one's first.
+    members: ['swordsman', 'swordsman'],
+  },
+  {
+    name: 'the press', minDepth: 7, weight: 8,
+    // A ring you must roll out of, and a lane waiting where you would land.
+    members: ['warden', 'sentinel'],
+  },
+];
+
+/**
+ * Put one pack down, together, in a room.
+ *
+ * Placed around a single anchor so the shapes actually overlap. If a member
+ * cannot be placed it is simply dropped - a pack that fails to fit is a smaller
+ * pack, not a crash.
+ */
+function placePack(game, lvl, rng, pack) {
+  const anchor = lvl.randomFreeSpot(rng, {
+    roomsOnly: true, awayFrom: lvl.upStair, minDist: 9,
+  });
+  if (!anchor) return 0;
+
+  let placed = 0;
+  const spots = [{ x: anchor.x, y: anchor.y }];
+  for (const d of DIRS) spots.push({ x: anchor.x + d.dx, y: anchor.y + d.dy });
+  for (const d of DIRS) spots.push({ x: anchor.x + d.dx * 2, y: anchor.y + d.dy * 2 });
+
+  for (const key of pack.members) {
+    const spot = spots.find((s) =>
+      lvl.inBounds(s.x, s.y) && lvl.at(s.x, s.y) === T.FLOOR && !lvl.enemyAt(s.x, s.y));
+    if (!spot) break;
+    placed += spawn(game, lvl, key, spot.x, spot.y, rng);
+    spots.splice(spots.indexOf(spot), 1);
+  }
+  return placed;
+}
+
+/** How many of a floor's enemies arrive as a pack rather than scattered. */
+export function placePacks(game, lvl, rng, budget) {
+  const pool = PACKS.filter((p) => lvl.depth >= p.minDepth);
+  if (!pool.length) return 0;
+
+  let spent = 0;
+  const want = lvl.depth >= 5 ? 2 : 1;
+  for (let i = 0; i < want && spent < budget; i++) {
+    if (!rng.oneIn(2)) continue;
+    const pack = rng.pickWeighted(pool, (p) => p.weight);
+    spent += placePack(game, lvl, rng, pack);
+  }
+  return spent;
 }

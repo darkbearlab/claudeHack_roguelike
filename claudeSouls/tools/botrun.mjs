@@ -415,6 +415,7 @@ async function run(seed, maxTurns, vow) {
     if (sh) game.equipFromPack('off', sh);
   }
 
+  const mix = {};
   const floorDeaths = new Map();
   const killers = new Map();
   let steps = 0, stall = 0, lastTurn = -1;
@@ -440,6 +441,7 @@ async function run(seed, maxTurns, vow) {
     const before = game.turn;
     const deathsBefore = game.player.deaths;
     const a = act(game, rng);
+    if (process.env.ACTMIX) mix[a.kind] = (mix[a.kind] ?? 0) + 1;
 
     switch (a.kind) {
       case 'skill': {
@@ -471,7 +473,7 @@ async function run(seed, maxTurns, vow) {
   return {
     seed, vow, steps, turn: game.turn,
     depth: game.player.depth, maxDepth: game.player.maxDepth,
-    deaths: game.player.deaths, kills: game.stats.kills, killers,
+    deaths: game.player.deaths, kills: game.stats.kills, killers, mix,
     how: game.gameOver?.how ?? 'timeout',
     floorDeaths: [...floorDeaths.entries()].sort((a, b) => a[0] - b[0]),
   };
@@ -492,7 +494,7 @@ const maxTurns = Number(rest[1] ?? 20000);
 let failures = 0, wins = 0, deepest = 0;
 const perFloor = new Map();
 const perKiller = new Map();
-const vowDeaths = new Map(), vowRuns = new Map(), vowDepth = new Map();
+const vowDeaths = new Map(), vowRuns = new Map(), vowDepth = new Map(), vowMix = new Map();
 const t0 = Date.now();
 
 for (let i = 0; i < runs; i++) {
@@ -503,6 +505,7 @@ for (let i = 0; i < runs; i++) {
     if (r.how === 'won') wins++;
     for (const [f, n] of r.floorDeaths) perFloor.set(f, (perFloor.get(f) ?? 0) + n);
     for (const [k, n] of r.killers) perKiller.set(k, (perKiller.get(k) ?? 0) + n);
+    { const m = vowMix.get(r.vow) ?? {}; for (const [k,n] of Object.entries(r.mix ?? {})) m[k]=(m[k]??0)+n; vowMix.set(r.vow,m); }
     vowDeaths.set(r.vow, (vowDeaths.get(r.vow) ?? 0) + r.deaths);
     vowRuns.set(r.vow, (vowRuns.get(r.vow) ?? 0) + 1);
     vowDepth.set(r.vow, (vowDepth.get(r.vow) ?? 0) + r.maxDepth);
@@ -523,6 +526,15 @@ if (report && perFloor.size) {
   console.log('deaths per floor (where the difficulty actually is):');
   for (const f of [...perFloor.keys()].sort((a, b) => a - b)) {
     console.log(`  floor ${String(f).padStart(2)}  ${'#'.repeat(Math.min(50, perFloor.get(f)))} ${perFloor.get(f)}`);
+  }
+}
+if (process.env.ACTMIX) {
+  console.log('what the bot spends its turns on:');
+  for (const v of ['light','heavy']) {
+    const m = vowMix.get(v) ?? {};
+    const tot = Object.values(m).reduce((a,b)=>a+b,0) || 1;
+    console.log('  ' + v.padEnd(6) + Object.entries(m).sort((a,b)=>b[1]-a[1])
+      .map(([k,n]) => `${k} ${((100*n)/tot).toFixed(0)}%`).join('  '));
   }
 }
 if (report && vowRuns.size) {

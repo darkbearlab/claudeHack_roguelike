@@ -272,8 +272,13 @@ export class Player {
    */
   regenRate(inCombat) {
     const armour = this.item(SLOT.ARMOUR)?.regen ?? 0;
+    // The steps are wide on purpose, but they have to be placed so the standard
+    // kits do not land on an edge. At -5/6 the heavy kit came to weight 17 -
+    // exactly one point past a step - so the one-weight dagger in its off hand
+    // halved its recovery, and the bot spent a quarter of every run standing
+    // still waiting for stamina. That is not "reads further ahead", it is idle.
     const base = Math.max(1, PLAYER.staminaRegen + armour
-                             - Math.floor(Math.max(0, this.weight - 5) / 6));
+                             - Math.floor(Math.max(0, this.weight - 8) / 9));
     return inCombat ? base : base * 4;
   }
 

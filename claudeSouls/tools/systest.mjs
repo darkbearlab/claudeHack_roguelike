@@ -189,6 +189,57 @@ check('a floor is the same floor every time it is rebuilt', () => {
   return 'terrain and enemies both stable';
 });
 
+check('enemies arrive in packs whose threatened ground overlaps', () => {
+  // The point is not more enemies, it is overlapping telegraphs. Several things
+  // winding up at once is a readable object rather than noise now that every
+  // blow is announced - a lane, an arc and a reach drawn on the floor with a
+  // gap somewhere in them - and finding the gap is a different question from
+  // reading any single attack.
+  let floors = 0, clustered = 0, worst = 0;
+  for (let s = 0; s < 6; s++) {
+    const g = freshGame(`pack:${s}`);
+    for (let d = 2; d < DUNGEON_DEPTH; d++) {
+      floors++;
+      const es = g.levelAt(d).livingEnemies();
+      worst = Math.max(worst, es.length);
+      const together = es.filter((e) =>
+        es.some((o) => o !== e && Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y)) <= 2));
+      if (together.length >= 2) clustered++;
+    }
+  }
+  assert(clustered >= floors * 0.8,
+         `only ${clustered} of ${floors} floors put anything close enough together to overlap`);
+
+  // And a pack must not simply be extra bodies - it comes out of the floor's
+  // budget, so head count stays where it was.
+  assert(worst <= 16, `a floor held ${worst} enemies; packs are inflating the count`);
+  return `${clustered}/${floors} floors, at most ${worst} enemies on one`;
+});
+
+check('a pack pairs shapes that ask different questions', () => {
+  // A pack of things that all attack the same tile is just one attack repeated.
+  // Every template has to mix reach with something else.
+  const shapeOf = (key) => {
+    const spec = ENEMY_BY_KEY[key];
+    return spec.attacks.map((a) => a.pattern ?? a.kind).join('/');
+  };
+  const templates = [
+    ['sentinel', 'hound', 'hound'],
+    ['husk', 'crawler', 'crawler'],
+    ['archer', 'brute'],
+    ['swordsman', 'swordsman'],
+    ['warden', 'sentinel'],
+  ];
+  for (const t of templates) {
+    for (const k of t) assert(ENEMY_BY_KEY[k], `pack refers to unknown enemy ${k}`);
+    const kinds = new Set(t.map(shapeOf));
+    const sameSpecies = new Set(t).size === 1;
+    assert(kinds.size > 1 || sameSpecies,
+           `pack ${t.join('+')} is several copies of the same question`);
+  }
+  return `${templates.length} templates`;
+});
+
 check('every floor has something slow and something fast on it', () => {
   const misses = [];
   for (let s = 0; s < 8; s++) {
