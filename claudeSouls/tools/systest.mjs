@@ -24,6 +24,8 @@ import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
+import { readFileSync } from 'node:fs';
+import { TEXTURES, TEXTURE_KEYS } from '../js/data/textures.js';
 
 const store = new Map();
 globalThis.localStorage = {
@@ -1772,6 +1774,37 @@ check('claudeSouls does not share a save key with claudeHack', () => {
 
 // ===========================================================================
 console.log('\n--- content ---------------------------------------------------');
+
+check('every surface offered is a surface that exists', () => {
+  // A settings screen that lists a look the stylesheet does not define is a
+  // button that silently does nothing, which is the same class of bug as a
+  // context button that refuses without saying why.
+  const css = readFileSync(new URL('../css/texture.css', import.meta.url), 'utf8');
+  for (const t of TEXTURES) {
+    assert(t.name && t.hint, `${t.key} has no name or description`);
+    if (t.key === 'none') {
+      // `body.tex-none`, not `.tex-none` - the stylesheet has a comment saying
+      // this class does not exist, and matching the prose instead of the rule
+      // is how a test ends up asserting against its own documentation.
+      assert(!css.includes('body.tex-none'),
+             'a "none" class exists; the absence of a class is meant to BE the setting');
+      continue;
+    }
+    assert(css.includes(`body.tex-${t.key}`), `${t.key} is offered but never defined`);
+  }
+
+  // And nothing defined is left unreachable from the picker.
+  const defined = [...css.matchAll(/body\.tex-([a-z]+)/g)].map((m) => m[1]);
+  for (const key of new Set(defined)) {
+    assert(TEXTURE_KEYS.includes(key), `.tex-${key} exists but nothing offers it`);
+  }
+
+  // The board itself must never wear one: a texture under the map competes with
+  // the telegraphs, which is the one thing this interface must not do.
+  assert(!/#map\s*[,{]/.test(css.split('where it goes')[1] ?? ''),
+         'the map canvas is in the list of textured surfaces');
+  return `${TEXTURES.length} surfaces, all defined`;
+});
 
 check('every enemy can be built and fought', () => {
   for (const spec of ENEMIES) {

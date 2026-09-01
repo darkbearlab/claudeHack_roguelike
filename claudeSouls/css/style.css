@@ -281,6 +281,7 @@ body { overflow: hidden; }
 
 /* Affixes are colour-coded by where they came from, because "which part of this
    weapon is the weapon" is the question the three slots exist to answer. */
+.btn.on { background: var(--ember); color: #16161a; border-color: var(--ember); }
 .af { display: inline-block; font-size: 11px; padding: 0 5px; margin-right: 4px;
       border-radius: 3px; border: 1px solid; }
 .af-innate  { color: #e8c25a; border-color: #6a5a28; }

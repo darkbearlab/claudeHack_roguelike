@@ -1,0 +1,118 @@
+/* Surfaces.
+ *
+ * The brief was low saturation, low value, few colours, tiled under the UI -
+ * and the asset generator says three separate times that it cannot make tiles.
+ * Every kind of asset it knows is "a single object, centred in frame, on a
+ * fully transparent background", and its own note is that a tile "fills its
+ * cell, has to join at all four edges and must NOT be cut out, which is a
+ * different pipeline". Its central measured finding is that flat colour beats
+ * texture, so it is built to remove exactly this.
+ *
+ * Made here instead, and for this brief that is not a consolation prize:
+ *
+ *   seamless by construction   the one piece the generator says is missing
+ *   no download at all         the repository is the site, and this is weight
+ *                              on every load for something the player is not
+ *                              supposed to notice
+ *   tinted from the palette    it cannot clash with a scheme it is derived from
+ *   swappable while you look    which is what "make a few alternatives" was for
+ *
+ * Everything here is deliberately near-invisible. If the texture is the thing
+ * you notice about a screen whose job is to show you a red tile two squares
+ * away, it is wrong however handsome it is.
+ *
+ * One custom property carries the whole thing: the body class sets `--tex`, and
+ * the panels paint `var(--tex)` over their own colour. Adding a surface is one
+ * block here and one line in js/data/textures.js.
+ */
+
+:root {
+  --tex: none;
+  --tex-size: auto;
+  --tex-blend: normal;
+
+  /* Both inks stay close to the panel colour on purpose. Contrast is what makes
+     a background start competing with the board. */
+  --tex-light: 255, 250, 240;
+  --tex-dark: 0, 0, 0;
+}
+
+/* ---------------------------------------------------------------- grain
+ * Fine film grain from a single SVG turbulence. The most useful of the set: it
+ * takes the flatness off a large panel without leaving a pattern the eye can
+ * lock onto and start reading. */
+body.tex-grain {
+  --tex: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.35'/></svg>");
+  --tex-size: 140px 140px;
+  --tex-blend: soft-light;
+}
+
+/* ---------------------------------------------------------------- weave
+ * A crosshatch on a 6px pitch. Reads as coarse cloth; two inks, neither
+ * saturated. */
+body.tex-weave {
+  --tex:
+    repeating-linear-gradient(90deg, rgba(var(--tex-light), .015) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(0deg,  rgba(var(--tex-dark), .17)  0 1px, transparent 1px 6px);
+}
+
+/* ---------------------------------------------------------------- slate
+ * Broad soft mottle with no repeat small enough to see. For the wide margins
+ * beside a square map, where a fine pattern would shimmer. */
+body.tex-slate {
+  --tex:
+    radial-gradient(ellipse 60% 40% at 20% 30%, rgba(var(--tex-light), .022), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 80% 70%, rgba(var(--tex-dark), .24), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 60% 10%, rgba(var(--tex-dark), .15), transparent 70%);
+  --tex-size: 320px 320px;
+}
+
+/* ---------------------------------------------------------------- carved
+ * Shallow diagonal tooling on a 9px pitch. The only one with a direction, and
+ * therefore the one most likely to be too much. */
+body.tex-carved {
+  --tex: repeating-linear-gradient(135deg,
+    rgba(var(--tex-light), .017) 0 1px,
+    transparent 1px 4px,
+    rgba(var(--tex-dark), .14) 4px 5px,
+    transparent 5px 9px);
+}
+
+/* ---------------------------------------------------------------- ash
+ * Sparse flecks from two dot grids at co-prime pitches, so the eye cannot find
+ * the period. Closest to a stone floor seen in the dark. */
+body.tex-ash {
+  --tex:
+    radial-gradient(rgba(var(--tex-light), .035) .5px, transparent .6px),
+    radial-gradient(rgba(var(--tex-dark), .32) .5px, transparent .6px);
+  --tex-size: 13px 13px, 21px 21px;
+}
+
+/* `.tex-none` is deliberately not defined: the absence of a class is the
+   setting, so "off" cannot drift away from what the game looked like before any
+   of this existed. */
+
+/* ------------------------------------------------------------ where it goes
+ * Panels, and the margins either side of the square map. Never the map itself -
+ * a texture under the board competes with the telegraphs, which is the one
+ * thing this interface must not do. */
+#topbar, #msgbar, #controls, #gauges, #overlay, #viewport {
+  background-image: var(--tex);
+  background-size: var(--tex-size);
+  background-blend-mode: var(--tex-blend);
+}
+
+/* The buttons keep their own flat fill. Texture on a control makes the control
+   look disabled, which is a lie about the most important thing on screen. */
+#pad button, .skill, #topbtns button, .btn { background-image: none; }
+
+/* On a wide screen the square map leaves a margin either side. Untextured they
+   read as a window that failed to fill; with a surface and a soft edge the
+   square reads as a deliberate frame instead. */
+#viewport::after {
+  content: '';
+  position: absolute; inset: 0; z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 78% 78% at 50% 50%,
+              transparent 58%, rgba(0, 0, 0, .5) 100%);
+}

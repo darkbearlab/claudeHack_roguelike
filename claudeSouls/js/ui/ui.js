@@ -33,6 +33,7 @@ import { T, isBonfire, isChest, isCorpse } from '../map/tiles.js';
 import { SLOT, ITEM_BY_KEY, slotsFor, isConsumable, CONSUMABLE_BY_KEY } from '../data/items.js';
 import { TRACKS, priceOf } from '../data/souls.js';
 import { affixesOn, AFFIX_BY_KEY } from '../data/affixes.js';
+import { TEXTURES } from '../data/textures.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -62,6 +63,7 @@ export class UI {
     this.settings = loadSettings();
     this.renderer.mode = this.settings.mode ?? 'tiles';
     this.renderer.zoom = this.settings.zoom ?? 1;
+    this.applyTexture(this.settings.texture ?? 'grain');
 
     this.pending = null;
     this.recent = [];
@@ -876,6 +878,23 @@ export class UI {
     this.pending = { onKey: () => close() };
   }
 
+
+  /**
+   * Which surface the panels wear.
+   *
+   * The class goes on <body> and the CSS decides what that means, so the whole
+   * set can be swapped while looking at it - which is what having alternatives
+   * is for. 'none' is the absence of a class rather than a class of its own, so
+   * "off" is exactly what the game looked like before any of this existed.
+   */
+  applyTexture(name) {
+    const body = document.body;
+    for (const t of TEXTURES) body.classList.remove(`tex-${t.key}`);
+    if (name && name !== 'none') body.classList.add(`tex-${name}`);
+    this.settings.texture = name;
+    saveSettings(this.settings);
+  }
+
   // =========================================================================
   // overlays
   // =========================================================================
@@ -903,7 +922,40 @@ export class UI {
     });
   }
 
-  showHelp() { return this.showText('claudeSouls', HELP_HTML); }
+  /**
+   * Help, with the surface picker on the end of it.
+   *
+   * Alternatives are only worth having if you can compare them, and you cannot
+   * compare a background by reading its name - so the buttons change it under
+   * you immediately and the screen stays open.
+   */
+  async showHelp() {
+    const rows = TEXTURES.map((t) => {
+      const on = (this.settings.texture ?? 'grain') === t.key;
+      return `<tr><td class="key">${escapeHtml(t.name)}</td>` +
+             `<td><span class="dim">${escapeHtml(t.hint)}</span></td>` +
+             `<td><button class="btn${on ? ' on' : ''}" data-tex="${t.key}">` +
+             `${on ? '使用中' : '換這個'}</button></td></tr>`;
+    }).join('');
+
+    const p = this.showText('claudeSouls', HELP_HTML + `
+      <h2>面板紋理</h2>
+      <p>刻意做得幾乎看不見。如果你先注意到的是背景,那它就錯了——
+         這個畫面的工作是讓你看見兩格外那個紅色格子。</p>
+      <table>${rows}</table>`);
+
+    const bind = () => {
+      for (const b of this.el.overlay.querySelectorAll('[data-tex]')) {
+        b.addEventListener('click', () => {
+          this.applyTexture(b.dataset.tex);
+          this.closeOverlay();
+          this.showHelp();
+        });
+      }
+    };
+    bind();
+    return p;
+  }
 
   showSaved() {
     this.showText('Saved', [
