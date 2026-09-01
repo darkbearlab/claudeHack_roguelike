@@ -55,10 +55,16 @@ body { overflow: hidden; }
 #topbtns button:active, .btn:active { background: var(--line); }
 
 /* --------------------------------------------------------------- messages */
+/* A FIXED height, not a min/max band.
+   The map canvas is the largest square that fits, so anything that changes the
+   height of this bar changes the size of every tile. The aim readout is written
+   here while a finger is down - and "north-east" wraps to a line that "east"
+   does not - so the map was resizing and the camera shifting mid-gesture, worst
+   on the diagonals. A message bar must never be able to resize the map. */
 #msgbar {
   flex: 0 0 auto; background: var(--panel);
   border-bottom: 1px solid var(--line);
-  padding: 3px 8px; min-height: 36px; max-height: 68px; overflow: hidden;
+  padding: 3px 8px; height: 68px; overflow: hidden;
   font-size: 12.5px; line-height: 1.35;
 }
 #msglines div { white-space: pre-wrap; word-break: break-word; }
@@ -178,7 +184,7 @@ body { overflow: hidden; }
   #title { display: none; }
   #statusline { font-size: 10.5px; }
   #statusline .roomy { display: none; }
-  #msgbar { min-height: 30px; max-height: 52px; font-size: 12px; }
+  #msgbar { height: 52px; font-size: 12px; }
   /* Movement on the left, skills on the right - the original arrangement.
      I had stacked these to buy width for the skill icons, which moved the
      movement keys out from under the thumb to pay for a label. Wrong trade:

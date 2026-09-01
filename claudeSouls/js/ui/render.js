@@ -94,25 +94,41 @@ export class Renderer {
       base = Math.max(18 * this.dpr, Math.min(base, 92 * this.dpr));
     }
     const cell = Math.max(6, Math.floor(base * this.zoom));
-    return { cell, cols: Math.ceil(W / cell), rows: Math.ceil(H / cell), W, H };
+    // Two extra of each: the sub-tile centring offset shifts the grid by up to
+    // a tile, so the row and column at each edge would otherwise be missing.
+    return { cell, cols: Math.ceil(W / cell) + 2, rows: Math.ceil(H / cell) + 2, W, H };
   }
 
+  /**
+   * The camera. It is locked to the player and never anything else.
+   *
+   * It used to clamp to the edges of the level so you never saw past them,
+   * which meant the player's position on screen depended on how close to a wall
+   * they were - and that made the view move for reasons that had nothing to do
+   * with the player moving. Off the edge of the map is just black, which costs
+   * nothing; a camera that shifts under your thumb mid-gesture costs a lot.
+   *
+   * `off` is the sub-tile correction. Tiles are a whole number of pixels and the
+   * canvas is not a whole number of tiles, so snapping the grid to pixel zero
+   * left the player up to most of a tile away from the middle. Everything drawn
+   * on the map adds this offset, so the player's tile centre is the canvas
+   * centre exactly.
+   */
   viewport() {
-    const lvl = this.game.level;
     const p = this.game.player;
     const { cell, cols, rows, W, H } = this.metrics();
-    let ox = cols >= lvl.w ? -Math.floor((cols - lvl.w) / 2)
-                           : Math.max(0, Math.min(lvl.w - cols, p.x - Math.floor(cols / 2)));
-    let oy = rows >= lvl.h ? -Math.floor((rows - lvl.h) / 2)
-                           : Math.max(0, Math.min(lvl.h - rows, p.y - Math.floor(rows / 2)));
-    return { cell, cols, rows, ox, oy, W, H };
+    const ox = p.x - Math.floor(cols / 2);
+    const oy = p.y - Math.floor(rows / 2);
+    const offX = Math.round(W / 2 - ((p.x - ox) * cell + cell / 2));
+    const offY = Math.round(H / 2 - ((p.y - oy) * cell + cell / 2));
+    return { cell, cols, rows, ox, oy, offX, offY, W, H };
   }
 
   cellAt(cssX, cssY) {
     const v = this.viewport();
     return {
-      x: Math.floor((cssX * this.dpr) / v.cell) + v.ox,
-      y: Math.floor((cssY * this.dpr) / v.cell) + v.oy,
+      x: Math.floor((cssX * this.dpr - v.offX) / v.cell) + v.ox,
+      y: Math.floor((cssY * this.dpr - v.offY) / v.cell) + v.oy,
     };
   }
 
@@ -120,8 +136,8 @@ export class Renderer {
   cellCentre(x, y) {
     const v = this.viewport();
     return {
-      x: ((x - v.ox) * v.cell + v.cell / 2) / this.dpr,
-      y: ((y - v.oy) * v.cell + v.cell / 2) / this.dpr,
+      x: ((x - v.ox) * v.cell + v.cell / 2 + v.offX) / this.dpr,
+      y: ((y - v.oy) * v.cell + v.cell / 2 + v.offY) / this.dpr,
     };
   }
 
@@ -145,7 +161,7 @@ export class Renderer {
         if (!lvl.inBounds(x, y)) continue;
         const i = lvl.idx(x, y);
         if (!lvl.seen[i] && !lvl.visible[i]) continue;
-        this.drawTerrain(ctx, lvl, x, y, rx * v.cell, ry * v.cell, v.cell, !!lvl.visible[i]);
+        this.drawTerrain(ctx, lvl, x, y, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, !!lvl.visible[i]);
       }
     }
 
@@ -161,7 +177,7 @@ export class Renderer {
       const rx = e.x - v.ox, ry = e.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       if (!lvl.isVisible(e.x, e.y)) continue;
-      this.drawEnemy(ctx, e, rx * v.cell, ry * v.cell, v.cell);
+      this.drawEnemy(ctx, e, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
     // --- projectiles, above actors: they are the most urgent thing on screen
@@ -169,11 +185,11 @@ export class Renderer {
       const rx = pr.x - v.ox, ry = pr.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       if (!lvl.isVisible(pr.x, pr.y)) continue;
-      this.drawProjectile(ctx, pr, rx * v.cell, ry * v.cell, v.cell);
+      this.drawProjectile(ctx, pr, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
     // --- the player
-    this.drawPlayer(ctx, p, (p.x - v.ox) * v.cell, (p.y - v.oy) * v.cell, v.cell);
+    this.drawPlayer(ctx, p, (p.x - v.ox) * v.cell + v.offX, (p.y - v.oy) * v.cell + v.offY, v.cell);
 
     // --- threats the bigger tiles pushed off the edge
     this.drawOffscreenThreats(ctx, v);
@@ -299,10 +315,10 @@ export class Renderer {
         if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
         const a = 0.18 + heat * 0.4;
         ctx.fillStyle = `rgba(220,60,50,${a})`;
-        ctx.fillRect(rx * v.cell, ry * v.cell, v.cell, v.cell);
+        ctx.fillRect(rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, v.cell);
         ctx.strokeStyle = `rgba(255,110,90,${0.35 + heat * 0.5})`;
         ctx.lineWidth = Math.max(1, v.cell * 0.05);
-        ctx.strokeRect(rx * v.cell + 1, ry * v.cell + 1, v.cell - 2, v.cell - 2);
+        ctx.strokeRect(rx * v.cell + v.offX + 1, ry * v.cell + v.offY + 1, v.cell - 2, v.cell - 2);
       }
     }
   }
@@ -325,33 +341,40 @@ export class Renderer {
   drawOffscreenThreats(ctx, v) {
     const lvl = this.game.level;
     const p = this.game.player;
-    const px = (p.x - v.ox) * v.cell + v.cell / 2;
-    const py = (p.y - v.oy) * v.cell + v.cell / 2;
+    const px = (p.x - v.ox) * v.cell + v.cell / 2 + v.offX;
+    const py = (p.y - v.oy) * v.cell + v.cell / 2 + v.offY;
 
     // Capped, not proportional: at 83 device pixels a tile an arrow scaled to
     // the grid is as big as the thing it is pointing at, and it lands on top of
     // the very telegraph squares it is meant to complement.
     const r = Math.min(v.cell * 0.3, 20 * this.dpr);
+    // "Off screen" is measured in pixels, not in grid columns. The grid is two
+    // tiles wider than the canvas so the sub-tile centring offset has something
+    // to draw at the edges, so a tile can be inside `cols` and still be off the
+    // side of the canvas - and that tile is exactly the one that needs a marker.
+    const onScreen = (x, y) => {
+      const sx = (x - v.ox) * v.cell + v.offX, sy = (y - v.oy) * v.cell + v.offY;
+      return sx + v.cell > 0 && sy + v.cell > 0 && sx < v.W && sy < v.H;
+    };
+
     const marks = [];
     for (const e of lvl.enemies) {
       if (!e.alive || e.state !== STATE.WINDUP) continue;
       if (!lvl.isVisible(e.x, e.y)) continue;
-      const rx = e.x - v.ox, ry = e.y - v.oy;
-      if (rx >= 0 && ry >= 0 && rx < v.cols && ry < v.rows) continue;
+      if (onScreen(e.x, e.y)) continue;
       marks.push({ x: e.x, y: e.y, heat: 1 - Math.min(1, (e.timer - 1) / 3) });
     }
     for (const pr of lvl.projectiles) {
       if (pr.fromPlayer) continue;
-      const rx = pr.x - v.ox, ry = pr.y - v.oy;
-      if (rx >= 0 && ry >= 0 && rx < v.cols && ry < v.rows) continue;
+      if (onScreen(pr.x, pr.y)) continue;
       if (!lvl.isVisible(pr.x, pr.y)) continue;
       marks.push({ x: pr.x, y: pr.y, heat: 0.75 });
     }
     if (!marks.length) return;
 
     for (const m of marks) {
-      const tx = (m.x - v.ox) * v.cell + v.cell / 2;
-      const ty = (m.y - v.oy) * v.cell + v.cell / 2;
+      const tx = (m.x - v.ox) * v.cell + v.cell / 2 + v.offX;
+      const ty = (m.y - v.oy) * v.cell + v.cell / 2 + v.offY;
       const cx = Math.max(r, Math.min(v.W - r, tx));
       const cy = Math.max(r, Math.min(v.H - r, ty));
       const ang = Math.atan2(ty - py, tx - px);
@@ -388,10 +411,10 @@ export class Renderer {
       const rx = t.x - v.ox, ry = t.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       ctx.fillStyle = 'rgba(120,200,255,.22)';
-      ctx.fillRect(rx * v.cell, ry * v.cell, v.cell, v.cell);
+      ctx.fillRect(rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, v.cell);
       ctx.strokeStyle = 'rgba(150,220,255,.85)';
       ctx.lineWidth = Math.max(1, v.cell * 0.06);
-      ctx.strokeRect(rx * v.cell + 1, ry * v.cell + 1, v.cell - 2, v.cell - 2);
+      ctx.strokeRect(rx * v.cell + v.offX + 1, ry * v.cell + v.offY + 1, v.cell - 2, v.cell - 2);
     }
   }
 
@@ -524,7 +547,7 @@ export class Renderer {
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       ctx.fillStyle = colour;
       ctx.globalAlpha = 0.55;
-      ctx.fillRect(rx * v.cell, ry * v.cell, v.cell, v.cell);
+      ctx.fillRect(rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, v.cell);
       ctx.globalAlpha = 1;
     }
   }
