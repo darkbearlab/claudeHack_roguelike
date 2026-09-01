@@ -416,18 +416,37 @@ export class UI {
     const dir = snapDir(dx, dy);
     const changed = !this.aimDir || this.aimDir.dx !== dir.dx || this.aimDir.dy !== dir.dy;
     this.aimDir = dir;
-    if (changed && navigator.vibrate) { try { navigator.vibrate(8); } catch { /* ignore */ } }
 
-    this.renderer.aim = { dir, tiles: this.previewTiles(this.aimSkill, dir) };
+    // How far you drag chooses how far you roll.
+    //
+    // A fixed-distance roll can only reach a ring, not a disc - and the game
+    // has spent the last few rounds making the exact tile you land on the
+    // question: packs draw overlapping telegraphs with a gap somewhere in them,
+    // and bodies now block the diagonal you used to slip out through. Being
+    // unable to say "one tile, not two" meant half the tiles you might want
+    // were simply unreachable. Difficulty should come from the puzzle being
+    // hard, not from the controls being too coarse to express the answer.
     const def = this.skillDef(this.aimSkill);
+    const far = Math.hypot(dx, dy);
+    const cell = this.renderer.viewport().cell / this.renderer.dpr;
+    const wanted = def?.move && far < cell * 1.5 ? 1 : 99;
+    const changedDist = this.aimDist !== wanted;
+    this.aimDist = wanted;
+    if ((changed || changedDist) && navigator.vibrate) {
+      try { navigator.vibrate(8); } catch { /* ignore */ }
+    }
+
+    this.renderer.aim = { dir, tiles: this.previewTiles(this.aimSkill, dir, wanted) };
     const cost = this.game.player.costOf(this.aimSkill);
+    const steps = this.renderer.aim.tiles.length;
     // The readout goes in the message line because a finger covers the tiles.
-    this.renderMessages(`${def.name} → ${dirName(dir)}   (${cost} stamina` +
-      `${def.advancesTurn === false ? ', free turn' : ''})   release to commit`);
+    this.renderMessages(`${def.name} → ${dirName(dir)}` +
+      `${def.move ? ` ${steps} tile${steps === 1 ? '' : 's'}` : ''}` +
+      `   (${cost} stamina${def.advancesTurn === false ? ', free turn' : ''})   release to commit`);
     this.render();
   }
 
-  previewTiles(key, dir) {
+  previewTiles(key, dir, maxSteps = 99) {
     const def = this.skillDef(key);
     const p = this.game.player;
     const lvl = this.game.level;
@@ -448,7 +467,7 @@ export class UI {
     if (def.move) {
       const out = [];
       let x = p.x, y = p.y;
-      for (let i = 0; i < p.rollDistance(); i++) {
+      for (let i = 0; i < Math.min(p.rollDistance(), maxSteps); i++) {
         const nx = x + dir.dx, ny = y + dir.dy;
         if (!lvl.passable(nx, ny) || lvl.enemyAt(nx, ny) || !lvl.diagonalOk(x, y, nx, ny)) break;
         x = nx; y = ny;
@@ -493,10 +512,10 @@ export class UI {
     this.commit(skill, dir);
   }
 
-  commit(skillKey, dir) {
+  commit(skillKey, dir, steps = this.aimDist ?? 99) {
     if (!this.game.running || this.game.busy) return;
     this.game.busy = true;
-    Promise.resolve(this.game.useSkill(skillKey, dir))
+    Promise.resolve(this.game.useSkill(skillKey, dir, { steps }))
       .then((spent) => { if (spent && this.game.running) this.game.worldTurn(); })
       .catch((e) => { console.error(e); this.game.msg(`(error: ${e.message})`, 'bad'); })
       .finally(() => { this.game.busy = false; this.render(); });
@@ -511,6 +530,7 @@ export class UI {
   clearAim() {
     this.aimSkill = null;
     this.aimDir = null;
+    this.aimDist = 99;
     this.gesture = null;
     this.renderer.aim = null;
     this.renderSkillBar();
@@ -560,7 +580,10 @@ export class UI {
           const d = DIR_BY_KEY[cmd];
           const skill = this.aimSkill;
           this.clearAim();
-          this.commit(skill, { dx: d.dx, dy: d.dy });
+          // Keyboard and d-pad: a plain direction rolls the full distance,
+          // shift rolls one tile. The drag gesture has the finer control; this
+          // just needs the choice to exist at all.
+          this.commit(skill, { dx: d.dx, dy: d.dy }, ev.shiftKey ? 1 : 99);
           return;
         }
         this.feed(cmd === 'ESC' ? 'Escape' : cmd);
@@ -858,7 +881,13 @@ function dirName(d) {
 function normaliseKey(ev) {
   const k = ev.key;
   if (['Shift', 'Control', 'Alt', 'Meta'].includes(k)) return null;
-  if (ev.ctrlKey) return k.toLowerCase() === 'p' ? 'C-p' : null;
+  // Ctrl + a direction is the short roll. Shift + a direction was already the
+  // roll itself, so the second modifier is where "one tile, not two" had to go.
+  if (ev.ctrlKey) {
+    const low = k.toLowerCase();
+    if (low === 'p') return 'C-p';
+    return 'hjklyubn'.includes(low) && low.length === 1 ? `C-${low}` : null;
+  }
   if (k.startsWith('Arrow')) return k;
   if (k === 'Escape' || k === 'Enter') return k;
   if (k === ' ') return ' ';

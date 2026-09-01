@@ -328,7 +328,7 @@ export class Game {
     if (dir) return this.step(dir.dx, dir.dy);
 
     const roll = this.rollDirFromKey(key);
-    if (roll) return this.useSkill('roll', roll);
+    if (roll) return this.useSkill('roll', roll.dir, { steps: roll.steps });
 
     { const k = /^[1-9]$/.test(key) ? skillForDigit(this, +key) : null;
       if (k) { this.selectSkill(k); return false; } }
@@ -360,9 +360,13 @@ export class Game {
     return null;
   }
 
+  /** Shift + a direction rolls the full distance; Ctrl + one rolls a single tile. */
   rollDirFromKey(key) {
     const map = { H: 'h', J: 'j', K: 'k', L: 'l', Y: 'y', U: 'u', B: 'b', N: 'n' };
-    return map[key] ? DIR_BY_KEY[map[key]] : null;
+    if (map[key]) return { dir: DIR_BY_KEY[map[key]], steps: 99 };
+    const m = /^C-([hjklyubn])$/.exec(key ?? '');
+    if (m) return { dir: DIR_BY_KEY[m[1]], steps: 1 };
+    return null;
   }
 
   selectSkill(key) {
@@ -701,7 +705,7 @@ export class Game {
 
   // -------------------------------------------------------------- skills
 
-  useSkill(key, dir) {
+  useSkill(key, dir, opts = {}) {
     // The two prepared slots ride the same path as a skill so that the button,
     // the drag gesture, the keyboard and the bot all have one way in.
     if (this.player.recovering) { this.msg('You are still recovering.', 'warn'); return false; }
@@ -733,7 +737,10 @@ export class Game {
 
     // ---- roll: the one action that does not advance the turn --------------
     if (def.move) {
-      const moved = this.dash(p.rollDistance(), dir);
+      // Roll one tile or two, as asked. The exact landing tile is the whole
+      // question now that packs draw overlapping telegraphs and bodies block
+      // the diagonals - a fixed distance can only reach a ring, not a disc.
+      const moved = this.dash(Math.min(p.rollDistance(), opts.steps ?? 99), dir);
       if (!moved) { this.msg('No room to roll.'); return false; }
       p.spend(cost);
       this.msg(`You roll ${moved} ${moved === 1 ? 'tile' : 'tiles'}.`);

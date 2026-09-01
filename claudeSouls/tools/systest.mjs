@@ -355,6 +355,37 @@ check('rolling costs stamina and does NOT advance the turn', () => {
   return `free turn, -${g.player.rollCost()} stamina`;
 });
 
+check('a roll can be one tile or two, for the same price', () => {
+  // A fixed-distance roll only reaches a ring, not a disc - and the exact tile
+  // you land on is the question now that packs draw overlapping telegraphs with
+  // a gap in them and bodies block the diagonal you used to slip out through.
+  // Half the tiles you might want were simply unreachable.
+  const { g } = arena('rolldist', 'husk', 8);
+  const p = g.player;
+  const start = { x: p.x, y: p.y };
+
+  const go = (opts) => {
+    p.x = start.x; p.y = start.y; p.stamina = p.staminaMax;
+    g.useSkill('roll', { dx: 1, dy: 0 }, opts);
+    return { moved: Math.max(Math.abs(p.x - start.x), Math.abs(p.y - start.y)),
+             spent: p.staminaMax - p.stamina };
+  };
+
+  const full = go({});
+  const short = go({ steps: 1 });
+  assert(full.moved === 2, `a full roll moved ${full.moved}`);
+  assert(short.moved === 1, `a short roll moved ${short.moved}`);
+
+  // Same price on purpose. The decision is *where*, not how much to spend - a
+  // cheaper short roll would become the default and quietly halve the bite of
+  // the whole stamina economy. Rolling one tile is worse unless the tile is the
+  // point, and now it often is.
+  assert(short.spent === full.spent,
+         `short roll cost ${short.spent}, full cost ${full.spent} - precision should not be a discount`);
+  assert(short.spent === p.rollCost(), 'a roll stopped costing a roll');
+  return `1 or 2 tiles, ${full.spent} stamina either way`;
+});
+
 check('attacking advances the turn and costs stamina', () => {
   const { g } = arena('atk', 'husk', 1);
   const t0 = g.turn, s0 = g.player.stamina;
