@@ -1,0 +1,522 @@
+// The game: state, the turn loop, and every command the player can give.
+//
+// Turn model
+// ----------
+// A turn advances when the player does something that is not a roll. Rolling
+// costs stamina and gives the world nothing, which is the single decision that
+// defines this game: the clock is stamina, not turns. A player with a full bar
+// can weave two tiles left, attack, and weave back before anything else moves;
+// a player who spent it attacking is standing exactly where the brute is about
+// to swing.
+//
+// Order within a world turn matters and is not arbitrary:
+//   1. the player's own regeneration and cooldowns
+//   2. projectiles already in the air move
+//   3. enemies act (and may launch new projectiles, which do NOT move yet)
+//   4. the dead are cleared, field of view is recomputed
+//
+// Step 2 before step 3 is what guarantees you always get a full turn to see an
+// arrow before it travels. If enemies fired and their arrows moved in the same
+// beat, a ranged attack would be an ambush rather than a telegraph, and the
+// whole read-and-react contract would be broken.
+
+import { RNG, makeSeedPhrase } from '../../../engine/rng.js';
+import { DIRS, DIR_BY_KEY, dist, capitalise } from '../../../engine/util.js';
+import { computeFOV, hasLOS } from '../../../engine/fov.js';
+import { astar } from '../../../engine/path.js';
+import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
+import { T, isBonfire, tileName } from '../map/tiles.js';
+import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
+import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
+import { attackTiles, snapDir } from './patterns.js';
+import { enemyTurn, tickEnemyState } from './ai.js';
+import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
+import { populate, spawnBoss } from './populate.js';
+import { saveGame, clearSave } from './save.js';
+
+export const VERSION = '0.1.0';
+
+export class Game {
+  constructor(ui) {
+    this.ui = ui;
+    this.running = false;
+    this.busy = false;
+  }
+
+  // =========================================================================
+  // lifecycle
+  // =========================================================================
+
+  newGame({ seed, name, vow }) {
+    resetUids(1);
+    resetProjectileIds(1);
+    this.seed = seed || makeSeedPhrase(new RNG(Date.now()));
+    this.rng = new RNG(this.seed);
+    this.player = new Player(name);
+    this.vow = vow ?? 'light';
+    if (this.vow === 'heavy') {
+      // The heavy vow is the design's light/heavy roll trade made into a
+      // character choice, since there is no loot to carry it. More health and
+      // damage reduction, but each roll costs almost twice as much - so you
+      // dodge half as often and have to read further ahead.
+      this.player.heavyArmour = true;
+      this.player.hpMax = 16;
+      this.player.hp = 16;
+      this.player.sprite = 'hero_fighter';
+    } else {
+      // Ranger rather than rogue: the rogue sprite is a dark hooded figure and
+      // effectively disappears against dark stone at phone tile sizes.
+      this.player.sprite = 'hero_ranger';
+    }
+
+    this.turn = 0;
+    this.startedAt = Date.now();
+    this.levels = new Map();
+    this.messages = [];
+    this.stats = { kills: 0, deaths: 0, deepest: 1, rests: 0 };
+    this.running = true;
+    this.gameOver = null;
+    this.aiming = null;                 // {skillKey} while a skill is selected
+
+    this.gotoLevel(1);
+    // Starting bonfire: you always begin a run rested and with a place to
+    // return to, so the very first death is a setback and not a restart.
+    const b = this.level.bonfires[0];
+    if (b) {
+      this.player.x = b.x; this.player.y = b.y;
+      this.player.bonfire = { depth: 1, id: b.id, x: b.x, y: b.y };
+    }
+    this.afterMove();
+
+    this.msg(`You wake at the bonfire. ${DUNGEON_DEPTH} floors down, something is still burning.`, 'magic');
+    this.msg('You cannot take a hit. Read the wind-up, and be somewhere else.');
+    return this;
+  }
+
+  // =========================================================================
+  // levels
+  // =========================================================================
+
+  /** Levels are derived from the run seed, so a floor is always the same floor. */
+  buildLevel(depth) {
+    const lvl = generateLevel(depth, new RNG(`${this.seed}#${depth}`));
+    populate(this, lvl, new RNG(`${this.seed}#${depth}#mob`));
+    if (depth === DUNGEON_DEPTH) spawnBoss(this, lvl);
+    return lvl;
+  }
+
+  levelAt(depth) {
+    if (!this.levels.has(depth)) this.levels.set(depth, this.buildLevel(depth));
+    return this.levels.get(depth);
+  }
+
+  /**
+   * Rebuild a floor from its seed, keeping only what the player *learned*.
+   *
+   * Enemies come back, doors close, projectiles vanish - that is the bonfire
+   * contract. Map memory does not come back, because knowing the shape of the
+   * floor is the one thing a death is not supposed to take from you.
+   */
+  respawnLevel(depth) {
+    const old = this.levels.get(depth);
+    const fresh = this.buildLevel(depth);
+    if (old) fresh.seen.set(old.seen);
+    this.levels.set(depth, fresh);
+    if (this.player.depth === depth) this.level = fresh;
+    return fresh;
+  }
+
+  gotoLevel(depth, arriveAt = 'up') {
+    const p = this.player;
+    depth = Math.max(1, Math.min(DUNGEON_DEPTH, depth));
+    this.level = this.levelAt(depth);
+    p.depth = depth;
+    p.maxDepth = Math.max(p.maxDepth, depth);
+    this.stats.deepest = Math.max(this.stats.deepest, depth);
+
+    let spot = arriveAt === 'up' ? this.level.upStair : this.level.downStair;
+    spot = spot || this.level.upStair || this.level.downStair ||
+           this.level.randomFreeSpot(this.rng);
+    if (!spot) spot = { x: 1, y: 1 };
+    if (this.level.enemyAt(spot.x, spot.y)) {
+      const alt = this.level.randomFreeSpot(this.rng);
+      if (alt) spot = alt;
+    }
+    p.x = spot.x; p.y = spot.y;
+    this.afterMove();
+  }
+
+  // =========================================================================
+  // messages
+  // =========================================================================
+
+  msg(text, cls = '') {
+    if (!text) return;
+    this.messages.push({ text, cls, turn: this.turn });
+    if (this.messages.length > 300) this.messages.shift();
+    this.ui?.pushMessage(text, cls);
+  }
+
+  animateTrail(cells, glyph, colour) { this.ui?.animateTrail?.(cells, glyph, colour); }
+
+  // =========================================================================
+  // the turn loop
+  // =========================================================================
+
+  async command(key) {
+    if (!this.running || this.busy) return;
+    this.busy = true;
+    try {
+      const spent = await this.doCommand(key);
+      if (spent && this.running) this.worldTurn();
+    } catch (err) {
+      console.error(err);
+      this.msg(`(internal error: ${err.message})`, 'bad');
+    } finally {
+      this.busy = false;
+      this.ui?.render();
+    }
+  }
+
+  worldTurn() {
+    this.turn++;
+    this.player.turns++;
+    this.player.tick();
+
+    stepProjectiles(this);
+    if (!this.running) return;
+
+    for (const e of [...this.level.enemies]) {
+      if (!e.alive) continue;
+      // State first, once per turn; then however many actions its speed buys.
+      // Keeping these apart is what stops a fast enemy from out-running its
+      // own telegraph.
+      const busy = tickEnemyState(this, e);
+      e.gainEnergy();
+      if (busy) continue;
+      let guard = 0;
+      while (e.canAct() && guard++ < 3) {
+        if (!e.alive || !this.running) break;
+        if (e.state !== STATE.READY) break;
+        enemyTurn(this, e);
+      }
+    }
+
+    this.level.removeDead();
+    this.afterMove();
+  }
+
+  afterMove() {
+    const p = this.player;
+    // Lighting is simple here on purpose: rooms are always lit, because a
+    // wind-up you cannot see is not a telegraph.
+    computeFOV(this.level, p.x, p.y, 11, false);
+    this.ui?.render();
+  }
+
+  // =========================================================================
+  // damage
+  // =========================================================================
+
+  hurtPlayer(amount, source) {
+    const p = this.player;
+    let dmg = amount;
+    if (p.heavyArmour) dmg = Math.max(1, dmg - 1);
+    p.hp -= dmg;
+    if (p.hp <= 0) this.die(source);
+  }
+
+  hurtEnemy(e, amount, byPlayer) {
+    if (!e.alive) return;
+    e.hp -= amount;
+    if (byPlayer) e.stagger();
+    if (e.hp <= 0) {
+      e.alive = false;
+      this.level.markEnemiesDirty();
+      this.stats.kills++;
+      this.msg(`The ${e.name} falls.`, 'good');
+      if (byPlayer) this.player.onKill();
+      if (e.spec.boss) this.win();
+    }
+  }
+
+  // =========================================================================
+  // commands
+  // =========================================================================
+
+  async doCommand(key) {
+    // Aiming a skill swallows direction keys.
+    if (this.aiming) {
+      if (key === 'Escape') { this.aiming = null; this.msg('Never mind.'); return false; }
+      const d = this.dirFromKey(key);
+      if (d) { const s = this.aiming; this.aiming = null; return this.useSkill(s, d); }
+      if (SKILL_KEYS[key]) { this.selectSkill(SKILL_KEYS[key]); return false; }
+      this.msg('Pick a direction, or Escape.');
+      return false;
+    }
+
+    const dir = this.dirFromKey(key);
+    if (dir) return this.step(dir.dx, dir.dy);
+
+    const roll = this.rollDirFromKey(key);
+    if (roll) return this.useSkill('roll', roll);
+
+    if (SKILL_KEYS[key]) { this.selectSkill(SKILL_KEYS[key]); return false; }
+
+    switch (key) {
+      case '.': case ' ': return this.wait();
+      case '>': return this.descend();
+      case '<': return this.ascend();
+      case 'e': case 'E': return this.rest();
+      case ':': return this.lookHere();
+      case 'S': saveGame(this); this.ui?.showSaved?.(); return false;
+      case '?': await this.ui?.showHelp?.(); return false;
+      case 'C-p': await this.ui?.showText?.('Messages',
+        this.messages.slice(-100).map((m) => `${String(m.turn).padStart(5)}  ${m.text}`)); return false;
+      default:
+        if (key.length === 1) this.msg(`Unknown key '${key}'.  Press ? for help.`);
+        return false;
+    }
+  }
+
+  dirFromKey(key) {
+    if (DIR_BY_KEY[key]) return DIR_BY_KEY[key];
+    const arrows = { ArrowLeft: 'h', ArrowRight: 'l', ArrowUp: 'k', ArrowDown: 'j' };
+    if (arrows[key]) return DIR_BY_KEY[arrows[key]];
+    const numpad = { numpad1: 'b', numpad2: 'j', numpad3: 'n', numpad4: 'h',
+                     numpad6: 'l', numpad7: 'y', numpad8: 'k', numpad9: 'u' };
+    if (numpad[key]) return DIR_BY_KEY[numpad[key]];
+    return null;
+  }
+
+  rollDirFromKey(key) {
+    const map = { H: 'h', J: 'j', K: 'k', L: 'l', Y: 'y', U: 'u', B: 'b', N: 'n' };
+    return map[key] ? DIR_BY_KEY[map[key]] : null;
+  }
+
+  selectSkill(key) {
+    const def = SKILL_BY_KEY[key];
+    const s = this.player.skill(key);
+    if (!def || !s) return;
+    if (s.cd > 0) { this.msg(`${def.name} is not ready (${s.cd}).`, 'warn'); return; }
+    const cost = key === 'roll' ? this.player.rollCost() : def.stamina;
+    if (!this.player.canAfford(cost)) { this.msg(`Not enough stamina for ${def.name}.`, 'warn'); return; }
+    this.aiming = key;
+    this.msg(`${def.name}: pick a direction.`);
+  }
+
+  // ------------------------------------------------------------- movement
+
+  step(dx, dy) {
+    const p = this.player;
+    const lvl = this.level;
+    const nx = p.x + dx, ny = p.y + dy;
+    p.face(dx, dy);
+
+    const e = lvl.enemyAt(nx, ny);
+    if (e && e.alive) return this.useSkill('strike', { dx, dy });
+
+    if (!lvl.inBounds(nx, ny)) { this.msg('You cannot go that way.'); return false; }
+    if (!lvl.diagonalOk(p.x, p.y, nx, ny)) {
+      this.msg('Not diagonally through a doorway.');
+      return false;
+    }
+    const t = lvl.at(nx, ny);
+    if (t === T.DOOR_CLOSED) { lvl.set(nx, ny, T.DOOR_OPEN); this.msg('You open the door.'); return true; }
+    if (!lvl.passable(nx, ny)) { this.msg(`${capitalise(tileName(t))} blocks the way.`); return false; }
+
+    p.x = nx; p.y = ny;
+    this.afterMove();
+    this.onEnterTile();
+    return true;
+  }
+
+  onEnterTile() {
+    const t = this.level.at(this.player.x, this.player.y);
+    if (isBonfire(t)) this.msg('A bonfire. Press e to rest.', 'magic');
+    else if (t === T.STAIRS_DOWN) this.msg('Stairs down. Press > to descend.');
+    else if (t === T.STAIRS_UP) this.msg('Stairs up.');
+  }
+
+  wait() { return true; }
+
+  // -------------------------------------------------------------- skills
+
+  useSkill(key, dir) {
+    const p = this.player;
+    const def = SKILL_BY_KEY[key];
+    const slot = p.skill(key);
+    if (!def || !slot) return false;
+    if (slot.cd > 0) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
+
+    const cost = key === 'roll' ? p.rollCost() : def.stamina;
+    if (!p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+
+    p.face(dir.dx, dir.dy);
+
+    // ---- roll: the one action that does not advance the turn --------------
+    if (def.move) {
+      const moved = this.dash(p.rollDistance(), dir);
+      if (!moved) { this.msg('No room to roll.'); return false; }
+      p.spend(cost);
+      this.msg(`You roll ${moved} ${moved === 1 ? 'tile' : 'tiles'}.`);
+      this.afterMove();
+      return false;                    // <- does not advance the turn
+    }
+
+    p.spend(cost);
+    if (def.cooldown) slot.cd = def.cooldown;
+
+    if (def.ranged) {
+      this.level.projectiles.push(makeProjectile({
+        x: p.x, y: p.y, dx: dir.dx, dy: dir.dy,
+        speed: def.projectile.speed, damage: def.damage,
+        glyph: def.projectile.glyph, colour: def.projectile.colour,
+        fromPlayer: true, life: def.range + 2,
+      }));
+      this.msg('You hurl a knife.');
+      return true;
+    }
+
+    if (def.dash) this.dash(def.dash, dir);
+
+    const tiles = attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern);
+    let hit = 0;
+    for (const t of tiles) {
+      const e = this.level.enemyAt(t.x, t.y);
+      if (e && e.alive) {
+        const wasWindup = e.state === STATE.WINDUP;
+        this.hurtEnemy(e, def.damage, true);
+        hit++;
+        if (wasWindup && e.alive) this.msg(`You stagger the ${e.name}; its attack is delayed.`, 'good');
+      }
+    }
+    this.animateTrail(tiles, '/', '#ffd75f');
+    if (!hit) this.msg(`${def.name} hits nothing.`);
+    return true;
+  }
+
+  /** Move up to `n` tiles in a direction, stopping at the first obstruction. */
+  dash(n, dir) {
+    const p = this.player;
+    let moved = 0;
+    for (let i = 0; i < n; i++) {
+      const nx = p.x + dir.dx, ny = p.y + dir.dy;
+      if (!this.level.passable(nx, ny)) break;
+      if (this.level.enemyAt(nx, ny)) break;
+      if (!this.level.diagonalOk(p.x, p.y, nx, ny)) break;
+      p.x = nx; p.y = ny; moved++;
+    }
+    return moved;
+  }
+
+  // -------------------------------------------------------- bonfire & floors
+
+  rest() {
+    const p = this.player;
+    if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('There is no bonfire here.'); return false; }
+    const b = this.level.bonfireAt(p.x, p.y);
+    p.bonfire = { depth: p.depth, id: b?.id ?? 0, x: p.x, y: p.y };
+    p.hp = p.hpMax;
+    p.stamina = p.staminaMax;
+    for (const s of p.skills) s.cd = 0;
+    this.stats.rests++;
+
+    const fresh = this.respawnLevel(p.depth);
+    fresh.projectiles = [];
+    this.msg('You rest. Your wounds close, and the dead stand up again.', 'magic');
+    this.afterMove();
+    saveGame(this);
+    return false;
+  }
+
+  descend() {
+    if (this.level.at(this.player.x, this.player.y) !== T.STAIRS_DOWN) {
+      this.msg('No stairs down here.'); return false;
+    }
+    this.gotoLevel(this.player.depth + 1, 'up');
+    this.msg(`Floor ${this.player.depth}.`, 'magic');
+    saveGame(this);
+    return true;
+  }
+
+  ascend() {
+    if (this.level.at(this.player.x, this.player.y) !== T.STAIRS_UP) {
+      this.msg('No stairs up here.'); return false;
+    }
+    if (this.player.depth === 1) { this.msg('There is nothing left above.'); return false; }
+    this.gotoLevel(this.player.depth - 1, 'down');
+    this.msg(`Floor ${this.player.depth}.`);
+    return true;
+  }
+
+  lookHere() {
+    const p = this.player;
+    const bits = [tileName(this.level.at(p.x, p.y))];
+    const near = this.level.livingEnemies()
+      .filter((e) => dist(e.x, e.y, p.x, p.y) <= 6 && this.level.isVisible(e.x, e.y))
+      .map((e) => `${e.name} (${e.hp}/${e.hpMax}${e.state === STATE.WINDUP ? ', winding up' :
+                    e.state === STATE.RECOVER ? ', recovering' :
+                    e.state === STATE.RESTING ? ', winded' : ''})`);
+    if (near.length) bits.push('nearby: ' + near.join(', '));
+    this.msg(bits.join('; '));
+    return false;
+  }
+
+  // =========================================================================
+  // ending
+  // =========================================================================
+
+  /**
+   * Death.
+   *
+   * Not the end of the run - the end of the *attempt*. You wake at the last
+   * bonfire, everything is standing again, and the floor is still the floor you
+   * had already learned. That is the whole reason the levels come from a seed.
+   */
+  die(source) {
+    const p = this.player;
+    p.deaths++;
+    this.stats.deaths++;
+    this.msg(`You are killed by ${source}.`, 'bad');
+
+    const b = p.bonfire;
+    if (!b) { this.finish('lost', source); return; }
+
+    p.depth = b.depth;
+    this.respawnLevel(b.depth);
+    this.level = this.levels.get(b.depth);
+    for (const d of this.levels.keys()) if (d !== b.depth) this.respawnLevel(d);
+    p.x = b.x; p.y = b.y;
+    p.hp = p.hpMax;
+    p.stamina = p.staminaMax;
+    for (const s of p.skills) s.cd = 0;
+    this.level.projectiles = [];
+    this.afterMove();
+    this.msg('You wake at the bonfire.', 'warn');
+    saveGame(this);
+    this.ui?.onDeath?.(p.deaths);
+  }
+
+  win() { this.finish('won', null); }
+
+  finish(how, killer) {
+    this.running = false;
+    this.gameOver = {
+      how, killer,
+      turns: this.turn,
+      depth: this.player.depth,
+      maxDepth: this.player.maxDepth,
+      deaths: this.player.deaths,
+      kills: this.stats.kills,
+      elapsed: Date.now() - this.startedAt,
+      seed: this.seed,
+    };
+    if (how === 'won') this.msg('The First Flame gutters out. You are done here.', 'good');
+    clearSave();
+    this.ui?.showGameOver?.(this.gameOver);
+  }
+}
+
+const SKILL_KEYS = { '1': 'strike', '2': 'sweep', '3': 'lunge', '4': 'hurl', '5': 'roll' };
+export { SKILL_KEYS, DUNGEON_DEPTH };

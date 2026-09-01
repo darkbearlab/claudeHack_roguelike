@@ -1,0 +1,314 @@
+// Level generation.
+//
+// Adapted from claudeHack's rooms-and-corridors generator, with the grid
+// coarsened from 5x3 to 4x3 over a smaller map. That is not cosmetic: this game
+// fights in rooms, so it wants **fewer, larger** rooms than a game that
+// explores in them. A 12x4 room is an arena; a 4x2 room is a cupboard.
+//
+// The mazes, caverns and big rooms are gone. They are good for a game about
+// exploring; for a game about reading an enemy's wind-up and stepping out of
+// the way, rooms joined by corridors is the shape that produces the tactics -
+// doorways to funnel through, corridors to retreat down, rooms to be surrounded
+// in.
+//
+// Two things are added: bonfires, and cover.
+
+import { Level, MAP_W, MAP_H } from './level.js';
+import { T, isWalkable } from './tiles.js';
+
+const GRID_COLS = 4;
+const GRID_ROWS = 3;
+
+export const DUNGEON_DEPTH = 10;
+
+export function generateLevel(depth, rng) {
+  const lvl = new Level(depth, MAP_W, MAP_H);
+  genRooms(lvl, rng);
+  fillNoise(lvl, rng);
+  ensureConnected(lvl, rng);
+  placeStairs(lvl, rng, depth);
+  placeBonfires(lvl, rng);
+  scatterCover(lvl, rng);
+  return lvl;
+}
+
+// ===========================================================================
+
+function genRooms(lvl, rng) {
+  lvl.tiles.fill(T.STONE);
+
+  const colW = Math.floor((lvl.w - 2) / GRID_COLS);
+  const rowH = Math.floor((lvl.h - 2) / GRID_ROWS);
+
+  const cells = [];
+  for (let gy = 0; gy < GRID_ROWS; gy++) {
+    for (let gx = 0; gx < GRID_COLS; gx++) cells.push({ gx, gy });
+  }
+  rng.shuffle(cells);
+
+  const want = rng.int(6, 9);
+  for (const c of cells) {
+    if (lvl.rooms.length >= want) break;
+    const cx = 1 + c.gx * colW;
+    const cy = 1 + c.gy * rowH;
+    const maxW = colW - 3, maxH = rowH - 3;
+    if (maxW < 4 || maxH < 3) continue;
+
+    const w = rng.int(4, maxW);
+    const h = rng.int(3, maxH);
+    const x = cx + 1 + rng.rn2(Math.max(1, colW - w - 2));
+    const y = cy + 1 + rng.rn2(Math.max(1, rowH - h - 2));
+
+    const room = { x, y, w, h, gx: c.gx, gy: c.gy, id: lvl.rooms.length, type: 'ordinary' };
+    carveRoom(lvl, room);
+    lvl.rooms.push(room);
+  }
+
+  // Randomised spanning tree over grid-adjacent rooms, plus a few loops.
+  // The loops matter more here than in claudeHack: a level with no alternative
+  // route means a retreat can only ever end in a dead end.
+  const rooms = lvl.rooms;
+  const edges = [];
+  for (const a of rooms) {
+    for (const b of rooms) {
+      if (b.id <= a.id) continue;
+      if (Math.abs(a.gx - b.gx) + Math.abs(a.gy - b.gy) === 1) {
+        edges.push({ a, b, w: rng.rn2(1000) });
+      }
+    }
+  }
+  edges.sort((p, q) => p.w - q.w);
+
+  const parent = rooms.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const union = (i, j) => { const a = find(i), b = find(j); if (a === b) return false; parent[a] = b; return true; };
+
+  const used = new Set();
+  for (const e of edges) if (union(e.a.id, e.b.id)) { corridorBetween(lvl, e.a, e.b, rng); used.add(e); }
+  for (const e of edges) if (!used.has(e) && rng.oneIn(3)) { corridorBetween(lvl, e.a, e.b, rng); used.add(e); }
+
+  for (const r of rooms) {
+    if (!rooms.length || find(r.id) === find(rooms[0].id)) continue;
+    let best = null, bd = Infinity;
+    for (const o of rooms) {
+      if (find(o.id) !== find(rooms[0].id)) continue;
+      const d = Math.abs(mid(o).x - mid(r).x) + Math.abs(mid(o).y - mid(r).y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (best) { corridorBetween(lvl, r, best, rng); union(r.id, best.id); }
+  }
+}
+
+const mid = (r) => ({ x: r.x + (r.w >> 1), y: r.y + (r.h >> 1) });
+
+function carveRoom(lvl, room) {
+  for (let y = room.y - 1; y <= room.y + room.h; y++) {
+    for (let x = room.x - 1; x <= room.x + room.w; x++) {
+      if (!lvl.inBounds(x, y)) continue;
+      const inside = x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+      lvl.set(x, y, inside ? T.FLOOR : T.WALL);
+    }
+  }
+  // Every room is lit. Unlit rooms are a good exploration mechanic and a bad
+  // combat one: you cannot read a wind-up you cannot see, and a game built on
+  // reading wind-ups must never hide them.
+  room.lit = true;
+  for (let y = room.y - 1; y <= room.y + room.h; y++) {
+    for (let x = room.x - 1; x <= room.x + room.w; x++) {
+      if (lvl.inBounds(x, y)) lvl.lit[lvl.idx(x, y)] = 1;
+    }
+  }
+}
+
+function corridorBetween(lvl, a, b, rng) {
+  const horiz = a.gy === b.gy;
+  if (horiz) {
+    const left = a.x < b.x ? a : b, right = a.x < b.x ? b : a;
+    const ax = left.x + left.w, ay = rng.int(left.y, left.y + left.h - 1);
+    const bx = right.x - 1,     by = rng.int(right.y, right.y + right.h - 1);
+    makeDoor(lvl, ax, ay, rng); makeDoor(lvl, bx, by, rng);
+    const m = ax + 1 >= bx ? ax + 1 : rng.int(ax + 1, Math.max(ax + 1, bx - 1));
+    for (let x = ax + 1; x <= m; x++) dig(lvl, x, ay);
+    const step = ay < by ? 1 : -1;
+    for (let y = ay; y !== by; y += step) dig(lvl, m, y);
+    dig(lvl, m, by);
+    for (let x = m; x < bx; x++) dig(lvl, x, by);
+  } else {
+    const top = a.y < b.y ? a : b, bot = a.y < b.y ? b : a;
+    const ax = rng.int(top.x, top.x + top.w - 1), ay = top.y + top.h;
+    const bx = rng.int(bot.x, bot.x + bot.w - 1), by = bot.y - 1;
+    makeDoor(lvl, ax, ay, rng); makeDoor(lvl, bx, by, rng);
+    const m = ay + 1 >= by ? ay + 1 : rng.int(ay + 1, Math.max(ay + 1, by - 1));
+    for (let y = ay + 1; y <= m; y++) dig(lvl, ax, y);
+    const step = ax < bx ? 1 : -1;
+    for (let x = ax; x !== bx; x += step) dig(lvl, x, m);
+    dig(lvl, bx, m);
+    for (let y = m; y < by; y++) dig(lvl, bx, y);
+  }
+}
+
+function dig(lvl, x, y) {
+  if (!lvl.inBounds(x, y)) return;
+  const t = lvl.at(x, y);
+  if (t === T.STONE) lvl.set(x, y, T.CORRIDOR);
+  else if (t === T.WALL) lvl.set(x, y, T.DOOR_BROKEN);
+}
+
+function makeDoor(lvl, x, y, rng) {
+  if (!lvl.inBounds(x, y) || lvl.at(x, y) !== T.WALL) return;
+  // No locked doors and no secret doors. Both are exploration friction, and
+  // this game's friction budget is spent entirely on combat.
+  const r = rng.rn2(100);
+  lvl.set(x, y, r < 35 ? T.DOOR_BROKEN : r < 75 ? T.DOOR_OPEN : T.DOOR_CLOSED);
+}
+
+// ===========================================================================
+
+function fillNoise(lvl, rng) {
+  for (let i = 0; i < lvl.noise.length; i++) lvl.noise[i] = rng.rn2(256);
+}
+
+function floodRegion(lvl, sx, sy, seen) {
+  const out = [];
+  const stack = [lvl.idx(sx, sy)];
+  seen[stack[0]] = 1;
+  while (stack.length) {
+    const i = stack.pop();
+    out.push(i);
+    const x = i % lvl.w, y = (i / lvl.w) | 0;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (!lvl.inBounds(nx, ny)) continue;
+      const j = lvl.idx(nx, ny);
+      if (seen[j]) continue;
+      const t = lvl.tiles[j];
+      if (!isWalkable(t) && t !== T.DOOR_CLOSED) continue;
+      seen[j] = 1; stack.push(j);
+    }
+  }
+  return out;
+}
+
+function ensureConnected(lvl, rng) {
+  for (let guard = 0; guard < 12; guard++) {
+    const seen = new Uint8Array(lvl.w * lvl.h);
+    const regions = [];
+    for (let y = 0; y < lvl.h; y++) {
+      for (let x = 0; x < lvl.w; x++) {
+        const i = lvl.idx(x, y);
+        if (seen[i] || !isWalkable(lvl.tiles[i])) continue;
+        regions.push(floodRegion(lvl, x, y, seen));
+      }
+    }
+    if (regions.length <= 1) return;
+    regions.sort((a, b) => b.length - a.length);
+    const a = regions[0][rng.rn2(regions[0].length)];
+    const b = regions[1][rng.rn2(regions[1].length)];
+    tunnel(lvl, a % lvl.w, (a / lvl.w) | 0, b % lvl.w, (b / lvl.w) | 0);
+  }
+}
+
+function tunnel(lvl, x0, y0, x1, y1) {
+  let x = x0, y = y0, guard = 0;
+  while ((x !== x1 || y !== y1) && guard++ < 400) {
+    if (x !== x1 && (y === y1 || (guard & 1))) x += Math.sign(x1 - x);
+    else y += Math.sign(y1 - y);
+    const t = lvl.at(x, y);
+    if (t === T.STONE || t === T.WALL) lvl.set(x, y, T.CORRIDOR);
+  }
+  wallInPassages(lvl);
+}
+
+function wallInPassages(lvl) {
+  const copy = Uint8Array.from(lvl.tiles);
+  for (let y = 0; y < lvl.h; y++) {
+    for (let x = 0; x < lvl.w; x++) {
+      if (copy[lvl.idx(x, y)] !== T.STONE) continue;
+      let touch = false;
+      for (let dy = -1; dy <= 1 && !touch; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (lvl.inBounds(nx, ny) && isWalkable(copy[lvl.idx(nx, ny)])) { touch = true; break; }
+        }
+      }
+      if (touch) lvl.set(x, y, T.WALL);
+    }
+  }
+}
+
+function placeStairs(lvl, rng, depth) {
+  const up = lvl.randomFreeSpot(rng, { roomsOnly: true });
+  if (up) { lvl.set(up.x, up.y, T.STAIRS_UP); lvl.upStair = up; }
+
+  if (depth < DUNGEON_DEPTH) {
+    let down = null;
+    for (let t = 0; t < 60 && !down; t++) {
+      down = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: up, minDist: 14 });
+    }
+    down = down || lvl.randomFreeSpot(rng, { roomsOnly: true }) || lvl.randomFreeSpot(rng);
+    if (down) { lvl.set(down.x, down.y, T.STAIRS_DOWN); lvl.downStair = down; }
+  }
+}
+
+/**
+ * Bonfires.
+ *
+ * One is always adjacent to the way in, which bounds the walk back after a
+ * death to a single floor. Bonfire density is the dial that decides whether
+ * dying is a setback or a punishment - it is deliberately a number here rather
+ * than a shortcut system, because a number can be turned during play testing
+ * and a system cannot.
+ */
+function placeBonfires(lvl, rng) {
+  let id = 0;
+  const put = (x, y) => {
+    lvl.set(x, y, T.BONFIRE);
+    lvl.bonfires.push({ x, y, id: id++ });
+  };
+
+  if (lvl.upStair) {
+    const near = adjacentFloor(lvl, lvl.upStair.x, lvl.upStair.y, rng);
+    if (near) put(near.x, near.y);
+  }
+  const extra = rng.int(1, 2);
+  for (let i = 0; i < extra; i++) {
+    const s = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 10 });
+    if (s) put(s.x, s.y);
+  }
+  if (!lvl.bonfires.length) {
+    const s = lvl.randomFreeSpot(rng);
+    if (s) put(s.x, s.y);
+  }
+}
+
+function adjacentFloor(lvl, x, y, rng) {
+  const cands = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      if (lvl.at(x + dx, y + dy) === T.FLOOR) cands.push({ x: x + dx, y: y + dy });
+    }
+  }
+  return cands.length ? rng.pick(cands) : null;
+}
+
+/**
+ * Rubble and pits.
+ *
+ * Rubble blocks movement but not sight, so it is cover you can shoot over and
+ * hide behind - it makes the ranged distance bands interesting instead of
+ * binary. Pits block walkers but not projectiles, so they shape who can reach
+ * whom without shaping who can shoot whom.
+ */
+function scatterCover(lvl, rng) {
+  for (const room of lvl.rooms) {
+    if (room.w < 6 || room.h < 3) continue;
+    const n = rng.rn2(4);
+    for (let i = 0; i < n; i++) {
+      const x = rng.int(room.x + 1, room.x + room.w - 2);
+      const y = rng.int(room.y + 1, room.y + room.h - 2);
+      if (lvl.at(x, y) !== T.FLOOR) continue;
+      lvl.set(x, y, rng.oneIn(4) ? T.PIT : T.RUBBLE);
+    }
+  }
+}

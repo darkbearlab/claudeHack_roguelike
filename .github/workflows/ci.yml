@@ -50,4 +50,13 @@ jobs:
         working-directory: classic
         run: node tools/botrun.mjs --god 1 6000
 
-      # claudeSouls has no code yet. Its test steps go here when it does.
+      - name: claudeSouls - system tests
+        working-directory: claudeSouls
+        run: node tools/systest.mjs
+
+      # The deterministic combat means this bot is a balance instrument, not
+      # just a crash test: it plays the read-and-react loop correctly, so a
+      # failure here means the numbers are wrong rather than the player.
+      - name: claudeSouls - telegraph-reading bot
+        working-directory: claudeSouls
+        run: node tools/botrun.mjs 12 20000

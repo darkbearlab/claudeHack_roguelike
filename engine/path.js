@@ -69,8 +69,21 @@ function diagOk(level, fx, fy, tx, ty) {
 function stepOk(level, x, y, mover, ignoreMonsters, doorsOk) {
   if (!level.passable(x, y, mover)) return false;
   if (!doorsOk && level.isDoorway?.(x, y)) return false;
-  if (!ignoreMonsters && level.monsterAt(x, y)) return false;
+  if (!ignoreMonsters && occupied(level, x, y)) return false;
   return true;
+}
+
+/**
+ * Is something standing here?
+ *
+ * `occupantAt` rather than `monsterAt`: the second game calls its creatures
+ * enemies, and the pathfinder should not know or care what either game names
+ * them. This was the last place engine/ still spoke claudeHack's vocabulary,
+ * and it only surfaced once a second consumer existed - which is exactly the
+ * argument for not designing an engine interface against a single caller.
+ */
+function occupied(level, x, y) {
+  return !!(level.occupantAt ? level.occupantAt(x, y) : level.monsterAt?.(x, y));
 }
 
 function rebuild(came, goal, W) {
@@ -118,7 +131,7 @@ export function flowField(level, goals, opts = {}) {
       if (dist[ni] !== -1) continue;
       if (!level.passable(nx, ny, mover)) continue;
       if (avoidHazards && level.hazard(nx, ny)) continue;
-      if (!ignoreMonsters && level.monsterAt(nx, ny)) continue;
+      if (!ignoreMonsters && occupied(level, nx, ny)) continue;
       if (!diagOk(level, x, y, nx, ny)) continue;
       dist[ni] = d + 1;
       queue.push(ni);

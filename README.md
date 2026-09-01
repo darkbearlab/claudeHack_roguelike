@@ -8,7 +8,7 @@ server, no dependencies — the repository *is* the site.
 | | | |
 | --- | --- | --- |
 | **[claudeHack](classic/)** | a NetHack-like | **playable** |
-| **[claudeSouls](claudeSouls/)** | a turn-based Souls-like | design complete, not implemented |
+| **[claudeSouls](claudeSouls/)** | a turn-based Souls-like | **playable** |
 
 ---
 
@@ -23,17 +23,24 @@ never touched NetHack; the same text is in the game under <kbd>?</kbd>.
 
 ![claudeHack in tile mode](docs/img/tiles.png)
 
-## claudeSouls — [design](claudeSouls/docs/DESIGN.md)
+## claudeSouls — [play](https://darkbearlab.github.io/claudeHack_roguelike/claudeSouls/) · [design](claudeSouls/docs/DESIGN.md)
 
 Souls-like read-and-react combat, made turn-based. Enemies wind up before they
-strike; rolling costs stamina **and does not advance the turn**; attacks always
-land and health is thin enough that three or four of them kill you. You cannot
-tank damage — only position and spend well.
+strike — a `!`, a countdown, red tiles, and they turn to face you. Attacks
+always land and health is thin enough that three or four of them kill you, so
+you cannot tank damage; you can only be somewhere else.
 
-Nothing is implemented yet, on purpose: the specification is written down first
-because the heart of the game is a handful of feel numbers, and numbers need
-something to be tuned *against*. The design document also records what was
-rejected and why — parry, poise, posture, shortcuts, loot treadmills.
+**Rolling costs stamina and does not advance the turn.** That one rule moves the
+clock from turns to stamina, and every moment becomes the same question: one
+more hit, or keep enough to get out?
+
+Ten floors, eleven enemy species, bonfires that heal you and resurrect
+everything, and floors derived from the run seed — so a floor you have died on
+is a floor you have learned. Press a skill and drag out from your character to
+aim; release to commit.
+
+The design document also records what was rejected and why — parry, poise,
+posture, shortcuts, loot treadmills.
 
 ---
 
@@ -44,7 +51,7 @@ index.html            the chooser
 engine/               rng · helpers · field of view · pathfinding
 assets/               57 generated sprites, shared
 classic/              claudeHack   — its own html, css, js, tools, docs
-claudeSouls/          claudeSouls  — the same, when it exists
+claudeSouls/          claudeSouls  — the same
 docs/                 project-wide: development log, asset pipeline
 tools/                dev server, asset generation scripts
 ```
@@ -100,7 +107,20 @@ node tools/systest.mjs              # 22 assertions; the contract
 node tools/smoketest.mjs 40 3000    # random-input crash fuzzing
 node tools/botrun.mjs 12 30000      # a bot that plays to win
 node tools/build_guide.mjs --check  # the Chinese guide is in sync
+
+cd ../claudeSouls
+node tools/systest.mjs              # 26 assertions, mostly on the combat contract
+node tools/botrun.mjs --report 12   # a bot that reads every telegraph
 ```
+
+claudeSouls' bot is a genuine balance instrument in a way claudeHack's could
+never be. There, a fight was a distribution over dice. Here the combat is
+deterministic and fully observed, so a bot that plays *correctly* answers a real
+question: **is this winnable by someone who reads every wind-up and never wastes
+stamina?** It found that the heavy vow was strictly better than the light one —
+zero deaths a run versus repeated ones — which meant the choice was not a
+choice. Halving heavy's roll distance fixed it, and a test now asserts the
+trade.
 
 ## Deployment
 
@@ -113,7 +133,7 @@ The repository is the site; there is no build step, so GitHub Pages serves
 ## Documentation
 
 - **[classic/docs/GUIDE.zh-TW.md](classic/docs/GUIDE.zh-TW.md)** — 中文新手指南
-- **[claudeSouls/docs/DESIGN.md](claudeSouls/docs/DESIGN.md)** — claudeSouls 設計文件
+- **[claudeSouls/docs/DESIGN.md](claudeSouls/docs/DESIGN.md)** — claudeSouls 設計文件(含實作後的修正)
 - **[classic/docs/DESIGN.md](classic/docs/DESIGN.md)** — claudeHack's design decisions
 - **[classic/docs/TESTING.md](classic/docs/TESTING.md)** — what each test harness can prove
 - **[docs/DEVLOG.md](docs/DEVLOG.md)** — how this was built, and the bugs that mattered

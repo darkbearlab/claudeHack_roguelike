@@ -123,6 +123,9 @@ export class Level {
     return this._monIdx.get(this.idx(x, y)) ?? null;
   }
 
+  /** The neutral name engine/path.js asks by; claudeHack calls them monsters. */
+  occupantAt(x, y) { return this.monsterAt(x, y); }
+
   /** Move a monster and keep the position index honest. */
   moveMonster(mon, x, y) {
     mon.x = x; mon.y = y;

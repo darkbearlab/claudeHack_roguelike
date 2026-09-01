@@ -3,39 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>claudeSouls — 開發中</title>
-<meta name="description" content="claudeSouls: a turn-based Souls-like roguelike. Design complete, implementation not started.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>@</text></svg>">
-<link rel="stylesheet" href="../css/chooser.css">
+<title>claudeSouls</title>
+<meta name="description" content="claudeSouls: a turn-based Souls-like. Read the wind-up, roll out of the way, spend your stamina well.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128293;</text></svg>">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<main>
+<div id="app">
 
-  <pre id="logo">
+  <header id="topbar">
+    <span id="title">claudeSouls</span>
+    <span id="statusline"></span>
+    <span id="topbtns">
+      <button id="btn-mode" title="Tiles / ASCII">Tiles</button>
+      <button id="btn-zoom" title="Zoom">Zoom</button>
+      <button id="btn-help" title="說明">?</button>
+      <button id="btn-save" title="存檔">Save</button>
+    </span>
+  </header>
+
+  <div id="msgbar"><div id="msglines"></div></div>
+
+  <main id="viewport">
+    <canvas id="map" tabindex="0"></canvas>
+    <div id="flash"></div>
+    <div id="overlay" hidden></div>
+  </main>
+
+  <div id="gauges">
+    <div class="gauge"><span class="lbl">HP</span><div id="hpbar"></div></div>
+    <div class="gauge"><span class="lbl">ST</span><div id="stbar"></div></div>
+  </div>
+
+  <div id="controls">
+    <nav id="pad">
+      <button data-cmd="y">&#8598;</button><button data-cmd="k">&#8593;</button><button data-cmd="u">&#8599;</button>
+      <button data-cmd="h">&#8592;</button><button data-cmd=".">&middot;</button><button data-cmd="l">&#8594;</button>
+      <button data-cmd="b">&#8601;</button><button data-cmd="j">&#8595;</button><button data-cmd="n">&#8600;</button>
+      <button data-cmd="&gt;" class="wide">&gt;</button>
+      <button data-cmd="e" class="wide">Rest</button>
+      <button data-cmd="ESC" class="wide">Esc</button>
+    </nav>
+    <div id="skillbar"></div>
+  </div>
+
+</div>
+
+<div id="splash">
+  <div class="splash-inner">
+    <pre id="splash-logo">
       _                 _      ____              _
   ___| | __ _ _   _  __| | ___/ ___|  ___  _   _| |___
  / __| |/ _` | | | |/ _` |/ _ \___ \ / _ \| | | | / __|
 | (__| | (_| | |_| | (_| |  __/___) | (_) | |_| | \__ \
  \___|_|\__,_|\__,_|\__,_|\___|____/ \___/ \__,_|_|___/
 </pre>
-
-  <p class="tag">回合制類魂系爬地城 &middot; <b>設計定案,尚未實作</b></p>
-
-  <div class="card wip" style="cursor:default">
-    <h2>還沒有東西可以玩</h2>
-    <p>這裡目前只有一份設計文件。放著它是刻意的:規格先寫下來,程式再開始寫,
-       因為這個遊戲最核心的部分是一組<b>手感數字</b>,而數字要先有規格才有東西可以調。</p>
-    <p>設計摘要:敵人出手前會有預備動作;翻滾消耗精力<b>而且不推進回合</b>;攻擊必中,
-       血量薄到三五下就死。你不能硬扛傷害,只能靠走位和資源管理活下來。</p>
-    <p class="meta">完整規格、被否決的方向、以及為什麼否決,都在設計文件裡。</p>
+    <p class="tagline">回合制類魂系。讀招、翻滾、管好你的精力。硬扛會死。</p>
+    <div id="splash-body"></div>
+    <p class="note" style="margin-top:20px">
+      <a href="../">&larr; 回到選單</a> &nbsp;·&nbsp;
+      <a href="../classic/">claudeHack</a> &nbsp;·&nbsp;
+      <a href="docs/DESIGN.md">設計文件</a>
+    </p>
   </div>
+</div>
 
-  <nav class="links">
-    <a href="docs/DESIGN.md">claudeSouls 設計文件</a>
-    <a href="../classic/">先去玩 claudeHack</a>
-    <a href="../">回到選單</a>
-  </nav>
-
-</main>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
