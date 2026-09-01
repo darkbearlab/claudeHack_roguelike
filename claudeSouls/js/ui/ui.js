@@ -916,7 +916,12 @@ export class UI {
       ov.innerHTML = `<h2>${escapeHtml(title)}</h2>${html}
         <div class="foot"><button class="btn" data-act="close">Close (Esc)</button></div>`;
       const done = () => { this.closeOverlay(); resolve(); };
-      ov.querySelector('button').addEventListener('click', done);
+      // Its OWN close button, by name. `querySelector('button')` meant "the
+      // first button in the overlay", which was true only while the body was
+      // inert text - the moment the help screen grew a texture picker, Close
+      // stopped being wired at all and the first picker button silently became
+      // the close button instead.
+      ov.querySelector('[data-act="close"]').addEventListener('click', done);
       ov.scrollTop = 0;
       this.pending = { onKey: () => done() };
     });

@@ -1775,6 +1775,25 @@ check('claudeSouls does not share a save key with claudeHack', () => {
 // ===========================================================================
 console.log('\n--- content ---------------------------------------------------');
 
+check('every overlay closes by its own close button, not by position', () => {
+  // Reported from play: after the help screen grew a texture picker, Close
+  // stopped working. showText bound `querySelector('button')` - "the first
+  // button in the overlay" - which was only ever the close button while the
+  // body was inert text. Adding interactive content silently stole the
+  // binding, and the first picker button became the close button instead.
+  const src = readFileSync(new URL('../js/ui/ui.js', import.meta.url), 'utf8');
+
+  assert(!/querySelector\('button'\)/.test(src.replace(/\/\/.*$/gm, '')),
+         'an overlay still finds its close button by position');
+
+  // Every screen that draws a Close button must also bind that exact button.
+  const closes = (src.match(/data-act="close"/g) ?? []).length;
+  const binds = (src.match(/\[data-act="close"\]/g) ?? []).length;
+  assert(binds >= 1, 'nothing binds a close button by name');
+  assert(closes >= binds, 'more close bindings than close buttons');
+  return `${binds} screens close by name`;
+});
+
 check('every surface offered is a surface that exists', () => {
   // A settings screen that lists a look the stylesheet does not define is a
   // button that silently does nothing, which is the same class of bug as a
