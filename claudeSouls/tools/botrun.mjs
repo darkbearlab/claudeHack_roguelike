@@ -82,23 +82,22 @@ function dangerTiles(game) {
 const inDanger = (d, x, y) => d.has(`${x},${y}`);
 
 /**
- * Enemies that will simply hit you, with no wind-up to read.
+ * How much damage an adjacent enemy is worth per turn.
  *
- * These do not appear in dangerTiles() and they never can: there is no
- * telegraph to draw, so there is no tile to avoid *this* turn. The counterplay
- * is a turn earlier - do not be standing there when it comes off recovery. The
- * bot was blind to that, which is why it stood in a pack of hounds trading
- * three-damage strikes against unavoidable chip damage until it died. It read
- * as the roster being over-tuned; two thirds of all deaths came from attacks
- * the bot did not model at all.
+ * This began as a model of untelegraphed attacks, which no longer exist - every
+ * blow is announced now. What it measures is still worth measuring, though:
+ * standing next to something has a running cost whether or not you can read the
+ * blow, because reading it does not mean you can afford to answer it every
+ * time.
  */
-function silentThreat(e) {
+function pressure(e) {
   if (!e.alive || !e.aware) return 0;
-  if (e.state === STATE.WINDUP) return 0;      // that one is drawn on the map
   let worst = 0;
   for (const a of e.spec.attacks) {
-    if (a.windup !== 0 || a.kind === 'ranged') continue;
-    worst = Math.max(worst, a.damage / (a.recovery + 1));   // damage per turn
+    if (a.kind === 'ranged') continue;
+    let dmg = a.damage, n = a.next;
+    while (n) { dmg += n.damage; n = n.next; }
+    worst = Math.max(worst, dmg / (a.windup + a.recovery));
   }
   return worst;
 }
@@ -115,7 +114,7 @@ function losingTheTrade(game, adj) {
   const p = game.player;
   let incoming = 0, work = 0;
   for (const { e } of adj) {
-    incoming += silentThreat(e);
+    incoming += pressure(e);
     work += Math.ceil(e.hp / SKILL_BY_KEY.strike.damage);
   }
   if (incoming <= 0) return false;

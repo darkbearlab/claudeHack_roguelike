@@ -15,12 +15,13 @@
 // Three rules govern this table, and all three came out of play testing rather
 // than design:
 //
-// 1. **Not everything telegraphs, but whether it does is fixed per attack.**
-//    Fast, weak enemies just hit you, so standing next to one always costs
-//    something. But it is never a dice roll: an enemy that sometimes telegraphs
-//    and sometimes does not cannot be learned, and that is unfair rather than
-//    hard. Untelegraphed attacks are capped at 2 damage and carry a recovery,
-//    so a pack of hounds is attrition and not an execution.
+// 1. **Everything telegraphs. Every blow in this game is announced.**
+//    This was not always true, and reverting to it is the single largest
+//    correction the roster has had - see the hound below for the numbers. What
+//    replaces concealment is **commitment**: an attack can step forward as it
+//    lands, so reading it does not mean walking out of it for free. Being
+//    unable to see a blow coming is not difficulty, it is arithmetic, and with
+//    no dice anywhere in this game arithmetic is all it can ever be.
 //
 // 2. **Every shape wants a different answer.** When every attack was reach-1,
 //    one step backwards solved the entire game - and stepping back is free,
@@ -73,21 +74,42 @@ const atk = (o) => ({
 
 export const ENEMIES = [
 
-  // ---- fast, weak, and silent ---------------------------------------------
-  // No telegraph at all. You cannot safely stand next to these, which is what
-  // stops "back off and poke the big one" from being a free strategy.
+  // ---- fast, and committed ------------------------------------------------
+  // These used to strike with no telegraph at all, which was a mistake worth
+  // recording. The reason for it was real: when every attack was `front` at
+  // reach one, stepping back one tile beat everything, and stepping back is
+  // free. But the shape library solved that independently - lines punish
+  // retreating along them, sweeps punish the sidestep, arcs need two tiles - so
+  // the justification was spent while the side effect stayed.
+  //
+  // And the side effect was severe. Measured by encounter weight, 54 to 62% of
+  // everything you met at every depth carried an unannounced attack, and
+  // killing a brute with a sword cost you a third of a light health bar in
+  // damage you could not interact with. Against the boss it was 133%: more than
+  // your whole pool, spent on an attack you were never allowed to read.
+  //
+  // The fix is **commitment instead of concealment**. A hound announces its
+  // pounce and then comes with you, so backing off does not help - the wind-up
+  // already accounts for the step, which makes it honest and still unavoidable
+  // by walking. You roll, you block, or you hit it first: at poise 2 a single
+  // strike breaks it, so the answer to a pouncing hound is the thing a melee
+  // character wanted to do anyway.
   E('hound', {
     name: 'hound', glyph: 'd', colour: '#c8a24a', sprite: 'mon_jackal',
     hp: 4, speed: 18, stamina: 9, staminaRegen: 4, poise: 2,
     minDepth: 1, freq: 20, group: [1, 2],
-    attacks: [atk({ name: 'bite', windup: 0, recovery: 2, pattern: 'front', damage: 2, cost: 3 })],
+    attacks: [atk({ name: 'pounce', windup: 1, recovery: 2, pattern: 'front', damage: 2,
+                    cost: 3, step: 1 })],
   }),
 
+  // Long legs: one step back is not out of reach, so the answer is a sidestep
+  // or a roll rather than a shuffle.
   E('crawler', {
     name: 'crawler', glyph: 's', colour: '#3a3a44', sprite: 'mon_spider',
     hp: 5, speed: 15, stamina: 10, staminaRegen: 4, poise: 2,
     minDepth: 2, freq: 15, group: [1, 3],
-    attacks: [atk({ name: 'lash', windup: 0, recovery: 2, pattern: 'front', damage: 2, cost: 3 })],
+    attacks: [atk({ name: 'lash', windup: 1, recovery: 2, pattern: 'reach2', range: 2,
+                    damage: 2, cost: 3 })],
   }),
 
   // ---- the teaching enemy --------------------------------------------------
@@ -116,7 +138,9 @@ export const ENEMIES = [
     hp: 10, speed: 12, stamina: 13, poise: 4,
     minDepth: 3, freq: 16, opensDoors: true,
     attacks: [
-      atk({ name: 'jab', windup: 0, recovery: 2, pattern: 'front', damage: 2, cost: 4, weight: 2 }),
+      // The sweep combo already punishes the sidestep, so an unreadable jab on
+      // top of it was redundant as well as unfair.
+      atk({ name: 'jab', windup: 1, recovery: 2, pattern: 'front', damage: 2, cost: 4, weight: 2 }),
       atk({
         name: 'sweep', windup: 2, recovery: 2, pattern: 'sweepL', damage: 3, cost: 6,
         next: atk({ name: 'backswing', windup: 1, recovery: 2, pattern: 'sweepR', damage: 3, cost: 0 }),
@@ -168,7 +192,7 @@ export const ENEMIES = [
     minDepth: 3, freq: 12, opensDoors: true,
     attacks: [
       atk({ name: 'overhead', windup: 3, recovery: 3, pattern: 'arc5', damage: 5, cost: 7, step: 1 }),
-      atk({ name: 'backhand', windup: 0, recovery: 2, pattern: 'front', damage: 2, cost: 3, weight: 2 }),
+      atk({ name: 'backhand', windup: 1, recovery: 2, pattern: 'front', damage: 2, cost: 3, weight: 2 }),
     ],
   }),
 
@@ -198,7 +222,7 @@ export const ENEMIES = [
     attacks: [
       atk({ name: 'sear', kind: 'ranged', windup: 2, recovery: 2, range: 12, damage: 4, cost: 5,
             projectile: { speed: 4, glyph: '*', colour: '#ff7a3a' } }),
-      atk({ name: 'rake', windup: 0, recovery: 2, pattern: 'front', damage: 2, cost: 4, weight: 2 }),
+      atk({ name: 'rake', windup: 1, recovery: 2, pattern: 'front', damage: 2, cost: 4, weight: 2 }),
       atk({
         name: 'tail sweep', windup: 2, recovery: 2, pattern: 'sweepL', damage: 4, cost: 6,
         next: atk({ name: 'back sweep', windup: 1, recovery: 2, pattern: 'sweepR', damage: 4, cost: 0 }),

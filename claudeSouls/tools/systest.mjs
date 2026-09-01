@@ -402,31 +402,30 @@ check('stamina regen is just under one light roll', () => {
   return `${PLAYER.staminaRegen}/turn vs ${SKILL_BY_KEY.roll.stamina} per roll`;
 });
 
-check('telegraphed attacks always telegraph; silent ones stay cheap', () => {
-  // Not everything telegraphs any more - fast, weak enemies simply hit, which
-  // is what stops "back off one tile and poke the slow one" from being free.
-  // But whether an attack telegraphs is a fixed property of that attack, never
-  // a dice roll: an enemy that sometimes warns you cannot be learned, and that
-  // is unfair rather than difficult.
-  let silent = 0, loud = 0;
+check('every blow in the game is announced', () => {
+  // The contract, and it took a wrong turn to get back to. Fast enemies used to
+  // strike with no wind-up at all, on the reasoning that otherwise stepping
+  // back one tile beat everything - which was true when every attack was
+  // `front` at reach one, and stopped being true the moment attack shapes
+  // existed. The justification was spent; the side effect was not. By encounter
+  // weight, 54 to 62% of everything you met carried an unreadable attack, and
+  // killing the boss with a sword meant eating more than a full health bar of
+  // damage you were never allowed to react to.
+  //
+  // What replaces concealment is commitment: see `step` below.
+  const bad = [];
   for (const spec of ENEMIES) {
     for (const a of spec.attacks) {
+      if (a.windup < 1) bad.push(`${spec.key}/${a.name}`);
+      if (a.next && a.next.windup < 1) bad.push(`${spec.key}/${a.next.name}`);
       assert(a.recovery >= 1, `${spec.key}/${a.name} has no recovery`);
-      if (a.windup === 0) {
-        silent++;
-        assert(a.damage <= 2,
-               `${spec.key}/${a.name} deals ${a.damage} unannounced - silent damage must stay cheap`);
-      } else {
-        loud++;
-        assert(a.windup >= 1, `${spec.key}/${a.name} has a broken wind-up`);
-      }
     }
   }
-  assert(silent > 0 && loud > 0, 'the roster needs both kinds');
+  assert(!bad.length, `unannounced: ${bad.join(', ')}`);
 
-  // A purely telegraphed melee species must never damage from another state.
+  // And nothing may deal damage from a state other than a wind-up.
   for (const spec of ENEMIES) {
-    if (spec.attacks.some((a) => a.kind === 'ranged' || a.windup === 0)) continue;
+    if (spec.attacks.some((a) => a.kind === 'ranged')) continue;
     const { g, e } = arena(`tel:${spec.key}`, spec.key, 1);
     const hp0 = g.player.hp;
     for (let t = 0; t < 16; t++) {
@@ -439,7 +438,36 @@ check('telegraphed attacks always telegraph; silent ones stay cheap', () => {
       if (!e.alive) break;
     }
   }
-  return `${loud} telegraphed, ${silent} silent (all <= 2 damage)`;
+  return `${ENEMIES.length} species, nothing unannounced`;
+});
+
+check('reading an attack is not the same as walking out of it for free', () => {
+  // The thing that lets every attack telegraph without the fight turning into a
+  // shuffle. A hound announces its pounce and then comes with you; a crawler
+  // reaches two tiles. Backing off one square answers neither, so the reply is
+  // a roll, a block, or hitting it first - and at poise 2 a single strike
+  // breaks a hound, which is the thing a melee character wanted to do anyway.
+  const committed = [];
+  for (const spec of ENEMIES) {
+    for (const a of spec.attacks) {
+      const reaches = a.step > 0 || a.range > 1 ||
+                      ['arc5', 'line3', 'line6', 'reach2', 'sweepL', 'sweepR',
+                       'around', 'around2'].includes(a.pattern);
+      if (reaches) { committed.push(spec.key); break; }
+    }
+  }
+  const soft = ENEMIES.filter((s) => !committed.includes(s.key) && !s.boss)
+                      .filter((s) => !s.attacks.some((a) => a.kind === 'ranged'));
+  assert(soft.length <= 1,
+         `${soft.map((s) => s.key).join(', ')} can all be beaten by stepping backwards`);
+
+  // The two fast ones specifically: a step back must not be an answer.
+  const hound = ENEMY_BY_KEY.hound.attacks[0];
+  assert(hound.step >= 1, 'the hound no longer commits to its pounce');
+  assert(ENEMY_BY_KEY.crawler.attacks[0].range >= 2, 'the crawler lost its reach');
+  assert(SKILL_BY_KEY.strike.impact >= ENEMY_BY_KEY.hound.poise,
+         'a single strike no longer interrupts a hound, so melee has no answer to one');
+  return `${committed.length} species commit; a strike still breaks a hound`;
 });
 
 check('the tiles shown during a wind-up are the tiles that get hit', () => {
@@ -584,26 +612,23 @@ check('sustained aggression exhausts an enemy', () => {
   return 'expensive attacks price themselves out of the fight';
 });
 
-check('a silent attacker is rate-limited by its own recovery', () => {
-  // The other half of the bargain. A cheap fast attacker is NOT bounded by
-  // stamina - it regenerates faster than it spends - so the only thing holding
-  // its damage down is that it has to recover between blows. That makes this
-  // the load-bearing guarantee for every untelegraphed attack in the game.
-  //
-  // It is also a direct regression test for a scheduler bug: enemies used to
-  // gain energy while winding up and recovering, so a hound banked its entire
-  // idle time and spent it in a burst afterwards - three tiles of movement in
-  // one turn, which made disengaging impossible and its chip damage
-  // unavoidable. It looked exactly like the bestiary being over-tuned.
+check('nothing lands blows faster than its own recovery allows', () => {
+  // This started life guarding untelegraphed attacks and is now pointed at the
+  // whole roster, which is where it always belonged. It is a regression test
+  // for a scheduler bug: enemies used to gain energy while winding up and
+  // recovering, so a hound banked its entire idle time and spent it in a burst
+  // afterwards - three tiles of movement in a single turn, which made
+  // disengaging arithmetically impossible. It presented as the bestiary being
+  // over-tuned and accounted for a quarter of all recorded deaths.
+  const TURNS = 160;
   const rows = [];
   for (const spec of ENEMIES) {
-    const silent = spec.attacks.filter((a) => a.windup === 0 && a.kind !== 'ranged');
-    if (!silent.length) continue;
+    const melee = spec.attacks.filter((a) => a.kind !== 'ranged');
+    if (!melee.length) continue;
     const { g, e } = arena(`rate:${spec.key}`, spec.key, 1);
     e.stamina = e.staminaMax;
 
-    const TURNS = 200;
-    let blows = 0, hops = 0, prev = e.state;
+    let blows = 0, prev = e.state, hops = 0;
     observe(g, e, TURNS, () => {
       const bx = e.x, by = e.y;
       if (prev !== STATE.RECOVER && e.state === STATE.RECOVER) blows++;
@@ -612,20 +637,25 @@ check('a silent attacker is rate-limited by its own recovery', () => {
       return false;
     });
 
-    const best = Math.min(...silent.map((a) => a.recovery));
-    const ceiling = TURNS / (best + 1);
-    assert(blows <= ceiling + 1,
-           `${spec.key} landed ${blows} silent blows in ${TURNS} turns, above its own ` +
-           `recovery ceiling of ${ceiling.toFixed(0)} - it is banking turns somewhere`);
-    const dps = (blows * Math.max(...silent.map((a) => a.damage))) / TURNS;
-    assert(dps <= 1,
-           `${spec.key} chips ${dps.toFixed(2)} damage a turn with no telegraph to read`);
-    rows.push(`${spec.key} ${dps.toFixed(2)}/turn`);
+    // The cheapest full cycle it could possibly run: wind up, land, recover.
+    const fastest = Math.min(...melee.map((a) => a.windup + a.recovery));
+    const ceiling = TURNS / Math.max(1, fastest);
+    assert(blows <= ceiling + 2,
+           `${spec.key} landed ${blows} blows in ${TURNS} turns, past its own ` +
+           `ceiling of ${ceiling.toFixed(0)} - it is banking turns somewhere`);
+
+    // And nothing may cross more ground in one turn than its speed buys, plus
+    // the one tile a stepping attack is allowed to carry it.
+    const step = Math.max(...melee.map((a) => a.step ?? 0));
+    assert(hops <= Math.ceil(spec.speed / 12) + step + 1,
+           `${spec.key} moved ${hops} tiles in a single turn at speed ${spec.speed}`);
+    rows.push(`${spec.key} ${blows}`);
   }
-  assert(rows.length >= 3, 'expected several silent attackers to check');
-  return rows.join(', ');
+  assert(rows.length >= 8, 'expected most of the roster to be checked');
+  return `${rows.length} species, none banking turns`;
 });
 
+// ===========================================================================
 console.log('\n--- equipment --------------------------------------------------');
 
 check('a weapon is a set of verbs, and the off hand only gets the first', () => {
