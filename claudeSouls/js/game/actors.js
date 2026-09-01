@@ -45,6 +45,7 @@ export class Player {
 
     // Equipment, and the backpack it comes out of.
     this.equip = { main: null, off: null, armour: null };
+    this.blocking = null;             // {dx,dy} while the shield is up
     this.pack = [];
 
     // A cooldown slot for *every* skill in the game, not just the ones you can
@@ -87,8 +88,15 @@ export class Player {
     const out = [];
     for (const k of skillsFrom(this.item(SLOT.MAIN), SLOT.MAIN)) out.push(k);
     for (const k of skillsFrom(this.item(SLOT.OFF), SLOT.OFF)) out.push(k);
+    if (this.shield) out.push('block');
     for (const s of SKILLS) if (s.always && !out.includes(s.key)) out.push(s.key);
     return out;
+  }
+
+  /** The shield in your off hand, if that is what is in it. */
+  get shield() {
+    const it = this.item(SLOT.OFF);
+    return it?.kind === 'shield' ? it : null;
   }
 
   hasSkill(key) { return this.activeSkills().includes(key); }
@@ -173,8 +181,14 @@ export class Player {
    * so a defensive reaction is always correctly timed, so charging for the
    * *use* of a block cannot make it a real decision. Charging for *having the
    * option* can. You pay this whether or not the shield ever comes up.
+   *
+   * It scales with the shield's weight rather than being flat, because a flat
+   * point made the buckler a straight loss: you gave up the off-hand weapon's
+   * skill AND paid the tax, for one direction of cover. A buckler now costs you
+   * only its weight, which is the promise its description makes - you can still
+   * roll. The tower shield keeps the tax.
    */
-  get actionSurcharge() { return this.item(SLOT.OFF)?.kind === 'shield' ? 1 : 0; }
+  get actionSurcharge() { return Math.floor((this.shield?.weight ?? 0) / 6); }
 
   /** What a skill actually costs, with everything you are carrying. */
   costOf(key) {

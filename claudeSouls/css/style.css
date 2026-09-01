@@ -189,6 +189,7 @@ body { overflow: hidden; }
                margin-right: 9px; overflow: visible; }
 .skill .ic-hit  { fill: var(--blood); }
 .skill .ic-step { fill: var(--cool); opacity: .55; }
+.skill .ic-guard{ fill: var(--good); opacity: .8; }
 .skill .ic-me   { fill: var(--fg); opacity: .9; }
 .skill .cost { position: absolute; bottom: 2px; right: 6px; font-size: 10px; color: var(--good); }
 .skill .cd   { position: absolute; top: 2px; right: 6px; font-size: 11px; color: var(--ember); }

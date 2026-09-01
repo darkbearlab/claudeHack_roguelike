@@ -15,7 +15,7 @@ import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
 import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT } from '../js/data/items.js';
-import { attackTiles, snapDir, PATTERNS, spriteRotation } from '../js/game/patterns.js';
+import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
@@ -288,11 +288,19 @@ check('a shield taxes every action, not just blocking', () => {
   const g = freshGame('shield', 'light');
   const p = g.player;
   const bare = p.costOf('strike');
+
+  // Scaled by the shield's weight, not flat. A flat point made the buckler a
+  // straight loss - you gave up the off-hand weapon's skill AND paid the tax
+  // for one direction of cover, and the bot duly died more with it than
+  // without. A buckler now costs only its weight; the tower shield pays.
   p.equipItem(SLOT.OFF, 'buckler');
-  assert(p.actionSurcharge === 1, 'a shield costs nothing to carry');
-  assert(p.costOf('strike') === bare + 1, 'the surcharge is not applied to attacks');
-  assert(p.costOf('roll') > SKILL_BY_KEY.roll.stamina, 'a shield does not make rolling dearer');
-  return `strike ${bare} -> ${p.costOf('strike')} with a buckler`;
+  assert(p.actionSurcharge === 0, 'a buckler taxes every swing, which makes it a trap');
+
+  p.equipItem(SLOT.OFF, 'tower');
+  assert(p.actionSurcharge >= 1, 'a tower shield is free to carry');
+  assert(p.costOf('strike') > bare, 'the surcharge is not applied to attacks');
+  assert(p.costOf('roll') > SKILL_BY_KEY.roll.stamina, 'a tower shield does not make rolling dearer');
+  return `strike ${bare} bare, ${p.costOf('strike')} behind a tower shield`;
 });
 
 check('walking is always free, however loaded you are', () => {
@@ -608,7 +616,12 @@ check('every weapon grants two real skills, and every skill has an owner', () =>
     assert(skillsFrom(it, SLOT.OFF).length === 1, `${it.key} grants the wrong number off-hand`);
   }
   for (const s of SKILLS) {
-    assert(s.always || owned.has(s.key), `${s.key} is defined but nothing grants it`);
+    if (s.always) continue;
+    if (s.needsShield) {
+      assert(ITEMS.some((i) => i.kind === 'shield'), `${s.key} needs a shield and there are none`);
+      continue;
+    }
+    assert(owned.has(s.key), `${s.key} is defined but nothing grants it`);
   }
   return `${ITEMS.filter((i) => i.kind === 'weapon').length} weapons`;
 });
@@ -659,6 +672,94 @@ check('armour carries the health and the damage reduction', () => {
 });
 
 // ===========================================================================
+check('a small shield covers one direction, a big one covers three', () => {
+  const N = { dx: 0, dy: -1 }, NE = { dx: 1, dy: -1 }, E = { dx: 1, dy: 0 }, S = { dx: 0, dy: 1 };
+  const small = ITEM_BY_KEY.buckler.block.arc;
+  const big = ITEM_BY_KEY.tower.block.arc;
+  assert(small === 1 && big === 3, 'the two shields no longer differ in coverage');
+
+  assert(blocksDirection(N, N, small), 'a buckler does not cover what it points at');
+  assert(!blocksDirection(N, NE, small), 'a buckler covers a neighbour it should not');
+  assert(blocksDirection(N, NE, big), 'a tower shield does not cover its neighbour');
+  assert(!blocksDirection(N, E, big), 'a tower shield covers a quarter turn away');
+
+  // Nothing covers everything - which is what stops any shield from being the
+  // answer to being surrounded.
+  for (const arc of [small, big]) {
+    const covered = DIRS.filter((d) => blocksDirection(N, d, arc)).length;
+    assert(covered === arc, `arc ${arc} actually covers ${covered} directions`);
+    assert(covered < 8, 'a shield covers every direction');
+  }
+  assert(!blocksDirection(N, S, big), 'a shield blocks something behind you');
+  return `buckler ${small}/8, tower ${big}/8`;
+});
+
+check('a blow you face is reduced; the same blow from behind is not', () => {
+  const mk = (facing) => {
+    const g = freshGame(`blk:${facing.dx},${facing.dy}`, 'light');
+    g.player.equipItem(SLOT.OFF, 'buckler');
+    g.player.blocking = { dx: 0, dy: -1 };     // shield up, facing north
+    const before = g.player.hp;
+    g.hurtPlayer(4, 'a test', { from: facing });
+    return before - g.player.hp;
+  };
+  const met = mk({ dx: 0, dy: -1 });
+  const behind = mk({ dx: 0, dy: 1 });
+  assert(met < behind, `blocked ${met} vs unblocked ${behind} - the shield did nothing`);
+  assert(behind === 4, `an unblocked hit took ${behind}, expected the full 4`);
+  return `${behind} from behind, ${met} into the shield`;
+});
+
+check('a shield that is not raised does nothing', () => {
+  const g = freshGame('blk:down', 'light');
+  g.player.equipItem(SLOT.OFF, 'buckler');
+  g.player.blocking = null;
+  const before = g.player.hp;
+  g.hurtPlayer(4, 'a test', { from: { dx: 0, dy: -1 } });
+  assert(before - g.player.hp === 4, 'a shield blocked without being raised');
+  return 'carrying is not blocking';
+});
+
+check('some attacks go straight through a shield, and they say so', () => {
+  // Flagged per attack rather than derived from geometry, for the same reason
+  // the wind-up is: a player has to be able to look it up, not infer it.
+  const charge = ENEMY_BY_KEY.minotaur.attacks.find((a) => a.name === 'charge');
+  assert(charge.unblockable, 'the charge is blockable again');
+
+  const g = freshGame('blk:unblockable', 'light');
+  g.player.equipItem(SLOT.OFF, 'tower');
+  g.player.blocking = { dx: 0, dy: -1 };
+  const before = g.player.hp;
+  g.hurtPlayer(4, 'a test', { from: { dx: 0, dy: -1 }, unblockable: true });
+  assert(before - g.player.hp === 4, 'an unblockable hit was blocked anyway');
+  return 'the charge runs you over';
+});
+
+check('block advances the turn, so rolling still wins where there is room', () => {
+  // The whole reason block is not simply better than rolling: rolling does not
+  // advance the turn and this does. Block is what you do with nowhere to go.
+  assert(SKILL_BY_KEY.block.advancesTurn === true, 'block became a free action');
+  assert(SKILL_BY_KEY.roll.advancesTurn === false, 'rolling started costing a turn');
+
+  const { g } = arena('blk:turn', 'husk', 4);
+  g.player.equipItem(SLOT.OFF, 'buckler');
+  const t0 = g.turn;
+  assert(g.useSkill('block', { dx: 1, dy: 0 }) === true, 'block did not report a spent turn');
+  assert(g.player.blocking, 'the shield did not go up');
+  g.worldTurn();
+  assert(g.turn === t0 + 1, 'block did not advance the turn');
+  assert(!g.player.blocking, 'the shield stayed up past the turn it was raised');
+  return 'up for one turn, and it costs the turn';
+});
+
+check('you cannot block bare-handed', () => {
+  const { g } = arena('blk:none', 'husk', 4);
+  g.player.equipItem(SLOT.OFF, 'dagger');
+  assert(!g.player.hasSkill('block'), 'a dagger grants a block');
+  assert(!g.useSkill('block', { dx: 1, dy: 0 }), 'blocked without a shield');
+  return 'no shield, no block';
+});
+
 // ===========================================================================
 console.log('\n--- projectiles -----------------------------------------------');
 
@@ -808,13 +909,18 @@ check('every skill can be used in every direction', () => {
   // reached by equipping whatever grants it, which also proves every weapon in
   // the table can actually be wielded.
   for (const s of SKILLS) {
-    const owner = s.always ? null : ITEMS.find((i) => i.primary === s.key || i.secondary === s.key);
-    assert(s.always || owner, `no weapon grants ${s.key}`);
+    const owner = s.always || s.needsShield
+      ? null : ITEMS.find((i) => i.primary === s.key || i.secondary === s.key);
+    assert(s.always || s.needsShield || owner, `no weapon grants ${s.key}`);
     for (const d of DIRS) {
       const { g } = arena(`skill:${s.key}:${d.key}`, 'husk', 2);
       if (owner) {
         g.player.equipItem(SLOT.MAIN, owner.key);
         assert(g.player.hasSkill(s.key), `${owner.key} in the main hand does not grant ${s.key}`);
+      }
+      if (s.needsShield) {
+        g.player.equipItem(SLOT.OFF, 'buckler');
+        assert(g.player.hasSkill(s.key), `a shield does not grant ${s.key}`);
       }
       g.player.stamina = g.player.staminaMax;
       g.player.skill(s.key).cd = 0;

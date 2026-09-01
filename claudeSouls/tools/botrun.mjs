@@ -41,6 +41,7 @@ import { DIRS, dist } from '../../engine/util.js';
 import { astar } from '../../engine/path.js';
 import { STATE } from '../js/game/actors.js';
 import { SKILL_BY_KEY } from '../js/data/skills.js';
+import { ITEM_BY_KEY } from '../js/data/items.js';
 import { T, isBonfire } from '../js/map/tiles.js';
 
 const store = new Map();
@@ -237,9 +238,18 @@ function act(game, rng) {
     if (out.rolls.length) return { kind: 'skill', key: 'roll', dir: out.rolls[0].d };
     if (out.steps.length) return { kind: 'move', dir: out.steps[0] };
 
-    // Cornered. Interrupting is now a calculation rather than a reflex - if the
-    // poise maths does not work we are going to eat the blow either way, so
-    // spend the turn on damage instead of on a stagger that will not happen.
+    // Cornered - which is exactly the case block exists for. Rolling does not
+    // advance the turn, so wherever there is room to move, moving is better;
+    // this is the branch where there is no room.
+    if (p.shield && p.hasSkill('block') && p.stamina >= p.costOf('block')) {
+      const threat = adjacentEnemies(game).find((a) => a.e.state === STATE.WINDUP)
+                  ?? adjacentEnemies(game)[0];
+      if (threat) return { kind: 'skill', key: 'block', dir: threat.d };
+    }
+
+    // Interrupting is a calculation rather than a reflex - if the poise maths
+    // does not work we are going to eat the blow either way, so spend the turn
+    // on damage instead of on a stagger that will not happen.
     const winding = adjacentEnemies(game).filter((a) => a.e.state === STATE.WINDUP);
     const stoppable = winding.find((a) => canInterrupt(p, a.e));
     if (stoppable && p.stamina >= SKILL_BY_KEY.strike.stamina) {
@@ -384,6 +394,10 @@ async function run(seed, maxTurns, vow) {
   const game = new Game(null);
   game.ui = new BotUI();
   game.newGame({ seed, name: 'Bot', vow });
+  if (useShield) {
+    const sh = game.player.pack.find((k) => ITEM_BY_KEY[k]?.kind === 'shield');
+    if (sh) game.equipFromPack('off', sh);
+  }
 
   const floorDeaths = new Map();
   const killers = new Map();
@@ -450,6 +464,9 @@ const report = argv.includes('--report');
 // --light / --heavy: run one vow only. The two are meant to be a trade, and a
 // mixed run averages the trade away just when you are trying to measure it.
 const onlyVow = argv.includes('--light') ? 'light' : argv.includes('--heavy') ? 'heavy' : null;
+// --shield: put the kit's shield on before the run, so a shield build can be
+// measured against a two-weapon one instead of guessed at.
+const useShield = argv.includes('--shield');
 const rest = argv.filter((a) => !a.startsWith('--'));
 const runs = Number(rest[0] ?? 10);
 const maxTurns = Number(rest[1] ?? 20000);

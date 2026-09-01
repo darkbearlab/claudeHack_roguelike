@@ -64,7 +64,11 @@ export function stepProjectiles(game) {
       // The player.
       if (nx === game.player.x && ny === game.player.y) {
         if (p.fromPlayer) continue;               // your own knife passes you
-        game.hurtPlayer(p.damage, 'an arrow');
+        // You block the arrow, not the archer - who may well be dead by now.
+        game.hurtPlayer(p.damage, 'an arrow', {
+          from: { dx: -Math.sign(p.dx), dy: -Math.sign(p.dy) },
+          unblockable: !!p.unblockable,
+        });
         dead = true;
         break;
       }

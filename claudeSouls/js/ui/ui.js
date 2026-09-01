@@ -129,20 +129,29 @@ export class UI {
       { kind: 'skill', key: offIsWeapon ? off.primary : null, label: 'Off' },
       { kind: 'slot', label: 'Magic' },
       { kind: 'slot', label: 'Item' },
-      { kind: 'slot', label: 'Block' },
+      { kind: 'skill', key: p?.shield ? 'block' : null, label: 'Block' },
       { kind: 'skill', key: 'roll', label: 'Roll' },
       { kind: 'action' },
       { kind: 'pack' },
     ];
   }
 
-  /** A cheap signature, so the bar is rebuilt only when it actually changed. */
+  /**
+   * A cheap signature, so the bar is rebuilt only when it actually changed.
+   *
+   * The shield's arc is in here even though it does not change which buttons
+   * exist, because it changes what one of them is *drawn as* - swapping a
+   * buckler for a tower shield left the block button still showing a
+   * one-direction guard.
+   */
   layoutSignature() {
-    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|');
+    const arc = this.game.player?.shield?.block?.arc ?? 0;
+    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|') + `#${arc}`;
   }
 
   buildSkillBar() {
     const bar = this.el.skills;
+    const p = this.game.player;
     bar.innerHTML = '';
     this.el.action = null;
 
@@ -153,7 +162,7 @@ export class UI {
         b.className = 'skill';
         b.dataset.skill = cell.key;
         b.title = def.hint ?? '';
-        b.innerHTML = `<span class="num">${i + 1}</span>${skillIcon(def)}` +
+        b.innerHTML = `<span class="num">${i + 1}</span>${skillIcon(def, p?.shield?.block?.arc ?? 1)}` +
                       `<span class="nm">${escapeHtml(def.name)}</span>` +
                       `<span class="cost"></span><span class="cd"></span>`;
         b.addEventListener('pointerdown', (ev) => {
@@ -769,10 +778,18 @@ function normaliseKey(ev) {
  * against, not drawn by hand, so an icon cannot quietly start lying about what
  * its skill does.
  */
-function skillIcon(def) {
-  const hit = [], step = [];
+function skillIcon(def, arc = 1) {
+  const hit = [], step = [], guard = [];
 
-  if (def.move) {
+  if (def.defend) {
+    // Not an attack, so it is not drawn like one: the shield's arc, in the
+    // defensive colour, so a buckler and a tower shield are visibly different
+    // buttons rather than the same word.
+    const ring = [[0, -1], [1, -1], [-1, -1], [1, 0], [-1, 0]];
+    for (let i = 0; i < Math.min(arc, ring.length); i++) {
+      guard.push({ x: ring[i][0], y: ring[i][1] });
+    }
+  } else if (def.move) {
     // Roll: pure movement, no tiles struck.
     for (let i = 1; i <= (def.dash ?? 1); i++) step.push({ x: 0, y: -i });
   } else if (def.ranged) {
@@ -785,7 +802,7 @@ function skillIcon(def) {
     for (const t of attackTiles(0, -reach, 0, -1, def.pattern ?? 'front')) hit.push(t);
   }
 
-  const all = [{ x: 0, y: 0 }, ...hit, ...step];
+  const all = [{ x: 0, y: 0 }, ...hit, ...step, ...guard];
   const minX = Math.min(...all.map((c) => c.x)), maxX = Math.max(...all.map((c) => c.x));
   const minY = Math.min(...all.map((c) => c.y)), maxY = Math.max(...all.map((c) => c.y));
   const w = maxX - minX + 1, h = maxY - minY + 1;
@@ -797,6 +814,7 @@ function skillIcon(def) {
     (c.fade ? ` opacity="${(1.05 - c.fade * 0.55).toFixed(2)}"` : '') + '/>';
 
   return `<svg class="ico" viewBox="0 0 ${w * S} ${h * S}" width="${w * S}" height="${h * S}" aria-hidden="true">` +
+    guard.map((c) => cell(c, 'ic-guard')).join('') +
     step.map((c) => cell(c, 'ic-step')).join('') +
     hit.map((c) => cell(c, 'ic-hit')).join('') +
     cell({ x: 0, y: 0 }, 'ic-me') +

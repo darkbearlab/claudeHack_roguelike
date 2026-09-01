@@ -44,6 +44,26 @@ export const SKILLS = [
     always: true,
   },
 
+  {
+    key: 'block',
+    name: 'Block',
+    hint: 'raise the shield the way you drag; it holds until your next turn',
+    // Cheap on purpose. The price of a block is not paid here - it is paid
+    // every turn you carry the shield at all (see Player.actionSurcharge),
+    // because enemies telegraph and so a defensive reaction is always correctly
+    // timed. Charging for the use could never make it a decision; charging for
+    // owning the option can.
+    //
+    // It advances the turn, which is what keeps it from dominating the roll:
+    // rolling does not, so wherever there is room to move, moving is better.
+    // Block is what you do when there is nowhere to go.
+    stamina: 2,
+    cooldown: 0,
+    advancesTurn: true,
+    defend: true,
+    needsShield: true,
+  },
+
   // ---- sword --------------------------------------------------------------
   {
     key: 'strike',

@@ -137,3 +137,25 @@ export function spriteRotation(dx, dy, sprite) {
 }
 
 export { DIRS };
+
+/** The eight directions in ring order, so "adjacent direction" means something. */
+const RING = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+
+const ringIndex = (dx, dy) =>
+  RING.findIndex(([x, y]) => x === Math.sign(dx) && y === Math.sign(dy));
+
+/**
+ * Does a shield facing `face` cover a blow arriving from `from`?
+ *
+ * `arc` is how many of the eight directions the shield covers: 1 is the one it
+ * points at, 3 adds the neighbour either side. Nothing covers all eight, which
+ * is what stops any shield from being the answer to being surrounded.
+ */
+export function blocksDirection(face, from, arc) {
+  const f = ringIndex(face.dx, face.dy);
+  const i = ringIndex(from.dx, from.dy);
+  if (f < 0 || i < 0) return false;
+  const spread = Math.max(0, Math.floor((arc - 1) / 2));
+  const gap = Math.min((i - f + 8) % 8, (f - i + 8) % 8);
+  return gap <= spread;
+}

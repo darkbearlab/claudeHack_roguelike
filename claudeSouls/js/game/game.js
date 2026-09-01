@@ -29,7 +29,7 @@ import { T, isBonfire, tileName } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor } from '../data/items.js';
-import { attackTiles, snapDir } from './patterns.js';
+import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
 import { populate, spawnBoss } from './populate.js';
@@ -212,6 +212,12 @@ export class Game {
       }
     }
 
+    // The shield comes down at the end of the turn it was raised. tick() runs at
+    // the *top* of worldTurn, before anything swings, so it is the wrong place
+    // to clear this - the block would be gone before the blow it was raised
+    // against ever landed.
+    this.player.blocking = null;
+
     this.level.removeDead();
     this.afterMove();
   }
@@ -228,10 +234,33 @@ export class Game {
   // damage
   // =========================================================================
 
-  hurtPlayer(amount, source) {
+  /**
+   * `opts.from` is the direction the blow arrives FROM, as seen by the player -
+   * so a blow you would face to block points that way. Whoever raises the blow
+   * works that out, because the honest answer differs by case:
+   *
+   *   melee       the reverse of the attacker's facing, NOT the direction to
+   *               its body. The horned one charges six tiles and ends up past
+   *               you; it still hit you from the side it came from.
+   *   radial      the direction to the attacker, since a ring has no facing and
+   *               the attacker is its centre.
+   *   projectile  the reverse of its own velocity - the archer may be dead by
+   *               the time the arrow lands, and you are blocking the arrow.
+   */
+  hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
-    if (p.armourReduce) dmg = Math.max(1, dmg - p.armourReduce);
+
+    const shield = p.shield;
+    if (shield && p.blocking && opts.from && !opts.unblockable &&
+        blocksDirection(p.blocking, opts.from, shield.block.arc)) {
+      dmg = Math.max(0, dmg - shield.block.reduce);
+      this.msg(dmg > 0
+        ? `You catch it on the ${shield.name}, but not all of it.`
+        : `You catch it square on the ${shield.name}.`, 'good');
+    }
+
+    if (p.armourReduce) dmg = Math.max(dmg > 0 ? 1 : 0, dmg - p.armourReduce);
     p.hp -= dmg;
     if (p.hp <= 0) this.die(source);
   }
@@ -417,6 +446,16 @@ export class Game {
 
     const cost = p.costOf(key);
     if (!p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+
+    if (def.defend) {
+      const shield = p.shield;
+      if (!shield) { this.msg('You have no shield.', 'warn'); return false; }
+      p.spend(cost);
+      p.face(dir.dx, dir.dy);
+      p.blocking = { dx: dir.dx, dy: dir.dy };
+      this.msg(`You raise the ${shield.name}.`);
+      return true;
+    }
 
     p.face(dir.dx, dir.dy);
 

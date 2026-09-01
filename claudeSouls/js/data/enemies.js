@@ -67,6 +67,7 @@ const atk = (o) => ({
   step: o.step ?? 0,                // tiles moved forward on resolve
   weight: o.weight ?? 1,            // how often it is picked among the options
   next: o.next ?? null,             // follow-up, begins immediately, no gap
+  unblockable: o.unblockable ?? false,   // a shield is no help against this
   projectile: o.projectile ?? null,
 });
 
@@ -179,7 +180,12 @@ export const ENEMIES = [
     attacks: [
       // Telegraphs a six-tile lane and then runs down it, hitting everything
       // in the way - including anything of its own that is standing there.
-      atk({ name: 'charge', windup: 2, recovery: 3, pattern: 'line6', range: 6, damage: 5, cost: 8, step: 6 }),
+      // Unblockable, and flagged rather than derived. A shield does nothing
+      // against something that ran you over - and which attacks ignore a shield
+      // is the sort of thing a player has to be able to look up, not infer from
+      // geometry. Same reasoning as the wind-up flag.
+      atk({ name: 'charge', windup: 2, recovery: 3, pattern: 'line6', range: 6, damage: 5, cost: 8, step: 6,
+            unblockable: true }),
       atk({ name: 'gore', windup: 1, recovery: 2, pattern: 'reach2', range: 2, damage: 3, cost: 5, weight: 2 }),
     ],
   }),

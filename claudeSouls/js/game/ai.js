@@ -19,7 +19,7 @@
 import { dist } from '../../../engine/util.js';
 import { astar } from '../../../engine/path.js';
 import { hasLOS } from '../../../engine/fov.js';
-import { attackTiles, snapDir } from './patterns.js';
+import { attackTiles, snapDir, RADIAL } from './patterns.js';
 import { STATE } from './actors.js';
 import { makeProjectile } from './projectile.js';
 import { T } from '../map/tiles.js';
@@ -37,6 +37,27 @@ import { T } from '../map/tiles.js';
  *
  * Returns true if the enemy is busy and may not act this turn.
  */
+/**
+ * Which way a blow arrives from, as the player would have to face to meet it.
+ *
+ * Two cases, and using the wrong one for either is visibly wrong in play:
+ *
+ *   normal   the reverse of the attacker's facing. NOT the direction to its
+ *            body - the horned one charges six tiles and finishes past you, and
+ *            it plainly hit you from the side it came from, not from behind.
+ *   radial   the direction to the attacker. A ring has no facing, but its
+ *            centre is unambiguous.
+ */
+function incomingDir(game, e, a) {
+  const p = game.player;
+  if (RADIAL.has(a.pattern)) {
+    const dx = e.x - p.x, dy = e.y - p.y;
+    return { dx: Math.sign(dx), dy: Math.sign(dy) };
+  }
+  const d = e.attackDir ?? { dx: 0, dy: 1 };
+  return { dx: -d.dx, dy: -d.dy };
+}
+
 export function tickEnemyState(game, e) {
   if (!e.alive) return true;
   e.regen();
@@ -242,7 +263,10 @@ function resolveAttack(game, e) {
     for (const t of tiles) {
       if (t.x === game.player.x && t.y === game.player.y) {
         game.msg(`The ${e.name}'s ${a.name} catches you!`, 'bad');
-        game.hurtPlayer(a.damage, `${e.name}'s ${a.name}`);
+        game.hurtPlayer(a.damage, `${e.name}'s ${a.name}`, {
+          from: incomingDir(game, e, a),
+          unblockable: !!a.unblockable,
+        });
         hitAnything = true;
       }
       const other = game.level.enemyAt(t.x, t.y);
