@@ -30,7 +30,6 @@ export class Player {
   constructor(name) {
     this.isPlayer = true;
     this.name = name || 'Ashen';
-    this.sprite = 'hero_fighter';
     this.glyph = '@';
     this.colour = '#ffffff';
 
@@ -78,6 +77,18 @@ export class Player {
   skill(key) { return this.skills.find((s) => s.key === key) ?? null; }
 
   item(slot) { return ITEM_BY_KEY[this.equip[slot]] ?? null; }
+
+  /**
+   * What you are drawn as - which is whatever you are wearing.
+   *
+   * This was a stored field set once during newGame, and that was the bug: the
+   * whole loadout system exists so you can change armour mid-run, and you kept
+   * the silhouette you started the run in. Every other armour-derived property
+   * on this class is already a getter (`heavyArmour`, `armourReduce`,
+   * `weight`), and the one that was not is the one that went stale. Derived
+   * cannot drift.
+   */
+  get sprite() { return this.item(SLOT.ARMOUR)?.sprite ?? 'hero_rags'; }
 
   /** Heavy armour is a property of what you are wearing, not of who you are. */
   get heavyArmour() { return !!this.item(SLOT.ARMOUR)?.heavy; }

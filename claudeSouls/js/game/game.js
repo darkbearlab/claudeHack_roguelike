@@ -71,10 +71,6 @@ export class Game {
     this.player.prepare('item', kit.item ?? null);
     this.player.prepare('magic', kit.magic ?? null);
     this.player.hp = this.player.hpMax;
-    // Ranger rather than rogue for the light kit: the rogue sprite is a dark
-    // hooded figure and effectively disappears against dark stone at phone tile
-    // sizes.
-    this.player.sprite = this.player.heavyArmour ? 'hero_fighter' : 'hero_ranger';
 
     this.turn = 0;
     this.startedAt = Date.now();

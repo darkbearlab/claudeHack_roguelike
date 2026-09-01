@@ -24,7 +24,7 @@ import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { TEXTURES, TEXTURE_KEYS } from '../js/data/textures.js';
 
 const store = new Map();
@@ -1774,6 +1774,36 @@ check('claudeSouls does not share a save key with claudeHack', () => {
 
 // ===========================================================================
 console.log('\n--- content ---------------------------------------------------');
+
+check('what you wear is what you are drawn as', () => {
+  // Pins the consequence, not the getter. The bug was that the sprite was
+  // chosen once during newGame from the starting kit, so a run that changed
+  // armour - the entire point of the loadout system - kept the silhouette it
+  // started in. A test on `get sprite` would have passed against a stored
+  // field set in the right place too; this one cannot.
+  const g = freshGame('sprite-seed');
+  const seen = new Set();
+  for (const a of ITEMS.filter((i) => i.kind === 'armour')) {
+    g.player.equip.armour = a.key;
+    assert(g.player.sprite === a.sprite,
+           `wearing ${a.name} draws ${g.player.sprite}, not ${a.sprite}`);
+    seen.add(g.player.sprite);
+  }
+  // and they must actually differ, or the getter is right and the art is not
+  assert(seen.size === 5, `5 armours share only ${seen.size} sprites`);
+  return `${seen.size} armours, ${seen.size} silhouettes`;
+});
+
+check('every sprite the game can ask for exists on disk', () => {
+  // The other half: the getter can be perfect and still name a file that was
+  // never exported, which fails silently as an invisible player.
+  const dir = new URL('../../assets/', import.meta.url);
+  const wanted = new Set(ITEMS.filter((i) => i.kind === 'armour').map((i) => i.sprite));
+  for (const spec of ENEMIES) if (spec.sprite) wanted.add(spec.sprite);
+  const missing = [...wanted].filter((n) => !existsSync(new URL(`${n}.png`, dir)));
+  assert(missing.length === 0, `no artwork for: ${missing.join(', ')}`);
+  return `${wanted.size} sprites, all present`;
+});
 
 check('every overlay closes by its own close button, not by position', () => {
   // Reported from play: after the help screen grew a texture picker, Close

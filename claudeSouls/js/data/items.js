@@ -63,6 +63,9 @@ const armour = (key, o) => ({
   // telegraphed blow, rather than ignore the small ones.
   reduce: o.reduce ?? 0,        // fraction of a blow turned aside
   regen: o.regen ?? 0,          // added to stamina recovery
+  // The artwork belongs to the armour, not to the character. See the `sprite`
+  // getter in actors.js for why this is stored here rather than on the player.
+  sprite: o.sprite,
   heavy: o.heavy ?? false,
   desc: o.desc,
 });
@@ -142,10 +145,12 @@ export const ITEMS = [
   }),
   // ---- armour -------------------------------------------------------------
   armour('leathers', {
+    sprite: 'hero_leathers',
     name: 'leathers', weight: 2, hp: 12, reduce: 0, heavy: false,
     desc: '打不起,但可以一直閃。',
   }),
   armour('mail', {
+    sprite: 'hero_mail',
     name: 'mail', weight: 12, hp: 16, reduce: 0.25, heavy: true,
     desc: '擋下四分之一的傷害——大招砍得少,小傷還是照吃。你得看得更遠、更早決定。',
   }),
@@ -154,14 +159,17 @@ export const ITEMS = [
   // simply worse: same rolls, same recovery, two less health. Unencumbered
   // recovery is the extreme end of the axis rather than the bottom of it.
   armour('rags', {
+    sprite: 'hero_rags',
     name: 'rags', weight: 0, hp: 10, reduce: 0, heavy: false, regen: 1,
     desc: '幾乎沒有防護,但精力回得比誰都快。',
   }),
   armour('brigandine', {
+    sprite: 'hero_brigandine',
     name: 'brigandine', weight: 6, hp: 14, reduce: 0.1, heavy: false,
     desc: '中間的選擇:多一點血、擋一成,還滾得動。',
   }),
   armour('plate', {
+    sprite: 'hero_plate',
     name: 'plate', weight: 22, hp: 18, reduce: 0.4, heavy: true,
     desc: '擋下四成的傷害。你幾乎不再是一個會移動的東西。',
   }),

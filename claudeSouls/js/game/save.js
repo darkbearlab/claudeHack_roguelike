@@ -49,10 +49,12 @@ export function saveGame(game) {
       player: {
         name: p.name, x: p.x, y: p.y, depth: p.depth, maxDepth: p.maxDepth,
         hp: p.hp, stamina: p.stamina, staminaMax: p.staminaMax,
-        facing: p.facing, sprite: p.sprite,
-        // hpMax and damage reduction are not stored: they are read off the
-        // armour, and storing a derived value is how a save and a rules change
-        // quietly start disagreeing.
+        facing: p.facing,
+        // hpMax, damage reduction and the sprite are not stored: they are read
+        // off the armour, and storing a derived value is how a save and a rules
+        // change quietly start disagreeing. The sprite joined this list the day
+        // it stopped being a field - an old save carrying `sprite` is simply
+        // ignored on load, which is the correct outcome for both.
         equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
         unbanked: p.unbanked, souls: p.souls, ranks: p.ranks, affix: p.affix,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
@@ -110,7 +112,7 @@ export function loadGame(game) {
     hp: d.player.hp,
     stamina: d.player.stamina, staminaMax: d.player.staminaMax,
     facing: d.player.facing,
-    sprite: d.player.sprite, skills: d.player.skills,
+    skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
     unbanked: d.player.unbanked ?? [],

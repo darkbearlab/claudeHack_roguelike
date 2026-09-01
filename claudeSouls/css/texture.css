@@ -42,7 +42,7 @@
  * takes the flatness off a large panel without leaving a pattern the eye can
  * lock onto and start reading. */
 body.tex-grain {
-  --tex: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.35'/></svg>");
+  --tex: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.5'/></svg>");
   --tex-size: 140px 140px;
   --tex-blend: soft-light;
 }
@@ -52,8 +52,8 @@ body.tex-grain {
  * saturated. */
 body.tex-weave {
   --tex:
-    repeating-linear-gradient(90deg, rgba(var(--tex-light), .015) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(0deg,  rgba(var(--tex-dark), .17)  0 1px, transparent 1px 6px);
+    repeating-linear-gradient(90deg, rgba(var(--tex-light), .022) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(0deg,  rgba(var(--tex-dark), .25)  0 1px, transparent 1px 6px);
 }
 
 /* ---------------------------------------------------------------- slate
@@ -61,9 +61,9 @@ body.tex-weave {
  * beside a square map, where a fine pattern would shimmer. */
 body.tex-slate {
   --tex:
-    radial-gradient(ellipse 60% 40% at 20% 30%, rgba(var(--tex-light), .022), transparent 70%),
-    radial-gradient(ellipse 50% 60% at 80% 70%, rgba(var(--tex-dark), .24), transparent 70%),
-    radial-gradient(ellipse 70% 50% at 60% 10%, rgba(var(--tex-dark), .15), transparent 70%);
+    radial-gradient(ellipse 60% 40% at 20% 30%, rgba(var(--tex-light), .032), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 80% 70%, rgba(var(--tex-dark), .35), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 60% 10%, rgba(var(--tex-dark), .22), transparent 70%);
   --tex-size: 320px 320px;
 }
 
@@ -72,9 +72,9 @@ body.tex-slate {
  * therefore the one most likely to be too much. */
 body.tex-carved {
   --tex: repeating-linear-gradient(135deg,
-    rgba(var(--tex-light), .017) 0 1px,
+    rgba(var(--tex-light), .025) 0 1px,
     transparent 1px 4px,
-    rgba(var(--tex-dark), .14) 4px 5px,
+    rgba(var(--tex-dark), .20) 4px 5px,
     transparent 5px 9px);
 }
 
@@ -83,8 +83,8 @@ body.tex-carved {
  * the period. Closest to a stone floor seen in the dark. */
 body.tex-ash {
   --tex:
-    radial-gradient(rgba(var(--tex-light), .035) .5px, transparent .6px),
-    radial-gradient(rgba(var(--tex-dark), .32) .5px, transparent .6px);
+    radial-gradient(rgba(var(--tex-light), .050) .5px, transparent .6px),
+    radial-gradient(rgba(var(--tex-dark), .46) .5px, transparent .6px);
   --tex-size: 13px 13px, 21px 21px;
 }
 

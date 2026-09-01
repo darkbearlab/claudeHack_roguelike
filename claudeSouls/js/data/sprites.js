@@ -30,6 +30,13 @@ export const DEFAULT_ART_FACING = 'S';
 export const ART_FACING = {
   hero_ranger: 'S',
   hero_fighter: 'S',
+  // The five armour states. Checked on the contact sheet the same way as the
+  // rest: each one shows a face and a chest, so each one is a front view.
+  hero_rags: 'S',
+  hero_leathers: 'S',
+  hero_brigandine: 'S',
+  hero_mail: 'S',
+  hero_plate: 'S',
   mon_jackal: 'S',
   mon_spider: 'S',    // radially symmetric; any value is equally correct
   mon_zombie: 'S',
