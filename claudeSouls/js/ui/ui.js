@@ -30,6 +30,7 @@ import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire } from '../map/tiles.js';
+import { SLOT, ITEM_BY_KEY, slotsFor } from '../data/items.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -102,48 +103,106 @@ export class UI {
   // the aiming gesture
   // =========================================================================
 
+  /**
+   * The nine buttons, in a fixed 3x3.
+   *
+   * Fixed is the point. Which skills you have changes every time you swap a
+   * weapon, and a grid that reflows under your thumb every time you draw a
+   * different sword is worse than one with a greyed-out hole in it. So the
+   * layout is positional and empty slots stay where they are:
+   *
+   *     main-primary   main-secondary   off-primary
+   *     magic          item             block
+   *     roll           interact         pack
+   *
+   * Roll sits bottom-left, nearest the thumb coming across from the d-pad,
+   * because it is the button you press when something has gone wrong.
+   */
+  buttonLayout() {
+    const p = this.game.player;
+    const main = p?.item(SLOT.MAIN) ?? null;
+    const off = p?.item(SLOT.OFF) ?? null;
+    const offIsWeapon = off && off.kind === 'weapon';
+    return [
+      { kind: 'skill', key: main ? main.primary : null, label: 'Main' },
+      { kind: 'skill', key: main ? main.secondary : null, label: 'Main 2' },
+      { kind: 'skill', key: offIsWeapon ? off.primary : null, label: 'Off' },
+      { kind: 'slot', label: 'Magic' },
+      { kind: 'slot', label: 'Item' },
+      { kind: 'slot', label: 'Block' },
+      { kind: 'skill', key: 'roll', label: 'Roll' },
+      { kind: 'action' },
+      { kind: 'pack' },
+    ];
+  }
+
+  /** A cheap signature, so the bar is rebuilt only when it actually changed. */
+  layoutSignature() {
+    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|');
+  }
+
   buildSkillBar() {
     const bar = this.el.skills;
-    bar.innerHTML = SKILLS.map((s, i) => `
-      <button class="skill" data-skill="${s.key}" title="${escapeHtml(s.hint)}">
-        <span class="num">${i + 1}</span>
-        ${skillIcon(s)}
-        <span class="nm">${escapeHtml(s.name)}</span>
-        <span class="cost"></span>
-        <span class="cd"></span>
-      </button>`).join('');
+    bar.innerHTML = '';
+    this.el.action = null;
 
-    for (const b of bar.querySelectorAll('.skill[data-skill]')) {
-      b.addEventListener('pointerdown', (ev) => {
-        ev.preventDefault();
-        this.startGesture(ev, b.dataset.skill, b);
-      });
-    }
-
-    // The context button takes the sixth cell of the skill grid - five skills
-    // leave one empty, and this is the only other thing you press rather than
-    // drag. It is styled apart from the skills on purpose: skills are a drag
-    // gesture, this is a tap.
-    const act = document.createElement('button');
-    act.id = 'btn-action';
-    act.className = 'skill action';
-    act.innerHTML = '<span class="act-name"></span><span class="act-sub"></span>';
-    act.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const a = this.contextAction();
-      if (!a.cmd) return;
-      if (a.kind === 'cancel') {
-        // Two different aims can be live: the touch one this class owns, and
-        // the keyboard one the game owns. Cancel has to put both down, and the
-        // game only knows the word 'Escape'.
-        this.clearAim();
-        this.feed('Escape');
+    this.buttonLayout().forEach((cell, i) => {
+      if (cell.kind === 'skill' && cell.key) {
+        const def = SKILL_BY_KEY[cell.key];
+        const b = document.createElement('button');
+        b.className = 'skill';
+        b.dataset.skill = cell.key;
+        b.title = def.hint ?? '';
+        b.innerHTML = `<span class="num">${i + 1}</span>${skillIcon(def)}` +
+                      `<span class="nm">${escapeHtml(def.name)}</span>` +
+                      `<span class="cost"></span><span class="cd"></span>`;
+        b.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          this.startGesture(ev, cell.key, b);
+        });
+        bar.appendChild(b);
         return;
       }
-      this.feed(a.cmd);
+
+      if (cell.kind === 'action') {
+        const act = document.createElement('button');
+        act.id = 'btn-action';
+        act.className = 'skill action';
+        act.innerHTML = '<span class="act-name"></span><span class="act-sub"></span>';
+        act.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const a = this.contextAction();
+          if (!a.cmd) return;
+          if (a.kind === 'cancel') {
+            this.clearAim();
+            this.feed('Escape');
+            return;
+          }
+          this.feed(a.cmd);
+        });
+        bar.appendChild(act);
+        this.el.action = act;
+        return;
+      }
+
+      if (cell.kind === 'pack') {
+        const b = document.createElement('button');
+        b.className = 'skill action is-pack';
+        b.innerHTML = '<span class="act-name">Pack</span><span class="act-sub"></span>';
+        b.addEventListener('click', (ev) => { ev.preventDefault(); this.showPack(); });
+        bar.appendChild(b);
+        return;
+      }
+
+      const b = document.createElement('button');
+      b.className = 'skill empty';
+      b.disabled = true;
+      b.innerHTML = `<span class="num">${i + 1}</span>` +
+                    `<span class="nm">${escapeHtml(cell.label ?? '')}</span>`;
+      bar.appendChild(b);
     });
-    bar.appendChild(act);
-    this.el.action = act;
+
+    this.builtSignature = this.layoutSignature();
   }
 
   /**
@@ -512,6 +571,8 @@ export class UI {
   renderSkillBar() {
     const p = this.game.player;
     if (!p) return;
+    // Swapping a weapon changes which buttons exist, and the bar is built once.
+    if (this.layoutSignature() !== this.builtSignature) this.buildSkillBar();
     for (const b of this.el.skills.querySelectorAll('.skill[data-skill]')) {
       const key = b.dataset.skill;
       const def = SKILL_BY_KEY[key];
@@ -541,6 +602,67 @@ export class UI {
   }
 
   sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+
+  // =========================================================================
+  // the pack
+  // =========================================================================
+
+  /**
+   * Looking is free; changing something costs a turn.
+   *
+   * That split matters. If opening the pack cost a turn the game would be
+   * punishing you for checking what you are carrying, which teaches people to
+   * memorise a menu instead of reading it. The turn is charged on the swap,
+   * which is the decision worth pricing.
+   */
+  showPack() {
+    if (!this.game.running || this.game.busy) return;
+    const p = this.game.player;
+    const ov = this.el.overlay;
+    ov.hidden = false;
+
+    const worn = (slot, label) => {
+      const it = p.item(slot);
+      return `<tr><td class="key">${label}</td><td>${it ? escapeHtml(it.name) : '<i>空</i>'}</td>` +
+             `<td>${it ? `<button class="btn" data-off="${slot}">取下</button>` : ''}</td></tr>`;
+    };
+
+    const rows = p.pack.length
+      ? p.pack.map((k, i) => {
+          const it = ITEM_BY_KEY[k];
+          if (!it) return '';
+          const where = slotsFor(it).map((sl) =>
+            `<button class="btn" data-on="${sl}" data-item="${escapeHtml(k)}">` +
+            `${sl === SLOT.ARMOUR ? '穿上' : sl === SLOT.MAIN ? '主手' : '副手'}</button>`).join(' ');
+          return `<tr><td class="key">${i + 1}</td><td>${escapeHtml(it.name)}<br>` +
+                 `<span class="dim">${escapeHtml(it.desc ?? '')}</span></td><td>${where}</td></tr>`;
+        }).join('')
+      : '<tr><td colspan="3"><i>背包是空的。</i></td></tr>';
+
+    ov.innerHTML = `<h2>背包</h2>
+      <p>看是免費的。<b>換裝會推進一個回合</b>——所以帶第二把武器是計畫,不是選單。</p>
+      <table>${worn(SLOT.MAIN, '主手')}${worn(SLOT.OFF, '副手')}${worn(SLOT.ARMOUR, '防具')}</table>
+      <h2>攜帶</h2>
+      <table>${rows}</table>
+      <div class="foot"><button class="btn" data-act="close">關閉 (Esc)</button></div>`;
+
+    const close = () => this.closeOverlay();
+    const swap = (slot, key) => {
+      if (!this.game.equipFromPack(slot, key)) { this.showPack(); return; }
+      close();
+      this.feed('.');                 // the swap is what spends the turn
+    };
+    ov.querySelector('[data-act="close"]').addEventListener('click', close);
+    for (const b of ov.querySelectorAll('[data-on]')) {
+      b.addEventListener('click', () => swap(b.dataset.on, b.dataset.item));
+    }
+    for (const b of ov.querySelectorAll('[data-off]')) {
+      b.addEventListener('click', () => swap(b.dataset.off, null));
+    }
+    ov.scrollTop = 0;
+    this.pending = { onKey: () => close() };
+  }
 
   // =========================================================================
   // overlays

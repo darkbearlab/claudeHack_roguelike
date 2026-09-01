@@ -28,6 +28,7 @@ import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, tileName } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
+import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor } from '../data/items.js';
 import { attackTiles, snapDir } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
@@ -54,20 +55,21 @@ export class Game {
     this.rng = new RNG(this.seed);
     this.player = new Player(name);
     this.vow = vow ?? 'light';
-    if (this.vow === 'heavy') {
-      // The heavy vow is the design's light/heavy roll trade made into a
-      // character choice, since there is no loot to carry it. More health and
-      // damage reduction, but each roll costs almost twice as much - so you
-      // dodge half as often and have to read further ahead.
-      this.player.heavyArmour = true;
-      this.player.hpMax = 16;
-      this.player.hp = 16;
-      this.player.sprite = 'hero_fighter';
-    } else {
-      // Ranger rather than rogue: the rogue sprite is a dark hooded figure and
-      // effectively disappears against dark stone at phone tile sizes.
-      this.player.sprite = 'hero_ranger';
-    }
+
+    // The vow is now just the kit you start in. Everything it used to set
+    // directly - health, damage reduction, how expensive a roll is - is a
+    // property of the armour, so it is something you can change later rather
+    // than a decision welded on at the character screen.
+    const kit = STARTING_KIT[this.vow] ?? STARTING_KIT.light;
+    this.player.equipItem(SLOT.ARMOUR, kit.armour);
+    this.player.equipItem(SLOT.MAIN, kit.main);
+    this.player.equipItem(SLOT.OFF, kit.off);
+    this.player.pack = [...kit.pack];
+    this.player.hp = this.player.hpMax;
+    // Ranger rather than rogue for the light kit: the rogue sprite is a dark
+    // hooded figure and effectively disappears against dark stone at phone tile
+    // sizes.
+    this.player.sprite = this.player.heavyArmour ? 'hero_fighter' : 'hero_ranger';
 
     this.turn = 0;
     this.startedAt = Date.now();
@@ -229,7 +231,7 @@ export class Game {
   hurtPlayer(amount, source) {
     const p = this.player;
     let dmg = amount;
-    if (p.heavyArmour) dmg = Math.max(1, dmg - 1);
+    if (p.armourReduce) dmg = Math.max(1, dmg - p.armourReduce);
     p.hp -= dmg;
     if (p.hp <= 0) this.die(source);
   }
@@ -258,7 +260,8 @@ export class Game {
       if (key === 'Escape') { this.aiming = null; this.msg('Never mind.'); return false; }
       const d = this.dirFromKey(key);
       if (d) { const s = this.aiming; this.aiming = null; return this.useSkill(s, d); }
-      if (SKILL_KEYS[key]) { this.selectSkill(SKILL_KEYS[key]); return false; }
+      { const k = /^[1-9]$/.test(key) ? skillForDigit(this, +key) : null;
+        if (k) { this.selectSkill(k); return false; } }
       this.msg('Pick a direction, or Escape.');
       return false;
     }
@@ -269,7 +272,8 @@ export class Game {
     const roll = this.rollDirFromKey(key);
     if (roll) return this.useSkill('roll', roll);
 
-    if (SKILL_KEYS[key]) { this.selectSkill(SKILL_KEYS[key]); return false; }
+    { const k = /^[1-9]$/.test(key) ? skillForDigit(this, +key) : null;
+      if (k) { this.selectSkill(k); return false; } }
 
     switch (key) {
       case '.': case ' ': return this.wait();
@@ -348,6 +352,40 @@ export class Game {
 
   wait() { return true; }
 
+  // ------------------------------------------------------------- equipment
+
+  /**
+   * Put something on, or take it off. **This advances the turn.**
+   *
+   * That is the rule the whole loadout system rests on. If swapping were free
+   * the eight buttons would really be "every skill on every weapon you own",
+   * because you would simply switch to whichever shape suited the tile you were
+   * standing on. Costing a turn makes carrying a second weapon a plan rather
+   * than a menu.
+   *
+   * Looking in the pack is free; only changing something costs you.
+   */
+  equipFromPack(slot, key) {
+    const p = this.player;
+    if (key !== null && !p.pack.includes(key)) { this.msg('You are not carrying that.', 'warn'); return false; }
+    if (key !== null && !slotsFor(ITEM_BY_KEY[key]).includes(slot)) {
+      this.msg(`That does not go in your ${slot === SLOT.ARMOUR ? 'armour slot' : slot + ' hand'}.`, 'warn');
+      return false;
+    }
+    if (key !== null && p.equip[slot] === key) return false;
+
+    const res = p.equipItem(slot, key);
+    if (!res.ok) { this.msg(res.why, 'warn'); return false; }
+
+    if (key !== null) p.pack = p.pack.filter((k) => k !== key);
+    for (const k of res.displaced) p.pack.push(k);
+    p.hp = Math.min(p.hp, p.hpMax);
+
+    const it = key ? ITEM_BY_KEY[key] : null;
+    this.msg(it ? `You ready the ${it.name}.` : `You put it away.`);
+    return true;               // <- advances the turn
+  }
+
   // -------------------------------------------------------------- skills
 
   useSkill(key, dir) {
@@ -355,6 +393,10 @@ export class Game {
     const def = SKILL_BY_KEY[key];
     const slot = p.skill(key);
     if (!def || !slot) return false;
+    // You can only use what you are holding. Checked here rather than only in
+    // the UI, because the keyboard, the bot and a stale save all reach this
+    // function without going past a button.
+    if (!p.hasSkill(key)) { this.msg(`You are not holding anything that does that.`, 'warn'); return false; }
     if (slot.cd > 0) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
 
     const cost = key === 'roll' ? p.rollCost() : def.stamina;
@@ -533,5 +575,15 @@ export class Game {
   }
 }
 
-const SKILL_KEYS = { '1': 'strike', '2': 'sweep', '3': 'lunge', '4': 'hurl', '5': 'roll' };
-export { SKILL_KEYS, DUNGEON_DEPTH };
+// Number keys map to *button positions*, not to fixed skills - the loadout
+// decides what sits in each slot, and the keyboard has to agree with the grid.
+function skillForDigit(game, d) {
+  const p = game.player;
+  if (!p) return null;
+  const main = p.item(SLOT.MAIN), off = p.item(SLOT.OFF);
+  const offIsWeapon = off && off.kind === 'weapon';
+  const slots = [main?.primary, main?.secondary, offIsWeapon ? off.primary : null,
+                 null, null, null, 'roll'];
+  return slots[d - 1] ?? null;
+}
+export { skillForDigit, DUNGEON_DEPTH };

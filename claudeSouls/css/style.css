@@ -205,6 +205,12 @@ body { overflow: hidden; }
 .skill.action.is-descend .act-name { color: var(--cool); }
 .skill.action.is-cancel  { border-color: #6a3a34; background: #2a1a18; }
 .skill.action.is-cancel .act-name { color: var(--blood); }
+.skill.action.is-pack { border-color: #4a4230; background: #1e1c17; }
+.skill.action.is-pack .act-name { color: var(--dim); }
+/* An empty slot is a hole with a name on it, so the grid never reflows when a
+   weapon changes and the player can see what they are missing. */
+.skill.empty { opacity: .3; border-style: dashed; }
+.skill.empty .nm { padding-left: 9px; }
 .skill.action.idle { opacity: .4; }
 .skill.action.idle .act-name { color: var(--dim); }
 .skill.action:disabled { cursor: default; }
@@ -249,12 +255,18 @@ body { overflow: hidden; }
   @media (max-width: 400px) {
     .skill .nm { display: none; }
     .skill .ico { margin: 0 auto; }
+    /* An empty slot has no icon competing for the width, and its whole job is
+       to say what is missing - so it keeps its label. */
+    .skill.empty .nm { display: block; font-size: 10px; padding-left: 9px; }
   }
 }
 
 /* --------------------------------------------------------------- overlays */
 #overlay {
-  position: absolute; inset: 0; background: rgba(7,8,10,.96);
+  /* Above the HUD. The gauges overlay the map, and an overlay that a health bar
+     writes through is not an overlay - the pack screen had the pips printed
+     across the name of the weapon you were about to swap out. */
+  position: absolute; inset: 0; z-index: 10; background: rgba(7,8,10,.96);
   overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 12px; font-size: 13px; line-height: 1.6;
 }

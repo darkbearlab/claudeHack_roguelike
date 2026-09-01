@@ -11,7 +11,10 @@
 import { RNG } from '../../../engine/rng.js';
 import { Player } from './actors.js';
 
-const KEY = 'claudesouls.save.v1';
+// v2: the player carries equipment and a pack now, and health and damage
+// reduction are read off the armour rather than stored. A v1 save cannot be
+// upgraded into that, so it is left where it is and simply not read.
+const KEY = 'claudesouls.save.v2';
 const SETTINGS_KEY = 'claudesouls.settings.v1';
 
 function b64(u8) {
@@ -31,7 +34,7 @@ export function saveGame(game) {
   try {
     const p = game.player;
     const data = {
-      version: 1,
+      version: 2,
       seed: game.seed,
       vow: game.vow,
       turn: game.turn,
@@ -39,8 +42,12 @@ export function saveGame(game) {
       elapsed: (game.elapsedBefore ?? 0) + (Date.now() - game.startedAt),
       player: {
         name: p.name, x: p.x, y: p.y, depth: p.depth, maxDepth: p.maxDepth,
-        hp: p.hp, hpMax: p.hpMax, stamina: p.stamina, staminaMax: p.staminaMax,
-        heavyArmour: p.heavyArmour, facing: p.facing, sprite: p.sprite,
+        hp: p.hp, stamina: p.stamina, staminaMax: p.staminaMax,
+        facing: p.facing, sprite: p.sprite,
+        // hpMax and damage reduction are not stored: they are read off the
+        // armour, and storing a derived value is how a save and a rules change
+        // quietly start disagreeing.
+        equip: p.equip, pack: p.pack,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -93,13 +100,16 @@ export function loadGame(game) {
   const p = new Player(d.player.name);
   Object.assign(p, {
     x: d.player.x, y: d.player.y, depth: d.player.depth, maxDepth: d.player.maxDepth,
-    hp: d.player.hp, hpMax: d.player.hpMax,
+    hp: d.player.hp,
     stamina: d.player.stamina, staminaMax: d.player.staminaMax,
-    heavyArmour: d.player.heavyArmour, facing: d.player.facing,
+    facing: d.player.facing,
     sprite: d.player.sprite, skills: d.player.skills,
+    equip: { ...p.equip, ...(d.player.equip ?? {}) },
+    pack: d.player.pack ?? [],
     deaths: d.player.deaths, kills: d.player.kills, turns: d.player.turns,
     bonfire: d.player.bonfire,
   });
+  p.hp = Math.min(p.hp, p.hpMax);
   game.player = p;
 
   // Rebuild every floor from the seed, then paint the remembered map back on.

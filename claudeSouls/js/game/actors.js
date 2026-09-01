@@ -14,7 +14,8 @@
 // already see.
 
 import { ENEMY_BY_KEY } from '../data/enemies.js';
-import { PLAYER, SKILL_BY_KEY, STARTING_SKILLS } from '../data/skills.js';
+import { PLAYER, SKILLS, SKILL_BY_KEY } from '../data/skills.js';
+import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour } from '../data/items.js';
 
 export const NORMAL_SPEED = 12;
 
@@ -36,15 +37,21 @@ export class Player {
     this.depth = 1;
     this.maxDepth = 1;
 
-    this.hpMax = PLAYER.hpMax;
-    this.hp = this.hpMax;
+    this.hp = PLAYER.hpMax;
     this.staminaMax = PLAYER.staminaMax;
     this.stamina = this.staminaMax;
     this.staminaRegen = PLAYER.staminaRegen;
     this.speed = PLAYER.speed;
 
-    this.heavyArmour = false;         // costs more to roll in; halves incoming damage
-    this.skills = STARTING_SKILLS.map((k) => ({ key: k, cd: 0 }));
+    // Equipment, and the backpack it comes out of.
+    this.equip = { main: null, off: null, armour: null };
+    this.pack = [];
+
+    // A cooldown slot for *every* skill in the game, not just the ones you can
+    // currently use. Cooldowns therefore survive a weapon swap, which matters:
+    // otherwise sheathing and drawing would be a free way to reset them, and
+    // swapping already costs a turn precisely so that it is a real decision.
+    this.skills = SKILLS.map((s) => ({ key: s.key, cd: 0 }));
 
     this.deaths = 0;
     this.kills = 0;
@@ -54,6 +61,70 @@ export class Player {
   }
 
   skill(key) { return this.skills.find((s) => s.key === key) ?? null; }
+
+  item(slot) { return ITEM_BY_KEY[this.equip[slot]] ?? null; }
+
+  /** Heavy armour is a property of what you are wearing, not of who you are. */
+  get heavyArmour() { return !!this.item(SLOT.ARMOUR)?.heavy; }
+
+  get armourReduce() { return this.item(SLOT.ARMOUR)?.reduce ?? 0; }
+
+  /** Total weight carried. Nothing reads this yet; the economy comes next. */
+  get weight() {
+    let w = 0;
+    for (const s of Object.keys(this.equip)) w += this.item(s)?.weight ?? 0;
+    return w;
+  }
+
+  /**
+   * The skills you can actually use right now, in button order.
+   *
+   * Derived every time rather than cached, because the one thing that must
+   * never happen is the button bar and the rules disagreeing about what you are
+   * holding.
+   */
+  activeSkills() {
+    const out = [];
+    for (const k of skillsFrom(this.item(SLOT.MAIN), SLOT.MAIN)) out.push(k);
+    for (const k of skillsFrom(this.item(SLOT.OFF), SLOT.OFF)) out.push(k);
+    for (const s of SKILLS) if (s.always && !out.includes(s.key)) out.push(s.key);
+    return out;
+  }
+
+  hasSkill(key) { return this.activeSkills().includes(key); }
+
+  /**
+   * Put something on. Returns whatever came off, so the caller can decide where
+   * it goes; this method deliberately does not touch the backpack.
+   *
+   * A two-handed weapon empties the off hand, and anything in the off hand is
+   * refused while one is held - the rule is in one place so the UI cannot
+   * present a state the rules would reject.
+   */
+  equipItem(slot, key) {
+    const it = key ? ITEM_BY_KEY[key] : null;
+    if (key && !it) return { ok: false, why: `no such item: ${key}` };
+    if (it && !slotsFor(it).includes(slot)) return { ok: false, why: `${it.name} does not go there` };
+
+    const displaced = [];
+    if (slot === SLOT.MAIN && it?.hands === 2 && this.equip.off) {
+      displaced.push(this.equip.off);
+      this.equip.off = null;
+    }
+    if (slot === SLOT.OFF && this.item(SLOT.MAIN)?.hands === 2) {
+      return { ok: false, why: 'both hands are on that weapon' };
+    }
+    if (this.equip[slot]) displaced.push(this.equip[slot]);
+    this.equip[slot] = key ?? null;
+
+    // Losing a weapon can leave a cooldown ticking on a skill you no longer
+    // have. That is correct and deliberate - see the comment on `skills`.
+    if (isArmour(it)) this.hp = Math.min(this.hp, this.hpMax);
+    return { ok: true, displaced };
+  }
+
+  /** Health comes from the armour you are wearing. */
+  get hpMax() { return this.item(SLOT.ARMOUR)?.hp ?? PLAYER.hpMax; }
 
   rollCost() {
     const s = SKILL_BY_KEY.roll;

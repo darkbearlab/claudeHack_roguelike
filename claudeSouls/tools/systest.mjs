@@ -14,6 +14,7 @@ import { generateLevel } from '../js/map/mapgen.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
+import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT } from '../js/data/items.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
@@ -504,6 +505,103 @@ check('a silent attacker is rate-limited by its own recovery', () => {
   return rows.join(', ');
 });
 
+console.log('\n--- equipment --------------------------------------------------');
+
+check('a weapon is a set of verbs, and the off hand only gets the first', () => {
+  // The one line the whole loadout trade rests on.
+  const { g } = arena('offhand', 'husk', 4);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'sword');
+  p.equipItem(SLOT.OFF, 'spear');
+  const active = p.activeSkills();
+  assert(active.includes('strike') && active.includes('sweep'),
+         'the main hand should grant both of its skills');
+  assert(active.includes('thrust'), 'the off hand should grant its primary');
+  assert(!active.includes('skewer'),
+         'the off hand granted a secondary - dual wielding would dominate two-handers');
+  assert(!g.useSkill('skewer', { dx: 1, dy: 0 }),
+         'a skill you do not hold was usable anyway');
+  return 'main: both, off: primary only';
+});
+
+check('a two-handed weapon really takes both hands', () => {
+  const { g } = arena('twohand', 'husk', 4);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'sword');
+  p.equipItem(SLOT.OFF, 'dagger');
+  const res = p.equipItem(SLOT.MAIN, 'greataxe');
+  assert(res.ok, 'could not equip a two-hander');
+  assert(res.displaced.includes('dagger'), 'the off-hand item was not displaced');
+  assert(!p.equip.off, 'the off hand is still holding something');
+  assert(!p.equipItem(SLOT.OFF, 'dagger').ok, 'the off hand accepted an item anyway');
+  const active = p.activeSkills();
+  assert(active.includes('cleave') && active.includes('rend'), 'two-hander lost its skills');
+  return 'both hands means both hands';
+});
+
+check('every weapon grants two real skills, and every skill has an owner', () => {
+  const owned = new Set();
+  for (const it of ITEMS) {
+    if (it.kind !== 'weapon') continue;
+    assert(it.primary && it.secondary, `${it.key} is missing a skill`);
+    for (const k of [it.primary, it.secondary]) {
+      assert(SKILL_BY_KEY[k], `${it.key} refers to unknown skill "${k}"`);
+      owned.add(k);
+    }
+    assert(skillsFrom(it, SLOT.OFF).length === 1, `${it.key} grants the wrong number off-hand`);
+  }
+  for (const s of SKILLS) {
+    assert(s.always || owned.has(s.key), `${s.key} is defined but nothing grants it`);
+  }
+  return `${ITEMS.filter((i) => i.kind === 'weapon').length} weapons`;
+});
+
+check('swapping costs a turn, and cooldowns survive it', () => {
+  // If a swap reset cooldowns, sheathing and drawing would be a free refresh -
+  // and swapping costs a turn precisely so that it is a real decision.
+  const { g } = arena('swap', 'husk', 6);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'sword');
+  p.skill('sweep').cd = 3;
+
+  const t0 = g.turn;
+  assert(g.equipFromPack(SLOT.MAIN, 'spear') === true, 'equipping did not report a spent turn');
+  g.worldTurn();
+  assert(g.turn === t0 + 1, 'equipping did not advance the turn');
+  assert(!p.hasSkill('sweep'), 'still holding the old weapon');
+  assert(p.pack.includes('sword'), 'the old weapon did not go back in the pack');
+
+  g.equipFromPack(SLOT.MAIN, 'sword');
+  assert(p.skill('sweep').cd > 0, 'a weapon swap reset the cooldown');
+  return 'a turn spent, cooldowns kept';
+});
+
+check('the pack is the only place equipment comes from', () => {
+  const { g } = arena('pack', 'husk', 6);
+  const p = g.player;
+  p.pack = [];
+  assert(!g.equipFromPack(SLOT.MAIN, 'greataxe'), 'equipped something not carried');
+  assert(!g.equipFromPack(SLOT.ARMOUR, 'sword'), 'put a sword in the armour slot');
+  return 'no conjuring';
+});
+
+check('armour carries the health and the damage reduction', () => {
+  for (const [vow, key] of [['light', 'leathers'], ['heavy', 'mail']]) {
+    const g = freshGame(`armour:${vow}`, vow);
+    const it = ITEM_BY_KEY[key];
+    assert(g.player.equip.armour === key, `${vow} is not wearing ${key}`);
+    assert(g.player.hpMax === it.hp, `${vow} hpMax is ${g.player.hpMax}, armour says ${it.hp}`);
+    assert(g.player.armourReduce === it.reduce, `${vow} reduction differs from its armour`);
+    assert(g.player.heavyArmour === it.heavy, `${vow} heaviness differs from its armour`);
+  }
+  const g = freshGame('armour:apply', 'heavy');
+  const before = g.player.hp;
+  g.hurtPlayer(4, 'a test');
+  assert(before - g.player.hp === 3, `mail took ${before - g.player.hp} from a 4 damage hit`);
+  return 'health and reduction both come off the armour';
+});
+
+// ===========================================================================
 // ===========================================================================
 console.log('\n--- projectiles -----------------------------------------------');
 
@@ -624,7 +722,7 @@ check('save and load round-trip a run', () => {
   assert(g2.player.deaths === 2, 'deaths differ');
   assert(g2.level.tiles.join() === g.level.tiles.join(), 'terrain differs');
   assert(g2.level.seen.reduce((a, b) => a + b, 0) === seen, 'map memory differs');
-  const bytes = store.get('claudesouls.save.v1').length;
+  const bytes = store.get('claudesouls.save.v2').length;
   assert(bytes < 300000, `save is ${bytes} bytes`);
   return `${(bytes / 1024).toFixed(1)} KB`;
 });
@@ -632,9 +730,9 @@ check('save and load round-trip a run', () => {
 check('claudeSouls does not share a save key with claudeHack', () => {
   const g = freshGame('keys');
   saveGame(g);
-  assert(store.has('claudesouls.save.v1'), 'wrong key');
+  assert(store.has('claudesouls.save.v2'), 'wrong key');
   assert(!store.has('claudehack.save.v1'), "wrote into claudeHack's save slot");
-  return 'claudesouls.save.v1';
+  return 'claudesouls.save.v2';
 });
 
 // ===========================================================================
@@ -649,9 +747,18 @@ check('every enemy can be built and fought', () => {
 });
 
 check('every skill can be used in every direction', () => {
+  // Every skill in the game, not just the ones the starting kit holds - each is
+  // reached by equipping whatever grants it, which also proves every weapon in
+  // the table can actually be wielded.
   for (const s of SKILLS) {
+    const owner = s.always ? null : ITEMS.find((i) => i.primary === s.key || i.secondary === s.key);
+    assert(s.always || owner, `no weapon grants ${s.key}`);
     for (const d of DIRS) {
       const { g } = arena(`skill:${s.key}:${d.key}`, 'husk', 2);
+      if (owner) {
+        g.player.equipItem(SLOT.MAIN, owner.key);
+        assert(g.player.hasSkill(s.key), `${owner.key} in the main hand does not grant ${s.key}`);
+      }
       g.player.stamina = g.player.staminaMax;
       g.player.skill(s.key).cd = 0;
       g.useSkill(s.key, { dx: d.dx, dy: d.dy });
