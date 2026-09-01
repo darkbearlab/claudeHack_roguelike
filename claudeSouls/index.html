@@ -26,23 +26,30 @@
 
   <main id="viewport">
     <canvas id="map" tabindex="0"></canvas>
+    <!-- Health and stamina sit over the top-left corner of the map, the way a
+         Souls game puts them. Overlaying rather than taking a strip of its own
+         gives the map back the height, and the corner of a dungeon view is
+         nearly always dark. -->
+    <div id="hud">
+      <div id="hudframe">
+        <div id="gauges">
+          <div id="hpbar" role="img" aria-label="health"></div>
+          <div id="stbar" role="img" aria-label="stamina"></div>
+        </div>
+      </div>
+    </div>
     <div id="flash"></div>
     <div id="overlay" hidden></div>
   </main>
 
-  <div id="gauges">
-    <div class="gauge"><span class="lbl">HP</span><div id="hpbar"></div></div>
-    <div class="gauge"><span class="lbl">ST</span><div id="stbar"></div></div>
-  </div>
-
   <div id="controls">
+    <!-- A clean 3x3. Descend, Rest and Esc used to live on a fourth row here;
+         they are one context button on the right now, which is what let these
+         grow. -->
     <nav id="pad">
       <button data-cmd="y">&#8598;</button><button data-cmd="k">&#8593;</button><button data-cmd="u">&#8599;</button>
       <button data-cmd="h">&#8592;</button><button data-cmd=".">&middot;</button><button data-cmd="l">&#8594;</button>
       <button data-cmd="b">&#8601;</button><button data-cmd="j">&#8595;</button><button data-cmd="n">&#8600;</button>
-      <button data-cmd="&gt;" class="wide">&gt;</button>
-      <button data-cmd="e" class="wide">Rest</button>
-      <button data-cmd="ESC" class="wide">Esc</button>
     </nav>
     <div id="skillbar"></div>
   </div>

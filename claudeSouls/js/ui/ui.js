@@ -29,6 +29,7 @@ import { DIRS, DIR_BY_KEY, capitalise, fmtDuration } from '../../../engine/util.
 import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
+import { T, isBonfire } from '../map/tiles.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -48,6 +49,7 @@ export class UI {
       status:   document.getElementById('statusline'),
       skills:   document.getElementById('skillbar'),
       pad:      document.getElementById('pad'),
+      action:   null,     // built with the skill bar
       controls: document.getElementById('controls'),
       splash:   document.getElementById('splash'),
       flash:    document.getElementById('flash'),
@@ -111,12 +113,76 @@ export class UI {
         <span class="cd"></span>
       </button>`).join('');
 
-    for (const b of bar.querySelectorAll('.skill')) {
+    for (const b of bar.querySelectorAll('.skill[data-skill]')) {
       b.addEventListener('pointerdown', (ev) => {
         ev.preventDefault();
         this.startGesture(ev, b.dataset.skill, b);
       });
     }
+
+    // The context button takes the sixth cell of the skill grid - five skills
+    // leave one empty, and this is the only other thing you press rather than
+    // drag. It is styled apart from the skills on purpose: skills are a drag
+    // gesture, this is a tap.
+    const act = document.createElement('button');
+    act.id = 'btn-action';
+    act.className = 'skill action';
+    act.innerHTML = '<span class="act-name"></span><span class="act-sub"></span>';
+    act.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const a = this.contextAction();
+      if (!a.cmd) return;
+      if (a.kind === 'cancel') {
+        // Two different aims can be live: the touch one this class owns, and
+        // the keyboard one the game owns. Cancel has to put both down, and the
+        // game only knows the word 'Escape'.
+        this.clearAim();
+        this.feed('Escape');
+        return;
+      }
+      this.feed(a.cmd);
+    });
+    bar.appendChild(act);
+    this.el.action = act;
+  }
+
+  /**
+   * What the one context button does right now.
+   *
+   * Descending and resting can never both apply - you are standing on a
+   * staircase or on a bonfire, never on both - which is what makes one button
+   * honest rather than a mode. Cancelling an aim joins them for the same
+   * reason: while a skill is armed you are not descending anywhere.
+   *
+   * New verbs go in this list. The only rule is the one that earns the button:
+   * no two entries may be available at the same time.
+   */
+  contextAction() {
+    const g = this.game;
+    if (!g.running || !g.level) return { name: '—', cmd: null };
+    if (this.aimSkill || g.aiming) {
+      return { name: 'Cancel', sub: 'aiming', cmd: 'ESC', kind: 'cancel' };
+    }
+    const p = g.player;
+    const here = g.level.at(p.x, p.y);
+    if (isBonfire(here)) {
+      return { name: 'Rest', sub: 'bonfire', cmd: 'e', kind: 'rest' };
+    }
+    if (here === T.STAIRS_DOWN) {
+      return { name: 'Descend', sub: `to ${p.depth + 1}`, cmd: '>', kind: 'descend' };
+    }
+    return { name: '—', sub: '', cmd: null };
+  }
+
+  renderAction() {
+    const el = this.el.action;
+    if (!el) return;
+    const a = this.contextAction();
+    el.querySelector('.act-name').textContent = a.name;
+    el.querySelector('.act-sub').textContent = a.sub ?? '';
+    el.disabled = !a.cmd;
+    el.classList.toggle('idle', !a.cmd);
+    for (const k of ['cancel', 'rest', 'descend']) el.classList.toggle(`is-${k}`, a.kind === k);
   }
 
   startGesture(ev, skillKey, fromEl) {
@@ -409,6 +475,7 @@ export class UI {
     this.renderer.draw();
     this.renderBars();
     this.renderSkillBar();
+    this.renderAction();
   }
 
   /**
@@ -445,7 +512,7 @@ export class UI {
   renderSkillBar() {
     const p = this.game.player;
     if (!p) return;
-    for (const b of this.el.skills.querySelectorAll('.skill')) {
+    for (const b of this.el.skills.querySelectorAll('.skill[data-skill]')) {
       const key = b.dataset.skill;
       const def = SKILL_BY_KEY[key];
       const slot = p.skill(key);

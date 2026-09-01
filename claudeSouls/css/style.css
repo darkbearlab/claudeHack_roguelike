@@ -102,24 +102,44 @@ body { overflow: hidden; }
 @keyframes bleed { from { opacity: .55; } to { opacity: 0; } }
 
 /* ----------------------------------------------------------------- gauges */
-#gauges {
-  flex: 0 0 auto; background: var(--panel-2); border-top: 1px solid var(--line);
-  padding: 5px 8px; display: flex; flex-direction: column; gap: 4px;
+/* Top-left of the map, the way a Souls game does it.
+   No text labels: red pips are health and a green bar is stamina, and the two
+   are never going to be confused for one another. Dropping the labels is what
+   makes the overlay narrow enough to sit over the map without hiding anything
+   that matters. */
+/* The HUD tracks the canvas, not the viewport. The map is a centred square, so
+   pinning to the viewport corner would leave the bars floating in the letterbox
+   - a long way from the map on a wide screen. #hudframe is the same centred
+   square as the canvas, so the corner it offers is the map's own corner. */
+#hud {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
 }
-.gauge { display: flex; align-items: center; gap: 7px; }
-.gauge .lbl { color: var(--dim); font-size: 10.5px; width: 18px; flex: 0 0 auto; }
+#hudframe { position: relative; width: 100%; height: 100%; }
+@supports (width: 1cqmin) {
+  #hudframe { width: 100cqmin; height: 100cqmin; }
+}
+#gauges {
+  position: absolute; top: 7px; left: 7px;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 5px 7px; border-radius: 6px;
+  background: rgba(10, 10, 13, .55);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .5);
+}
 
 /* Health is pips, not a bar: "how many hits can I take" must be countable. */
-#hpbar { display: flex; gap: 3px; flex-wrap: wrap; }
+/* One row, always. Sixteen pips wrapping onto a second line changes the shape
+   of the bar as you take damage, which is exactly when you are reading it. */
+#hpbar { display: flex; gap: 2px; flex-wrap: nowrap; }
 #hpbar i {
-  display: block; width: 11px; height: 11px; border-radius: 2px;
-  background: #2a1a18; border: 1px solid #3a2622;
+  display: block; width: 8px; height: 9px; border-radius: 2px; flex: 0 0 auto;
+  background: #2a1a18; border: 1px solid #46302a;
 }
 #hpbar i.on { background: var(--blood); border-color: #ff6a55; }
 
 #stbar {
-  position: relative; flex: 1 1 auto; height: 11px;
-  background: #17201c; border: 1px solid #27342c; border-radius: 3px; overflow: hidden;
+  position: relative; width: 128px; height: 9px;
+  background: #17201c; border: 1px solid #2d3b33; border-radius: 3px; overflow: hidden;
 }
 #stbar .fill { position: absolute; inset: 0 auto 0 0; background: #4fb36a; transition: width .08s linear; }
 #stbar .fill.low { background: #7a6a2a; }
@@ -132,13 +152,14 @@ body { overflow: hidden; }
   padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
   display: flex; gap: 8px; align-items: flex-start;
 }
-#pad { display: grid; grid-template-columns: repeat(3, 46px); gap: 4px; flex: 0 0 auto; }
+/* Three rows instead of four, so each key can be bigger in the same footprint.
+   Descend, Rest and Esc moved to the context button on the right. */
+#pad { display: grid; grid-template-columns: repeat(3, 56px); gap: 5px; flex: 0 0 auto; }
 #pad button {
-  height: 40px; font: inherit; font-size: 16px; line-height: 1;
+  height: 50px; font: inherit; font-size: 19px; line-height: 1;
   background: var(--panel); color: var(--fg);
   border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
 }
-#pad button.wide { font-size: 11px; }
 #pad button:active { background: var(--ember); color: #000; }
 
 /* minmax(0, 1fr), not 1fr: a bare 1fr refuses to shrink below the content's
@@ -171,6 +192,23 @@ body { overflow: hidden; }
 .skill .ic-me   { fill: var(--fg); opacity: .9; }
 .skill .cost { position: absolute; bottom: 2px; right: 6px; font-size: 10px; color: var(--good); }
 .skill .cd   { position: absolute; top: 2px; right: 6px; font-size: 11px; color: var(--ember); }
+/* The context button. Deliberately unlike a skill: skills are dragged, this is
+   tapped, and one look should say which is which. */
+.skill.action {
+  flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  border-color: #4a4230; background: #22201a; text-align: center;
+}
+.skill.action .act-name { font-size: 12px; font-weight: 700; color: var(--ember); }
+.skill.action .act-sub  { font-size: 9.5px; color: var(--dim); line-height: 1.1; }
+.skill.action.is-rest    { border-color: #6a5320; background: #241f14; }
+.skill.action.is-descend { border-color: #3f5a6a; background: #16202a; }
+.skill.action.is-descend .act-name { color: var(--cool); }
+.skill.action.is-cancel  { border-color: #6a3a34; background: #2a1a18; }
+.skill.action.is-cancel .act-name { color: var(--blood); }
+.skill.action.idle { opacity: .4; }
+.skill.action.idle .act-name { color: var(--dim); }
+.skill.action:disabled { cursor: default; }
+
 .skill.armed  { border-color: var(--cool); background: #16222c; }
 .skill.cooling{ opacity: .5; }
 .skill.poor   { opacity: .55; }
@@ -191,13 +229,19 @@ body { overflow: hidden; }
      the layout is muscle memory and the label is not. The buttons shrink to
      fit instead - icon and number stay, the name drops on the narrowest
      screens, and the icon is the part that says what the skill does anyway. */
-  #pad { grid-template-columns: repeat(3, 42px); }
-  #pad button { height: 37px; }
-  .skill { height: 37px; padding: 2px 4px; }
-  .skill .ico { height: 20px; margin-right: 5px; }
+  /* The direction keys get the space the fourth row used to take: 50px on a
+     phone instead of 37, which is the whole point of merging those three
+     buttons into one. */
+  #pad { grid-template-columns: repeat(3, 50px); gap: 4px; }
+  #pad button { height: 50px; font-size: 18px; }
+  .skill { height: 50px; padding: 2px 4px; }
+  .skill .ico { height: 22px; margin-right: 5px; }
   .skill .nm { font-size: 11px; padding-left: 7px; }
   .skill .num { font-size: 8px; }
   .skill .cost { font-size: 9px; }
+  .skill.action .act-name { font-size: 11.5px; }
+  #hpbar i { width: 7px; height: 8px; }
+  #stbar { width: 104px; height: 8px; }
 
   /* Under ~400px there is no honest way to fit a shape icon and a word on a
      third of the width. The icon wins: it is the thing that says what the
@@ -206,7 +250,6 @@ body { overflow: hidden; }
     .skill .nm { display: none; }
     .skill .ico { margin: 0 auto; }
   }
-  #hpbar i { width: 9px; height: 9px; }
 }
 
 /* --------------------------------------------------------------- overlays */
