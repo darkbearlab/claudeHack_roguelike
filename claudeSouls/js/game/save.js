@@ -10,6 +10,7 @@
 
 import { RNG } from '../../../engine/rng.js';
 import { Player } from './actors.js';
+import { TRACKS } from '../data/souls.js';
 
 // v2: the player carries equipment and a pack now, and health and damage
 // reduction are read off the armour rather than stored. A v1 save cannot be
@@ -53,7 +54,7 @@ export function saveGame(game) {
         // armour, and storing a derived value is how a save and a rules change
         // quietly start disagreeing.
         equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
-        unbanked: p.unbanked,
+        unbanked: p.unbanked, souls: p.souls, ranks: p.ranks,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -113,6 +114,8 @@ export function loadGame(game) {
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
     unbanked: d.player.unbanked ?? [],
+    souls: d.player.souls ?? 0,
+    ranks: d.player.ranks ?? {},
     prep: { ...p.prep, ...(d.player.prep ?? {}) },
     charges: d.player.charges ?? {},
     deaths: d.player.deaths, kills: d.player.kills, turns: d.player.turns,
@@ -120,6 +123,10 @@ export function loadGame(game) {
   });
   p.hp = Math.min(p.hp, p.hpMax);
   game.player = p;
+  // Ranks change derived numbers (stamina max), so re-apply them after loading
+  // rather than storing what they produced.
+  for (const t of TRACKS) t.apply(p, p.ranks[t.key] ?? 0);
+  p.stamina = Math.min(p.stamina, p.staminaMax);
   game.opened = new Set(d.opened ?? []);
   game.corpse = d.corpse ?? null;
 

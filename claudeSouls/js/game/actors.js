@@ -51,6 +51,8 @@ export class Player {
     this.edge = 0;                    // a whetstone's bonus, spent on the next hit
     this.recover = 0;                 // turns you are still swinging
     this.warded = 0;                  // blows a ward will still absorb
+    this.souls = 0;                   // unbanked; dropped where you die
+    this.ranks = {};                  // track key -> rank bought
     this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
     this.unbanked = [];               // picked up since the last fire; dropped on death
@@ -162,6 +164,22 @@ export class Player {
   hasSkill(key) { return this.activeSkills().includes(key); }
 
   /**
+   * What you swing when you walk into something.
+   *
+   * Not a fixed skill. Walking into an enemy used to call `strike` by name,
+   * which is the longsword's primary - so the moment you picked up a mace, the
+   * oldest interaction in the game stopped working and told you that you were
+   * "not holding anything that does that". The main hand decides, and a bow
+   * does not count: at arm's length you hit them with something.
+   */
+  meleeSkill() {
+    const melee = (k) => k && SKILL_BY_KEY[k] && !SKILL_BY_KEY[k].ranged && SKILL_BY_KEY[k].damage;
+    const main = this.item(SLOT.MAIN)?.primary;
+    if (melee(main)) return main;
+    return this.activeSkills().find(melee) ?? null;
+  }
+
+  /**
    * Put something on. Returns whatever came off, so the caller can decide where
    * it goes; this method deliberately does not touch the backpack.
    *
@@ -213,7 +231,10 @@ export class Player {
   // The first few points are free: a light kit should cost you nothing extra to
   // dodge in, or "light" is just "slightly less punished". Everything above
   // that adds a point per four.
-  get rollExtra() { return Math.floor(Math.max(0, this.weight - 4) / 4); }
+  /** How much weight is free before it starts costing you. Souls widen it. */
+  get allowance() { return 4 + (this.ranks.bearing ?? 0) * 2; }
+
+  get rollExtra() { return Math.floor(Math.max(0, this.weight - this.allowance) / 4); }
 
   rollCost() {
     return SKILL_BY_KEY.roll.stamina + this.rollExtra;
@@ -278,7 +299,7 @@ export class Player {
     // halved its recovery, and the bot spent a quarter of every run standing
     // still waiting for stamina. That is not "reads further ahead", it is idle.
     const base = Math.max(1, PLAYER.staminaRegen + armour
-                             - Math.floor(Math.max(0, this.weight - 8) / 9));
+                             - Math.floor(Math.max(0, this.weight - this.allowance - 4) / 9));
     return inCombat ? base : base * 4;
   }
 

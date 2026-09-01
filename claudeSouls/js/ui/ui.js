@@ -31,6 +31,7 @@ import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, isChest, isCorpse } from '../map/tiles.js';
 import { SLOT, ITEM_BY_KEY, slotsFor, isConsumable, CONSUMABLE_BY_KEY } from '../data/items.js';
+import { TRACKS, priceOf } from '../data/souls.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -216,6 +217,7 @@ export class UI {
           ev.preventDefault();
           const a = this.contextAction();
           if (!a.cmd) return;
+          if (a.cmd === 'FIRE') { this.showBonfire(); return; }
           if (a.kind === 'cancel') {
             this.clearAim();
             this.feed('Escape');
@@ -280,7 +282,7 @@ export class UI {
       // information they can act on.
       const n = g.hunters();
       if (n > 0) return { name: 'Hunted', sub: `${n} aware`, cmd: null, kind: 'blocked' };
-      return { name: 'Rest', sub: 'bonfire', cmd: 'e', kind: 'rest' };
+      return { name: 'Bonfire', sub: `${p.souls} souls`, cmd: 'FIRE', kind: 'rest' };
     }
     if (here === T.STAIRS_DOWN) {
       return { name: 'Descend', sub: `to ${p.depth + 1}`, cmd: '>', kind: 'descend' };
@@ -655,7 +657,8 @@ export class UI {
     const alive = lvl ? lvl.livingEnemies().length : 0;
     this.el.status.innerHTML =
       `<span class="lo">Floor</span> <b>${p.depth}</b>/${DUNGEON_DEPTH}` +
-      `　<span class="lo">Foes</span> <b>${alive}</b>` +
+      `　<span class="lo">Souls</span> <b>${p.souls}</b>` +
+      `<span class="roomy">　<span class="lo">Foes</span> <b>${alive}</b></span>` +
       // Deaths and turn count are how a run reads afterwards, not how it is
       // played. On a phone the line is one ellipsis away from hiding the floor
       // number, so the retrospective half steps aside.
@@ -795,6 +798,62 @@ export class UI {
     }
     for (const b of ov.querySelectorAll('[data-unprep]')) {
       b.addEventListener('click', () => ready(b.dataset.unprep, null));
+    }
+    ov.scrollTop = 0;
+    this.pending = { onKey: () => close() };
+  }
+
+
+  /**
+   * The fire: rest, and spend what you carried here.
+   *
+   * Spending lives behind the fire rather than on a button of its own because
+   * that is the whole mechanic - souls are worth nothing until you have walked
+   * them home, and until then they are what you lose. Putting the shop anywhere
+   * else would quietly delete the decision.
+   */
+  showBonfire() {
+    if (!this.game.running || this.game.busy) return;
+    const g = this.game;
+    const p = g.player;
+    const ov = this.el.overlay;
+    ov.hidden = false;
+
+    const rows = TRACKS.map((t) => {
+      const rank = p.ranks[t.key] ?? 0;
+      const price = priceOf(p.ranks, t.key);
+      const pips = '●'.repeat(rank) + '○'.repeat(t.max - rank);
+      const btn = price === null
+        ? '<span class="dim">滿了</span>'
+        : `<button class="btn" data-buy="${t.key}"${p.souls < price ? ' disabled' : ''}>${price}</button>`;
+      return `<tr><td class="key">${escapeHtml(t.name)}</td>` +
+             `<td>${pips}<br><span class="dim">${escapeHtml(t.hint)}</span></td>` +
+             `<td>${btn}</td></tr>`;
+    }).join('');
+
+    const hunted = g.hunters();
+    ov.innerHTML = `<h2>篝火</h2>
+      <p>身上的魂:<b>${p.souls}</b>。<b>死了會掉在原地</b>,只有走回火邊才算數。</p>
+      <table>${rows}</table>
+      <div class="foot">
+        ${hunted
+          ? `<span class="dim">還有 ${hunted} 個東西在找你,不能休息。</span>`
+          : '<button class="btn" data-act="rest">休息(回滿,敵人復活)</button>'}
+        <button class="btn" data-act="close">關閉 (Esc)</button>
+      </div>`;
+
+    const close = () => this.closeOverlay();
+    ov.querySelector('[data-act="close"]').addEventListener('click', close);
+    ov.querySelector('[data-act="rest"]')?.addEventListener('click', () => {
+      close();
+      this.feed('e');
+    });
+    for (const b of ov.querySelectorAll('[data-buy]')) {
+      b.addEventListener('click', () => {
+        g.buyRank(b.dataset.buy);
+        this.render();          // the button behind the overlay shows the total too
+        this.showBonfire();
+      });
     }
     ov.scrollTop = 0;
     this.pending = { onKey: () => close() };

@@ -435,6 +435,17 @@ export class Renderer {
       else this.glyph(ctx, e.glyph, e.colour, px, py, cell, spent ? 0.6 : 1);
     }
 
+    // An elite is a normal species with more of it, so it needs to be readable
+    // as one at a glance - the sprite is the same and the name only shows in
+    // the log.
+    if (e.elite) {
+      ctx.strokeStyle = 'rgba(232,194,90,.85)';
+      ctx.lineWidth = Math.max(1, cell * 0.045);
+      ctx.beginPath();
+      ctx.arc(px + cell / 2, py + cell * 0.86, cell * 0.34, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // State badge. The player should never have to click to learn this.
     if (winding) {
       ctx.fillStyle = '#ff5a44';

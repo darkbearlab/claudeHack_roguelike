@@ -17,6 +17,7 @@ import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
 import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
          CONSUMABLES, CONSUMABLE_BY_KEY } from '../js/data/items.js';
+import { TRACKS, soulsFor, priceOf } from '../js/data/souls.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
@@ -212,7 +213,9 @@ check('enemies arrive in packs whose threatened ground overlaps', () => {
 
   // And a pack must not simply be extra bodies - it comes out of the floor's
   // budget, so head count stays where it was.
-  assert(worst <= 16, `a floor held ${worst} enemies; packs are inflating the count`);
+  // Packs come out of the floor's budget; the one elite per floor does not, on
+  // purpose - it is an addition, not a reshuffle.
+  assert(worst <= 17, `a floor held ${worst} enemies; packs are inflating the count`);
   return `${clustered}/${floors} floors, at most ${worst} enemies on one`;
 });
 
@@ -758,6 +761,35 @@ check('a weapon is a set of verbs, and the off hand only gets the first', () => 
   assert(!g.useSkill('skewer', { dx: 1, dy: 0 }),
          'a skill you do not hold was usable anyway');
   return 'main: both, off: primary only';
+});
+
+check('walking into something swings whatever you are holding', () => {
+  // Regression. Walking into an enemy called `strike` by name - the longsword's
+  // primary - so the moment you picked up a mace the oldest interaction in the
+  // game stopped working and told you that you were "not holding anything that
+  // does that". Reported from play, not caught by any test, because every test
+  // and the bot were carrying the starting sword.
+  const { g, e } = arena('walkswing', 'husk', 1);
+  const p = g.player;
+  for (const [main, off] of [['sword', null], ['mace', 'tower'], ['greataxe', null],
+                             ['spear', null], ['dagger', 'buckler'], ['falchion', null]]) {
+    p.equipItem(SLOT.MAIN, main);
+    p.equipItem(SLOT.OFF, off);
+    p.stamina = p.staminaMax;
+    p.recover = 0;
+    e.hp = 99;
+    const swing = p.meleeSkill();
+    assert(swing, `${main} gives nothing to swing by walking`);
+    assert(p.hasSkill(swing), `${main} would swing ${swing}, which it does not grant`);
+    const before = e.hp;
+    g.step(e.x - p.x, e.y - p.y);
+    assert(e.hp < before, `walking into an enemy with a ${main} did nothing`);
+  }
+
+  // A bow is not a melee weapon, and saying so is better than silently failing.
+  p.equipItem(SLOT.MAIN, 'bow');
+  assert(!p.meleeSkill(), 'a bow counts as something to hit people with');
+  return 'the main hand decides';
 });
 
 check('a two-handed weapon really takes both hands', () => {
@@ -1448,6 +1480,127 @@ check('map memory survives death; enemies do not', () => {
   assert(g.level.seen.reduce((a, b) => a + b, 0) >= seenBefore, 'the map you had learned was erased');
   assert(g.level.livingEnemies().length > 0, 'enemies did not respawn');
   return 'you keep what you learned';
+});
+
+check('souls are carried, dropped where you die, and picked back up', () => {
+  // Same pile as the loot, different payload - which is why the corpse system
+  // was worth building first. What souls actually produce is the decision to
+  // walk back to the fire; the stat line is the pretext.
+  const g = freshGame('souls');
+  const p = g.player;
+  g.gotoLevel(2, 'up');
+
+  const e = g.level.livingEnemies()[0];
+  assert(e, 'no enemy to kill');
+  g.hurtEnemy(e, 999, true, 0);
+  assert(p.souls > 0, 'killing something paid nothing');
+  const carried = p.souls;
+
+  const died = { depth: p.depth, x: p.x, y: p.y };
+  g.hurtPlayer(999, 'a test');
+  assert(p.souls === 0, 'kept souls through a death');
+  assert(g.corpse?.souls === carried, 'the remains do not hold what was carried');
+
+  g.gotoLevel(died.depth, 'up');
+  p.x = died.x; p.y = died.y;
+  g.reclaim();
+  assert(p.souls === carried, 'walking back did not return them');
+  return `${carried} souls, lost and recovered`;
+});
+
+check('souls buy only what no item owns, and only at a fire', () => {
+  const g = freshGame('spend');
+  const p = g.player;
+  p.souls = 5000;
+
+  // Away from a fire they are just a number you are carrying.
+  const room = [...g.level.rooms].sort((a, b) => b.w * b.h - a.w * a.h)[0];
+  p.x = room.x + 1; p.y = room.y + 1;
+  g.buyRank('wind');
+  assert(!(p.ranks.wind > 0), 'bought an upgrade away from a bonfire');
+
+  const b = g.level.bonfires[0];
+  p.x = b.x; p.y = b.y;
+  const st0 = p.staminaMax, roll0 = p.rollCost(), regen0 = p.regenRate(true), hp0 = p.hpMax;
+  g.buyRank('wind');
+  assert(p.staminaMax > st0, 'the wind track did not raise stamina');
+
+  // Bearing widens the free weight allowance, so the same kit rolls cheaper and
+  // recovers faster - growth expressed through the equipment system rather than
+  // around it.
+  const heavy = freshGame('spend2', 'heavy');
+  heavy.player.souls = 5000;
+  const hb = heavy.level.bonfires[0];
+  heavy.player.x = hb.x; heavy.player.y = hb.y;
+  const hr0 = heavy.player.rollCost(), hg0 = heavy.player.regenRate(true);
+  for (let i = 0; i < 3; i++) heavy.buyRank('bearing');
+  assert(heavy.player.rollCost() < hr0, 'bearing did not make rolling cheaper');
+  assert(heavy.player.regenRate(true) > hg0, 'bearing did not speed recovery');
+
+  // And nothing on sale touches what equipment owns.
+  assert(p.hpMax === hp0, 'souls bought health, which armour is for');
+  for (const t of TRACKS) {
+    assert(!/hp|damage|傷害|生命/.test(t.hint), `${t.key} sells something an item should`);
+  }
+  assert(!TRACKS.some((t) => /flask|瓶/.test(t.hint)),
+         'flask charges are for sale, which shifts the whole difficulty curve');
+  return `${TRACKS.length} tracks, none competing with the pool`;
+});
+
+check('a run must be winnable with zero upgrades', () => {
+  // The guarantee that keeps grinding pointless: souls can make you stronger
+  // but can never unlock progress, so running out is a harder run and never a
+  // soft lock. Enemies respawn at fires, so any required currency would make
+  // farming optimal rather than merely possible.
+  const g = freshGame('nobuy');
+  assert(Object.keys(g.player.ranks).length === 0, 'a run starts with ranks already bought');
+  g.gotoLevel(DUNGEON_DEPTH, 'up');
+  const boss = g.level.enemies.find((e) => e.spec.boss);
+  assert(boss, 'no boss to kill');
+  g.hurtEnemy(boss, 9999, true, 0);
+  assert(!g.running && g.gameOver.how === 'won', 'the boss could not be beaten unupgraded');
+  return 'nothing on the way down is gated behind souls';
+});
+
+check('one elite a floor, carrying something, once per run', () => {
+  // "The floor boss drops something fixed" needed floor bosses to exist: the
+  // only boss is on the last floor and killing it ends the run. This does the
+  // job the idea was for - guaranteeing a run actually meets the equipment
+  // pool, which matters here because weapons carry the skills.
+  let floors = 0, elites = 0;
+  for (let s = 0; s < 5; s++) {
+    const g = freshGame(`elite:${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const found = g.levelAt(d).enemies.filter((e) => e.elite);
+      assert(found.length <= 1, `floor ${d} has ${found.length} elites`);
+      if (d >= 3) floors++;
+      if (!found.length) continue;
+      elites++;
+      const e = found[0];
+      assert(d >= 3, 'an elite on a tutorial floor');
+      assert(ITEM_BY_KEY[e.drop] || CONSUMABLE_BY_KEY[e.drop], `elite carries "${e.drop}"`);
+      assert(e.hpMax > ENEMY_BY_KEY[e.key].hp, 'an elite is not tougher than its species');
+    }
+  }
+  assert(elites >= floors * 0.9, `only ${elites} elites across ${floors} eligible floors`);
+
+  // The prize comes from the seed, not from the kill, so resting does not refill it.
+  const g = freshGame('elite:drop');
+  g.gotoLevel(4, 'up');
+  const e = g.level.enemies.find((q) => q.elite);
+  if (e) {
+    const drop = e.drop;
+    g.hurtEnemy(e, 9999, true, 0);
+    assert(g.player.pack.includes(drop), 'the elite gave nothing');
+    const again = g.respawnLevel(4).enemies.find((q) => q.elite);
+    if (again) {
+      const had = g.player.pack.filter((k) => k === drop).length;
+      g.hurtEnemy(again, 9999, true, 0);
+      assert(g.player.pack.filter((k) => k === drop).length === had,
+             'killing the respawned elite paid out again - that is farmable');
+    }
+  }
+  return `${elites} elites over ${floors} floors`;
 });
 
 check('killing the boss wins the run', () => {

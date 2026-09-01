@@ -30,6 +30,7 @@ import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
          CONSUMABLE_BY_KEY, isConsumable } from '../data/items.js';
+import { soulsFor, TRACKS, TRACK_BY_KEY, priceOf } from '../data/souls.js';
 import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
@@ -303,7 +304,17 @@ export class Game {
       this.level.markEnemiesDirty();
       this.stats.kills++;
       this.msg(`The ${e.name} falls.`, 'good');
-      if (byPlayer) this.player.onKill();
+      if (byPlayer) {
+        const worth = soulsFor(e.spec, this.player.depth);
+        this.player.souls += worth;
+        this.player.onKill();
+        // Its prize is a property of the floor seed, not of the kill - so
+        // resting brings the elite back but not what it was carrying.
+        if (e.elite && e.drop) {
+          const id = `elite:${this.player.depth}`;
+          if (!this.opened.has(id)) { this.opened.add(id); this.gain(e.drop, 'It was carrying'); }
+        }
+      }
       if (e.spec.boss) this.win();
     }
   }
@@ -389,7 +400,11 @@ export class Game {
     p.face(dx, dy);
 
     const e = lvl.enemyAt(nx, ny);
-    if (e && e.alive) return this.useSkill('strike', { dx, dy });
+    if (e && e.alive) {
+      const swing = p.meleeSkill();
+      if (!swing) { this.msg('You have nothing to hit it with.', 'warn'); return false; }
+      return this.useSkill(swing, { dx, dy });
+    }
 
     if (!lvl.inBounds(nx, ny)) { this.msg('You cannot go that way.'); return false; }
     if (!lvl.diagonalOk(p.x, p.y, nx, ny, true)) {
@@ -433,6 +448,30 @@ export class Game {
     if (!lvl) return false;
     for (const e of lvl.enemies) if (e.alive && e.aware) return true;
     return lvl.projectiles.some((p) => !p.fromPlayer);
+  }
+
+  /**
+   * Buy a rank. Only at a fire, which is the entire point.
+   *
+   * Spending being tied to the fire is what turns "I am carrying twelve hundred"
+   * into a decision rather than a number: the souls are only worth something
+   * once you have walked them home, and until then they are what you lose.
+   */
+  buyRank(key) {
+    const p = this.player;
+    if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('Not here.', 'warn'); return false; }
+    const t = TRACK_BY_KEY[key];
+    if (!t) return false;
+    const price = priceOf(p.ranks, key);
+    if (price === null) { this.msg(`${t.name} is as far as it goes.`, 'warn'); return false; }
+    if (p.souls < price) { this.msg(`You need ${price - p.souls} more.`, 'warn'); return false; }
+
+    p.souls -= price;
+    p.ranks[key] = (p.ranks[key] ?? 0) + 1;
+    for (const track of TRACKS) track.apply(p, p.ranks[track.key] ?? 0);
+    p.stamina = Math.min(p.stamina, p.staminaMax);
+    this.msg(`${t.name} ${p.ranks[key]}. ${t.hint}`, 'magic');
+    return false;                       // spending does not advance the turn
   }
 
   // ------------------------------------------------------------- picking up
@@ -505,6 +544,7 @@ export class Game {
     const c = this.corpse;
     if (!c || c.depth !== p.depth || c.x !== p.x || c.y !== p.y) return false;
     for (const key of c.items) this.gain(key, 'You take back');
+    if (c.souls) { p.souls += c.souls; this.msg(`You take back ${c.souls} souls.`, 'good'); }
     this.level.set(p.x, p.y, c.under ?? T.FLOOR);
     this.corpse = null;
     return true;
@@ -525,8 +565,10 @@ export class Game {
   dropUnbanked() {
     const p = this.player;
     const items = p.unbanked.filter((k) => p.pack.includes(k));
+    const souls = p.souls;
     p.unbanked = [];
-    if (!items.length) return;
+    p.souls = 0;
+    if (!items.length && !souls) return;
 
     for (const k of items) {
       const i = p.pack.indexOf(k);
@@ -538,8 +580,10 @@ export class Game {
     const lvl = this.levelAt(p.depth);
     const under = lvl.at(p.x, p.y);
     lvl.set(p.x, p.y, T.CORPSE);
-    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, under };
-    this.msg(`You drop what you were carrying. (${items.length})`, 'bad');
+    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, souls, under };
+    this.msg(`You drop what you were carrying.` +
+             `${items.length ? ` (${items.length})` : ''}${souls ? ` and ${souls} souls` : ''}`,
+             'bad');
   }
 
   // ------------------------------------------------------------- equipment

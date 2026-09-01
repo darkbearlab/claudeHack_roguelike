@@ -111,6 +111,11 @@ body { overflow: hidden; }
    pinning to the viewport corner would leave the bars floating in the letterbox
    - a long way from the map on a wide screen. #hudframe is the same centred
    square as the canvas, so the corner it offers is the map's own corner. */
+/* The overlay is translucent, so the gauges beneath it show through as ghost
+   blocks behind the text. Above it in the stack was not enough; they have to be
+   out of the way entirely while a screen is open. */
+#viewport:has(#overlay:not([hidden])) #hud { display: none; }
+
 #hud {
   position: absolute; inset: 0; z-index: 3; pointer-events: none;
   display: flex; align-items: center; justify-content: center;

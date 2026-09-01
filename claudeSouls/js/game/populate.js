@@ -28,6 +28,7 @@ export function populate(game, lvl, rng) {
   if (depth === DUNGEON_DEPTH) return;      // the boss floor is placed by hand
 
   placeGuards(game, lvl, rng);
+  placeElite(game, lvl, rng, depth);
 
   // Grows slowly. Doubling the count is not how this game gets harder.
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
@@ -274,4 +275,68 @@ export function placePacks(game, lvl, rng, budget) {
     spent += placePack(game, lvl, rng, pack);
   }
   return spent;
+}
+
+// ===========================================================================
+// Elites.
+//
+// "The floor boss drops something fixed" turned out to need floor bosses to
+// exist first: the only boss in the game is on the last floor, and killing it
+// ends the run, so anything it dropped would be worthless. So this is the
+// version that does the job the idea was for - **guaranteeing that a run
+// actually meets the equipment pool**, which matters more here than usual
+// because weapons carry the skills. A player who never finds a second weapon
+// never sees half the systems.
+//
+// One per floor from the third down, picked from a depth table, carrying a
+// fixed item. Like everything else that can be picked up, both the species and
+// the prize come from `seed#depth`, and the taken-set is per run - so resting
+// brings the elite back but not its prize, and there is nothing to farm.
+
+const ELITES = [
+  { upto: 4, keys: ['husk', 'sentinel', 'swordsman'] },
+  { upto: 7, keys: ['sentinel', 'swordsman', 'brute', 'archer'] },
+  { upto: 99, keys: ['brute', 'warden', 'minotaur', 'flamekeeper'] },
+];
+
+const ELITE_DROP = [
+  { upto: 4, keys: ['blades', 'hatchet', 'buckler', 'brigandine', 'whetstone'] },
+  { upto: 7, keys: ['spear', 'mace', 'falchion', 'kite', 'firebomb', 'blink'] },
+  { upto: 99, keys: ['halberd', 'greataxe', 'warhammer', 'pike', 'tower', 'plate', 'ward'] },
+];
+
+const pickFrom = (table, depth, rng) => {
+  const row = table.find((r) => depth <= r.upto) ?? table[table.length - 1];
+  return rng.pick(row.keys);
+};
+
+/**
+ * One tougher thing per floor, carrying something.
+ *
+ * It is deliberately not a new species: the roster is the roster, and a "harder
+ * husk" is legible in a way a new sprite would not be. More health and more
+ * poise means the answers you have learned still apply, they just take longer -
+ * which is the right kind of harder for a game whose difficulty lives in
+ * reading rather than in numbers.
+ */
+export function placeElite(game, lvl, rng, depth) {
+  if (depth < 3 || depth >= DUNGEON_DEPTH) return 0;
+
+  const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 10 });
+  if (!spot) return 0;
+
+  const key = pickFrom(ELITES, depth, rng);
+  const before = lvl.enemies.length;
+  spawn(game, lvl, key, spot.x, spot.y, rng);
+  const e = lvl.enemies[lvl.enemies.length - 1];
+  if (!e || lvl.enemies.length === before) return 0;
+
+  e.elite = true;
+  e.drop = pickFrom(ELITE_DROP, depth, rng);
+  e.name = `elder ${e.name}`;
+  e.hpMax = Math.round(e.hpMax * 1.6);
+  e.hp = e.hpMax;
+  e.poise = e.poise + 2;
+  e.poiseLeft = e.poise;
+  return 1;
 }
