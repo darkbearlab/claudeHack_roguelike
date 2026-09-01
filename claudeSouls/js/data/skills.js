@@ -212,6 +212,79 @@ export const SKILLS = [
     cooldown: 4,
     advancesTurn: true,
   },
+
+  // ---- halberd: the two-stage sweep, finally on the player's side ---------
+  // Press one then the other and you have the swordsman's combo. No new
+  // mechanic: the shapes already existed, the sequence is expressed by the
+  // button order, and it costs you two turns like it costs them.
+  {
+    key: 'hew', name: 'Hew', hint: 'the left half of a sweep',
+    pattern: 'sweepL', damage: 4, impact: 4, stamina: 6, cooldown: 0, advancesTurn: true,
+  },
+  {
+    key: 'backsweep', name: 'Backsweep', hint: 'the other half; follow a Hew with it',
+    pattern: 'sweepR', damage: 4, impact: 4, stamina: 5, cooldown: 2, advancesTurn: true,
+  },
+
+  // ---- warhammer: the answer to being surrounded, and a gamble ------------
+  {
+    key: 'pound', name: 'Pound', hint: 'slow and very heavy',
+    pattern: 'front', damage: 5, impact: 6, stamina: 7, cooldown: 0, advancesTurn: true,
+  },
+  {
+    key: 'sunder', name: 'Sunder', hint: 'everything around you - then you are standing still for two turns',
+    // Recovery, not a long cooldown, and deliberately not both. Being expensive
+    // only makes you use it less; being helpless afterwards makes it a gamble -
+    // you clear the ring and then stand in the middle of what is left of it.
+    pattern: 'around', damage: 4, impact: 5, stamina: 9, cooldown: 1, recovery: 2,
+    advancesTurn: true,
+  },
+
+  // ---- pike: reach past everything ---------------------------------------
+  {
+    key: 'brace', name: 'Brace', hint: 'three tiles of lane',
+    pattern: 'line3', damage: 3, impact: 3, stamina: 6, cooldown: 0, advancesTurn: true,
+  },
+  {
+    key: 'impale', name: 'Impale', hint: 'six tiles of lane, and a long recovery',
+    pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 1, recovery: 1,
+    advancesTurn: true,
+  },
+
+  // ---- paired blades: cheap, fast, feeds the kill-refunds-cooldowns engine -
+  {
+    key: 'slice', name: 'Slice', hint: 'barely costs anything',
+    pattern: 'front', damage: 2, impact: 1, stamina: 2, cooldown: 0, advancesTurn: true,
+  },
+  {
+    key: 'flurry', name: 'Flurry', hint: 'three tiles, still cheap',
+    pattern: 'arc3', damage: 2, impact: 2, stamina: 5, cooldown: 2, advancesTurn: true,
+  },
+
+  // ---- falchion: the push ------------------------------------------------
+  {
+    key: 'chop', name: 'Chop', hint: 'knocks them back a tile',
+    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 0, knock: 1, advancesTurn: true,
+  },
+  {
+    key: 'shove', name: 'Shove', hint: 'almost no damage - it is for moving them',
+    // Position is this game's language, so a tool that only moves things is a
+    // real weapon: push something out of your lane, or into the lane the horned
+    // one is about to charge down.
+    pattern: 'front', damage: 1, impact: 4, stamina: 3, cooldown: 2, knock: 2, advancesTurn: true,
+  },
+
+  // ---- hatchet: ranged in ONE hand, which the bow cannot be ---------------
+  {
+    key: 'sling', name: 'Sling', hint: 'thrown, and you keep your off hand',
+    ranged: true, damage: 3, impact: 1, range: 6,
+    projectile: { speed: 3, glyph: '/', colour: '#c8b48a' },
+    stamina: 4, cooldown: 1, advancesTurn: true,
+  },
+  {
+    key: 'bury', name: 'Bury', hint: 'up close, if they reached you',
+    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 2, advancesTurn: true,
+  },
 ];
 
 export const SKILL_BY_KEY = Object.fromEntries(SKILLS.map((s) => [s.key, s]));

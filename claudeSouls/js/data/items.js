@@ -55,6 +55,7 @@ const armour = (key, o) => ({
   weight: o.weight,
   hp: o.hp,
   reduce: o.reduce ?? 0,
+  regen: o.regen ?? 0,          // added to stamina recovery
   heavy: o.heavy ?? false,
   desc: o.desc,
 });
@@ -86,6 +87,31 @@ export const ITEMS = [
     desc: '雙手。箭在你的回合結束後仍然在飛。',
   }),
 
+  weapon('halberd', {
+    name: 'halberd', hands: 2, weight: 10, primary: 'hew', secondary: 'backsweep',
+    desc: '雙手。先左掃再右掃——敵人的那套兩段掃,終於在你手上。',
+  }),
+  weapon('warhammer', {
+    name: 'warhammer', hands: 2, weight: 14, primary: 'pound', secondary: 'sunder',
+    desc: '雙手。次要技能清掉你周圍一圈,然後你會站在原地兩回合。',
+  }),
+  weapon('pike', {
+    name: 'pike', hands: 2, weight: 9, primary: 'brace', secondary: 'impale',
+    desc: '雙手。六格長的一條線,和牛頭人的衝鋒一樣長。',
+  }),
+  weapon('blades', {
+    name: 'paired blades', weight: 2, primary: 'slice', secondary: 'flurry',
+    desc: '很輕、很便宜。一條精力砍十次,配合擊殺退還 CD。',
+  }),
+  weapon('falchion', {
+    name: 'falchion', weight: 5, primary: 'chop', secondary: 'shove',
+    desc: '命中會把東西推開。次要技能幾乎不造成傷害——它是用來搬動敵人的。',
+  }),
+  weapon('hatchet', {
+    name: 'hatchet', weight: 2, primary: 'sling', secondary: 'bury',
+    desc: '單手遠程,所以你還留著副手。射程短、傷害低。',
+  }),
+
   // ---- shields ------------------------------------------------------------
   shield('buckler', {
     name: 'buckler', weight: 3, arc: 1, reduce: 2, stamina: 2,
@@ -96,6 +122,14 @@ export const ITEMS = [
     desc: '擋正面和左右兩側,代價是你幾乎不再是一個會移動的東西。',
   }),
 
+  shield('bone', {
+    name: 'bone shield', weight: 1, arc: 1, reduce: 1, stamina: 2,
+    desc: '幾乎不佔重量——輕裝流終於帶得起盾。',
+  }),
+  shield('kite', {
+    name: 'kite shield', weight: 6, arc: 3, reduce: 2, stamina: 3,
+    desc: '寬而薄:擋三個方向,但每一下都會漏一點。',
+  }),
   // ---- armour -------------------------------------------------------------
   armour('leathers', {
     name: 'leathers', weight: 2, hp: 12, reduce: 0, heavy: false,
@@ -104,6 +138,22 @@ export const ITEMS = [
   armour('mail', {
     name: 'mail', weight: 12, hp: 16, reduce: 1, heavy: true,
     desc: '受到的傷害 −1,但你得看得更遠、更早決定。',
+  }),
+  // Rags need an upside of their own, not just "less weight". With a light
+  // weapon the weight thresholds put them level with leathers, so they were
+  // simply worse: same rolls, same recovery, two less health. Unencumbered
+  // recovery is the extreme end of the axis rather than the bottom of it.
+  armour('rags', {
+    name: 'rags', weight: 0, hp: 10, reduce: 0, heavy: false, regen: 1,
+    desc: '幾乎沒有防護,但精力回得比誰都快。',
+  }),
+  armour('brigandine', {
+    name: 'brigandine', weight: 6, hp: 14, reduce: 0, heavy: false,
+    desc: '中間的選擇:多一點血,還滾得動。',
+  }),
+  armour('plate', {
+    name: 'plate', weight: 22, hp: 18, reduce: 2, heavy: true,
+    desc: '受到的傷害 −2。你幾乎不再是一個會移動的東西。',
   }),
 ];
 
@@ -161,6 +211,9 @@ const consumable = (key, o) => ({
   heal: o.heal ?? 0,
   damage: o.damage ?? 0,
   impact: o.impact ?? 0,
+  knock: o.knock ?? 0,
+  teleport: o.teleport ?? 0,
+  shield: o.shield ?? 0,
   pattern: o.pattern ?? null,
   projectile: o.projectile ?? null,
   range: o.range ?? 0,
@@ -202,6 +255,26 @@ export const CONSUMABLES = [
     name: 'quake', kind: 'magic', charges: 2, weight: 0, stamina: 6,
     directional: true, damage: 4, impact: 6, pattern: 'arc5',
     desc: '前方五格,衝擊值極高——打得斷幾乎任何招式。兩次。',
+  }),
+  consumable('knife', {
+    name: 'throwing knife', kind: 'item', charges: 3, weight: 1, stamina: 3,
+    directional: true, damage: 3, impact: 1, range: 7,
+    projectile: { speed: 3, glyph: '/', colour: '#cfd6dd' },
+    desc: '丟出去。三次。',
+  }),
+  consumable('firebomb', {
+    name: 'firebomb', kind: 'item', charges: 2, weight: 1, stamina: 4,
+    directional: true, damage: 4, impact: 3, pattern: 'arc3', knock: 1,
+    desc: '前方三格,並把它們推開一格。兩次。',
+  }),
+  consumable('ward', {
+    name: 'ward', kind: 'magic', charges: 2, weight: 0, stamina: 5, shield: 1,
+    desc: '這一回合下一次受到的傷害完全無效——**不看方向**。無視盾牌的招式也擋得住。',
+  }),
+  consumable('blink', {
+    name: 'blink', kind: 'magic', charges: 2, weight: 0, stamina: 4,
+    directional: true, teleport: 4,
+    desc: '瞬移四格,穿過擋路的東西。推進回合。',
   }),
 ];
 

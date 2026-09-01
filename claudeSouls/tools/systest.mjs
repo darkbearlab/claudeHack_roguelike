@@ -11,7 +11,7 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
-import { T } from '../js/map/tiles.js';
+import { T, isWalkable } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -884,10 +884,119 @@ check('every consumable is reachable and does something', () => {
   for (const c of CONSUMABLES) {
     assert(c.charges > 0, `${c.key} has no charges`);
     assert(c.kind === 'item' || c.kind === 'magic', `${c.key} is neither item nor magic`);
-    assert(c.heal || c.damage || c.pattern || c.projectile, `${c.key} does nothing at all`);
-    if (c.directional) assert(c.pattern || c.projectile, `${c.key} is aimed but has no shape`);
+    assert(c.heal || c.damage || c.pattern || c.projectile || c.shield || c.teleport,
+           `${c.key} does nothing at all`);
+    if (c.directional) {
+      assert(c.pattern || c.projectile || c.teleport, `${c.key} is aimed but has no shape`);
+    }
   }
   return `${CONSUMABLES.length} consumables`;
+});
+
+check('a heavy swing leaves you standing there, and you cannot roll out of it', () => {
+  // The player learns "recovery is the punish window" from the wrong end of it
+  // all game. This is the same rule pointed the other way, and closing the
+  // escape hatch is exactly what gives it weight - a cooldown you can dodge
+  // through is a price, not a commitment.
+  const { g, e } = arena('recover', 'husk', 2);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'warhammer');
+  p.stamina = p.staminaMax;
+  const heavy = SKILL_BY_KEY.sunder;
+  assert(heavy.recovery >= 2, 'sunder lost its recovery');
+
+  assert(g.useSkill('sunder', { dx: 1, dy: 0 }) === true, 'sunder did not spend the turn');
+  g.worldTurn();
+  assert(p.recovering, 'no recovery after the heaviest attack in the game');
+
+  const st = p.stamina;
+  assert(!g.useSkill('roll', { dx: -1, dy: 0 }), 'rolled out of a recovery');
+  assert(!g.useSkill('pound', { dx: 1, dy: 0 }), 'attacked during a recovery');
+  g.worldTurn();
+  assert(p.stamina === st, 'stamina came back during a recovery');
+
+  let guard = 0;
+  while (p.recovering && guard++ < 6) g.worldTurn();
+  assert(!p.recovering, 'the recovery never ended');
+  return `${heavy.recovery} turns helpless, and no stamina in them`;
+});
+
+check('only secondary skills ever have a recovery', () => {
+  // Otherwise it is not a choice you made, it is a tax on holding the weapon.
+  for (const it of ITEMS) {
+    if (it.kind !== 'weapon') continue;
+    const first = SKILL_BY_KEY[it.primary];
+    assert(!first.recovery, `${it.key}'s primary (${it.primary}) has a recovery`);
+  }
+  // And nothing pays all three of stamina, cooldown and recovery.
+  for (const s of SKILLS) {
+    if (!s.recovery) continue;
+    assert((s.cooldown ?? 0) <= 1,
+           `${s.key} pays stamina AND cooldown ${s.cooldown} AND recovery - three taxes`);
+  }
+  return 'commitment is opt-in';
+});
+
+check('knockback moves things, and stops at whatever is behind them', () => {
+  const { g, e } = arena('knock', 'husk', 1);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'falchion');
+  p.stamina = p.staminaMax;
+  e.hp = 99;                                  // we are testing the push, not the kill
+
+  const before = e.x;
+  assert(g.useSkill('shove', { dx: 1, dy: 0 }) === true, 'shove did not spend the turn');
+  assert(e.x > before, `shove did not move it (${before} -> ${e.x})`);
+  assert(SKILL_BY_KEY.shove.damage <= 1, 'shove deals real damage; it is meant to be a tool');
+
+  // Something solid behind it stops the push rather than overlapping.
+  const blocked = arena('knock2', 'husk', 1);
+  const other = new Enemy('husk', blocked.g.rng);
+  blocked.g.level.addEnemy(other, blocked.e.x + 1, blocked.e.y);
+  blocked.g.player.equipItem(SLOT.MAIN, 'falchion');
+  blocked.g.player.stamina = blocked.g.player.staminaMax;
+  blocked.e.hp = 99;
+  const was = blocked.e.x;
+  blocked.g.useSkill('shove', { dx: 1, dy: 0 });
+  assert(blocked.e.x === was, 'pushed one enemy through another');
+  return 'pushes, and stops when it should';
+});
+
+check('a ward eats the next blow whatever direction it came from', () => {
+  const g = freshGame('ward', 'light');
+  const p = g.player;
+  g.prepareFromPack('magic', null);
+  p.pack.push('ward');
+  assert(g.prepareFromPack('magic', 'ward'), 'could not ready a ward');
+  p.stamina = p.staminaMax;
+  assert(g.usePrepared('magic', null) === true, 'casting the ward did not spend the turn');
+
+  const hp = p.hp;
+  // Unblockable and from behind: the two things a shield cannot answer.
+  g.hurtPlayer(6, 'a test', { from: { dx: 0, dy: 1 }, unblockable: true });
+  assert(p.hp === hp, 'the ward let an unblockable hit through');
+  g.hurtPlayer(3, 'a test', { from: { dx: 0, dy: 1 }, unblockable: true });
+  assert(p.hp < hp, 'the ward absorbed a second blow');
+  return 'one blow, any direction, shields need not apply';
+});
+
+check('blink goes through bodies but not through rock', () => {
+  const { g, e } = arena('blink', 'husk', 1);
+  const p = g.player;
+  g.prepareFromPack('magic', null);
+  p.pack.push('blink');
+  g.prepareFromPack('magic', 'blink');
+  p.stamina = p.staminaMax;
+
+  // The husk is adjacent to the east; blink should pass straight over it.
+  const before = p.x;
+  const moved = g.usePrepared('magic', { dx: 1, dy: 0 });
+  if (moved) {
+    assert(p.x > before + 1, `blink only reached ${p.x - before} tiles - it did not pass the body`);
+    assert(!g.level.enemyAt(p.x, p.y), 'landed on top of something');
+  }
+  assert(isWalkable(g.level.at(p.x, p.y)), 'landed inside rock');
+  return 'over bodies, never into stone';
 });
 
 // ===========================================================================

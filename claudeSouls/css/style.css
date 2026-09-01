@@ -165,6 +165,10 @@ body { overflow: hidden; }
 /* minmax(0, 1fr), not 1fr: a bare 1fr refuses to shrink below the content's
    intrinsic width, so adding the shape icons pushed the third button off the
    right-hand edge of a phone. */
+/* Every action is refused while you are still swinging, so the whole bar says
+   so at once rather than each button failing on its own. */
+#skillbar.recovering .skill { opacity: .35; }
+#skillbar.recovering .skill.action { opacity: .5; }
 #skillbar { flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 4px; }
 .skill {
@@ -177,7 +181,7 @@ body { overflow: hidden; }
 }
 .skill .num  { position: absolute; top: 2px; left: 5px; font-size: 9px; color: var(--dim); }
 .skill .nm   { font-size: 12px; padding-left: 9px; flex: 1 1 auto;
-               white-space: nowrap; overflow: hidden; text-overflow: clip; }
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The shape map on each button. Same colour language as the map itself:
    red is what gets hit, blue is where you end up, pale is you.

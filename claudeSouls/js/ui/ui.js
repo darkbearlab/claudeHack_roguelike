@@ -297,6 +297,10 @@ export class UI {
 
   startGesture(ev, skillKey, fromEl) {
     if (!this.game.running || this.game.busy) return;
+    if (this.game.player.recovering) {
+      this.pushMessage(`Still recovering (${this.game.player.recover}).`, 'warn');
+      return;
+    }
     const def = this.skillDef(skillKey);
     if (!def) return;
     const slot = this.game.player.skill(skillKey);
@@ -628,6 +632,9 @@ export class UI {
     if (!p) return;
     // Swapping a weapon changes which buttons exist, and the bar is built once.
     if (this.layoutSignature() !== this.builtSignature) this.buildSkillBar();
+    const stuck = p.recovering;
+    this.el.skills.classList.toggle('recovering', stuck);
+
     for (const b of this.el.skills.querySelectorAll('.skill[data-prep]')) {
       const c = p.prepared(b.dataset.prep);
       if (!c) continue;
@@ -863,7 +870,7 @@ function normaliseKey(ev) {
  * its skill does.
  */
 function skillIcon(def, arc = 1) {
-  const hit = [], step = [], guard = [];
+  let hit = [], step = [], guard = [];
 
   if (def.defend) {
     // Not an attack, so it is not drawn like one: the shield's arc, in the
@@ -884,6 +891,21 @@ function skillIcon(def, arc = 1) {
     const reach = def.dash ?? 0;
     for (let i = 1; i <= reach; i++) step.push({ x: 0, y: -i });
     for (const t of attackTiles(0, -reach, 0, -1, def.pattern ?? 'front')) hit.push(t);
+  }
+
+  // Clamp the drawn grid. A six-tile lane is seven cells tall, which at button
+  // height renders about three pixels wide - technically correct and completely
+  // unreadable. Anything past the limit is dropped and the last cell kept is
+  // faded, so a long shape reads as "and it keeps going".
+  const LIMIT = 4;
+  const clip = (cells) => cells.filter((c) => Math.abs(c.x) <= LIMIT && Math.abs(c.y) <= LIMIT);
+  const truncated = (hit.length + step.length + guard.length) >
+                    (clip(hit).length + clip(step).length + clip(guard).length);
+  hit = clip(hit); step = clip(step); guard = clip(guard);
+  if (truncated) {
+    const far = [...hit, ...step].sort((a, b) =>
+      (Math.abs(b.x) + Math.abs(b.y)) - (Math.abs(a.x) + Math.abs(a.y)))[0];
+    if (far) far.fade = 1;
   }
 
   const all = [{ x: 0, y: 0 }, ...hit, ...step, ...guard];

@@ -25,7 +25,7 @@ import { DIRS, DIR_BY_KEY, dist, capitalise } from '../../../engine/util.js';
 import { computeFOV, hasLOS } from '../../../engine/fov.js';
 import { astar } from '../../../engine/path.js';
 import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
-import { T, isBonfire, tileName } from '../map/tiles.js';
+import { T, isBonfire, tileName, isWalkable } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
@@ -172,6 +172,14 @@ export class Game {
     if (!this.running || this.busy) return;
     this.busy = true;
     try {
+      // Recovery burns the turn whatever you pressed. The world still has to be
+      // rendered between those turns, or two turns of being hit look like a
+      // freeze rather than the consequence of the swing you chose.
+      if (this.player.recovering) {
+        this.msg(`You are still recovering. (${this.player.recover})`, 'warn');
+        this.worldTurn();
+        return;
+      }
       const spent = await this.doCommand(key);
       if (spent && this.running) this.worldTurn();
     } catch (err) {
@@ -253,6 +261,12 @@ export class Game {
   hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
+
+    if (p.warded > 0) {
+      p.warded--;
+      this.msg('The ward takes it.', 'good');
+      return;
+    }
 
     const shield = p.shield;
     if (shield && p.blocking && opts.from && !opts.unblockable &&
@@ -445,6 +459,7 @@ export class Game {
    */
   usePrepared(kind, dir) {
     const p = this.player;
+    if (p.recovering) { this.msg('You are still recovering.', 'warn'); return false; }
     const c = p.prepared(kind);
     if (!c) { this.msg(`You have no ${kind} readied.`, 'warn'); return false; }
     if (p.chargesOf(c.key) <= 0) { this.msg(`The ${c.name} is spent.`, 'warn'); return false; }
@@ -454,6 +469,31 @@ export class Game {
     p.charges[c.key] = p.chargesOf(c.key) - 1;
     if (c.stamina) p.spend(c.stamina);
     if (dir) p.face(dir.dx, dir.dy);
+
+    if (c.shield) {
+      // Direction-blind on purpose: this is the answer to the things a shield
+      // cannot help with - a charge that runs you over, or being surrounded.
+      p.warded = c.shield;
+      this.msg('A ward closes around you.', 'good');
+      return true;
+    }
+
+    if (c.teleport) {
+      const before = { x: p.x, y: p.y };
+      let x = p.x, y = p.y;
+      for (let i = 0; i < c.teleport; i++) {
+        const nx = x + dir.dx, ny = y + dir.dy;
+        // Through bodies, but not through rock - that is the whole point of it
+        // over a roll.
+        if (!this.level.inBounds(nx, ny) || !isWalkable(this.level.at(nx, ny))) break;
+        x = nx; y = ny;
+      }
+      if (this.level.enemyAt(x, y)) { this.msg('There is something in the way.', 'warn'); return false; }
+      p.x = x; p.y = y;
+      this.msg(`You step through. (${Math.max(Math.abs(x - before.x), Math.abs(y - before.y))})`);
+      this.afterMove();
+      return true;
+    }
 
     if (c.heal) {
       const before = p.hp;
@@ -478,7 +518,11 @@ export class Game {
       let hit = 0;
       for (const t of tiles) {
         const e = this.level.enemyAt(t.x, t.y);
-        if (e && e.alive) { this.hurtEnemy(e, c.damage, true, c.impact); hit++; }
+        if (e && e.alive) {
+          this.hurtEnemy(e, c.damage, true, c.impact);
+          if (c.knock && e.alive) this.knockBack(e, dir, c.knock);
+          hit++;
+        }
       }
       this.ui?.animateTrail?.(tiles, '*', '#ff9a3c');
       this.msg(hit ? `${capitalise(c.name)} tears through ${hit}.` : `${capitalise(c.name)} hits nothing.`);
@@ -493,6 +537,28 @@ export class Game {
     }
 
     return true;
+  }
+
+  /**
+   * Push something away from you.
+   *
+   * Position is this game's language, so moving an enemy is a real effect
+   * rather than a garnish: shove something out of the lane you want to stand
+   * in, or into the lane the horned one is about to charge down. It stops at
+   * whatever it would have been pushed into, which is the interesting case.
+   */
+  knockBack(e, dir, tiles) {
+    let moved = 0;
+    for (let i = 0; i < tiles; i++) {
+      const nx = e.x + dir.dx, ny = e.y + dir.dy;
+      if (!this.level.passable(nx, ny, e)) break;
+      if (this.level.enemyAt(nx, ny)) break;
+      if (nx === this.player.x && ny === this.player.y) break;
+      if (!this.level.diagonalOk(e.x, e.y, nx, ny)) break;
+      this.level.moveEnemy(e, nx, ny);
+      moved++;
+    }
+    return moved;
   }
 
   /** Ready a consumable from the pack. Costs a turn, like any other swap. */
@@ -516,6 +582,7 @@ export class Game {
   useSkill(key, dir) {
     // The two prepared slots ride the same path as a skill so that the button,
     // the drag gesture, the keyboard and the bot all have one way in.
+    if (this.player.recovering) { this.msg('You are still recovering.', 'warn'); return false; }
     if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir);
     const p = this.player;
     const def = SKILL_BY_KEY[key];
@@ -554,6 +621,9 @@ export class Game {
 
     p.spend(cost);
     if (def.cooldown) slot.cd = def.cooldown;
+    // Recovery is set AFTER the blow lands, and counts down in tick() - so the
+    // turn you swung is yours and the turns after it are not.
+    if (def.recovery) p.recover = def.recovery;
 
     if (def.ranged) {
       this.level.projectiles.push(makeProjectile({
@@ -576,6 +646,7 @@ export class Game {
         const wasWindup = e.state === STATE.WINDUP;
         const poiseBefore = e.poiseLeft;
         this.hurtEnemy(e, def.damage, true, def.impact ?? 0);
+        if (def.knock && e.alive) this.knockBack(e, dir, def.knock);
         hit++;
         if (wasWindup && e.alive) {
           if (e.poiseLeft === e.poise && poiseBefore !== e.poise) {

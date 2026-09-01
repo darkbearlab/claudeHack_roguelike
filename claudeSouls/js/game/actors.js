@@ -49,6 +49,8 @@ export class Player {
     this.blocking = null;             // {dx,dy} while the shield is up
     this.prep = { item: null, magic: null };
     this.edge = 0;                    // a whetstone's bonus, spent on the next hit
+    this.recover = 0;                 // turns you are still swinging
+    this.warded = 0;                  // blows a ward will still absorb
     this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
 
@@ -130,6 +132,25 @@ export class Player {
     if (key && this.charges[key] === undefined) this.charges[key] = CONSUMABLE_BY_KEY[key].charges;
     return { ok: true, displaced: was ? [was] : [] };
   }
+
+  /**
+   * Turns left standing there after a heavy swing.
+   *
+   * The player learns "recovery is the punish window" from the wrong end of it
+   * all game; this applies the same rule to them. While it is running you do not
+   * act at all - **not even roll** - and stamina does not come back, which is
+   * the same rule enemies live under (they only regenerate in READY or
+   * RESTING). Closing the escape hatch is exactly what gives it weight.
+   *
+   * Three limits, from the design conversation:
+   *   - only *secondary* skills ever have it, so it is always a choice you made
+   *   - it replaces most of the cooldown rather than stacking on top of it;
+   *     stamina AND cooldown AND recovery is three taxes and would just make
+   *     heavy weapons bad
+   *   - it is short. Two turns of standing still while surrounded is already
+   *     four to ten damage against a twelve to eighteen point pool.
+   */
+  get recovering() { return this.recover > 0; }
 
   /** The shield in your off hand, if that is what is in it. */
   get shield() {
@@ -249,7 +270,9 @@ export class Player {
    * level.
    */
   regenRate(inCombat) {
-    const base = Math.max(1, PLAYER.staminaRegen - Math.floor(Math.max(0, this.weight - 5) / 6));
+    const armour = this.item(SLOT.ARMOUR)?.regen ?? 0;
+    const base = Math.max(1, PLAYER.staminaRegen + armour
+                             - Math.floor(Math.max(0, this.weight - 5) / 6));
     return inCombat ? base : base * 4;
   }
 
@@ -259,7 +282,11 @@ export class Player {
 
   /** Called once per turn, after everything has acted. */
   tick(inCombat = true) {
-    this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
+    // No stamina while you are still recovering - the same rule the enemies
+    // live under, and the reason a heavy swing is a commitment rather than a
+    // price.
+    if (this.recover > 0) this.recover--;
+    else this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
     for (const s of this.skills) if (s.cd > 0) s.cd--;
   }
 
