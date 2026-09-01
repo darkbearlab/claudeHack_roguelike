@@ -68,6 +68,7 @@ const atk = (o) => ({
   step: o.step ?? 0,                // tiles moved forward on resolve
   weight: o.weight ?? 1,            // how often it is picked among the options
   next: o.next ?? null,             // follow-up, begins immediately, no gap
+  reaim: o.reaim ?? false,          // a follow-up that turns to face you again
   unblockable: o.unblockable ?? false,   // a shield is no help against this
   projectile: o.projectile ?? null,
 });
@@ -97,9 +98,16 @@ export const ENEMIES = [
   E('hound', {
     name: 'hound', glyph: 'd', colour: '#c8a24a', sprite: 'mon_jackal',
     hp: 4, speed: 18, stamina: 9, staminaRegen: 4, poise: 2,
-    minDepth: 1, freq: 20, group: [1, 2],
-    attacks: [atk({ name: 'pounce', windup: 1, recovery: 2, pattern: 'front', damage: 2,
-                    cost: 3, step: 1 })],
+    minDepth: 1, freq: 20, group: [2, 3],
+    // arc3, not front. `step` only closes off *backing away* - the attack tiles
+    // are fixed at wind-up and the hound comes with you - but a sidestep still
+    // beat it, and measured across the roster a free single step escaped
+    // fourteen of eighteen attacks. Width is what answers a sidestep.
+    attacks: [atk({
+      name: 'pounce', windup: 1, recovery: 2, pattern: 'arc3', damage: 2, cost: 3, step: 1,
+      next: atk({ name: 'snap', windup: 1, recovery: 2, pattern: 'front', damage: 2,
+                  cost: 0, reaim: true }),
+    })],
   }),
 
   // Long legs: one step back is not out of reach, so the answer is a sidestep
@@ -107,7 +115,7 @@ export const ENEMIES = [
   E('crawler', {
     name: 'crawler', glyph: 's', colour: '#3a3a44', sprite: 'mon_spider',
     hp: 5, speed: 15, stamina: 10, staminaRegen: 4, poise: 2,
-    minDepth: 2, freq: 15, group: [1, 3],
+    minDepth: 2, freq: 15, group: [2, 4],
     attacks: [atk({ name: 'lash', windup: 1, recovery: 2, pattern: 'reach2', range: 2,
                     damage: 2, cost: 3 })],
   }),
@@ -117,7 +125,7 @@ export const ENEMIES = [
     name: 'husk', glyph: 'z', colour: '#7aa06a', sprite: 'mon_zombie',
     hp: 7, speed: 6, stamina: 10, staminaRegen: 3, poise: 3,
     minDepth: 1, freq: 20,
-    attacks: [atk({ name: 'grasp', windup: 2, recovery: 3, pattern: 'arc3', damage: 3, cost: 4 })],
+    attacks: [atk({ name: 'grasp', windup: 2, recovery: 2, pattern: 'arc3', damage: 3, cost: 4 })],
   }),
 
   // ---- reach: retreating in a straight line does not work ------------------
@@ -126,7 +134,13 @@ export const ENEMIES = [
     hp: 11, speed: 12, stamina: 12, poise: 4,
     minDepth: 2, freq: 16, opensDoors: true,
     attacks: [
-      atk({ name: 'lance', windup: 2, recovery: 3, pattern: 'line3', range: 3, damage: 3, cost: 5 }),
+      // The lance owns the lane; the sweep that follows owns the two tiles you
+      // stepped to in order to leave it. Between them there is somewhere to be,
+      // but it is not one free step away.
+      atk({
+        name: 'lance', windup: 2, recovery: 2, pattern: 'line3', range: 3, damage: 3, cost: 5,
+        next: atk({ name: 'sweep', windup: 1, recovery: 2, pattern: 'arc3', damage: 2, cost: 0 }),
+      }),
     ],
   }),
 
@@ -157,7 +171,7 @@ export const ENEMIES = [
         name: 'scythe', windup: 2, recovery: 2, pattern: 'sweepL', damage: 4, cost: 6,
         next: atk({ name: 'return cut', windup: 1, recovery: 2, pattern: 'sweepR', damage: 4, cost: 0 }),
       }),
-      atk({ name: 'whirl', windup: 3, recovery: 3, pattern: 'around', damage: 3, cost: 7 }),
+      atk({ name: 'whirl', windup: 3, recovery: 2, pattern: 'around', damage: 3, cost: 7 }),
     ],
   }),
 
@@ -167,7 +181,7 @@ export const ENEMIES = [
     hp: 6, speed: 10, stamina: 12, staminaRegen: 3, poise: 2, sight: 12,
     minDepth: 2, freq: 16, keepsDistance: true,
     attacks: [atk({
-      name: 'loose', kind: 'ranged', windup: 2, recovery: 3, range: 10, damage: 3, cost: 5,
+      name: 'loose', kind: 'ranged', windup: 2, recovery: 2, range: 10, damage: 3, cost: 5,
       projectile: { speed: 3, glyph: '→', colour: '#e0d0a0' },
     })],
   }),
@@ -177,7 +191,7 @@ export const ENEMIES = [
     hp: 12, speed: 9, stamina: 14, staminaRegen: 3, poise: 5, sight: 12,
     minDepth: 5, freq: 10, keepsDistance: true, opensDoors: true,
     attacks: [atk({
-      name: 'cinder', kind: 'ranged', windup: 3, recovery: 4, range: 9, damage: 4, cost: 7,
+      name: 'cinder', kind: 'ranged', windup: 3, recovery: 3, range: 9, damage: 4, cost: 7,
       projectile: { speed: 2, glyph: '*', colour: '#ff9a3c' },
     })],
   }),
@@ -191,7 +205,11 @@ export const ENEMIES = [
     hp: 18, speed: 9, stamina: 14, staminaRegen: 3, poise: 8,
     minDepth: 3, freq: 12, opensDoors: true,
     attacks: [
-      atk({ name: 'overhead', windup: 3, recovery: 3, pattern: 'arc5', damage: 5, cost: 7, step: 1 }),
+      atk({
+        name: 'overhead', windup: 3, recovery: 2, pattern: 'arc5', damage: 5, cost: 7, step: 1,
+        next: atk({ name: 'return swing', windup: 1, recovery: 2, pattern: 'arc3', damage: 3,
+                    cost: 0, reaim: true }),
+      }),
       atk({ name: 'backhand', windup: 1, recovery: 2, pattern: 'front', damage: 2, cost: 3, weight: 2 }),
     ],
   }),
@@ -208,8 +226,10 @@ export const ENEMIES = [
       // against something that ran you over - and which attacks ignore a shield
       // is the sort of thing a player has to be able to look up, not infer from
       // geometry. Same reasoning as the wind-up flag.
-      atk({ name: 'charge', windup: 2, recovery: 3, pattern: 'line6', range: 6, damage: 5, cost: 8, step: 6,
-            unblockable: true }),
+      atk({ name: 'charge', windup: 2, recovery: 2, pattern: 'line6', range: 6, damage: 5, cost: 8, step: 6,
+            unblockable: true,
+            next: atk({ name: 'gore', windup: 1, recovery: 2, pattern: 'arc3', damage: 3,
+                        cost: 0, reaim: true }) }),
       atk({ name: 'gore', windup: 1, recovery: 2, pattern: 'reach2', range: 2, damage: 3, cost: 5, weight: 2 }),
     ],
   }),
@@ -227,7 +247,7 @@ export const ENEMIES = [
         name: 'tail sweep', windup: 2, recovery: 2, pattern: 'sweepL', damage: 4, cost: 6,
         next: atk({ name: 'back sweep', windup: 1, recovery: 2, pattern: 'sweepR', damage: 4, cost: 0 }),
       }),
-      atk({ name: 'pyre', windup: 3, recovery: 3, pattern: 'around2', damage: 6, cost: 9 }),
+      atk({ name: 'pyre', windup: 3, recovery: 2, pattern: 'around2', damage: 6, cost: 9 }),
     ],
   }),
 ];

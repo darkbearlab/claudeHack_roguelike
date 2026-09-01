@@ -291,7 +291,17 @@ function resolveAttack(game, e) {
   // Only one telegraph is ever on screen, which is why this needed no change
   // to the renderer.
   if (a.next) {
-    const dir = e.attackDir;
+    // A follow-up either swings back across the same ground (sweepL then
+    // sweepR, whose union is the whole semicircle) or **turns to face you
+    // again**. Re-aiming is honest: the second stage telegraphs after the first
+    // one lands, so you still see it before it arrives - it just means the
+    // dodge that answered stage one does not automatically answer stage two.
+    // Without it a combo re-covers tiles you have already left.
+    let dir = e.attackDir;
+    if (a.next.reaim) {
+      const dx = game.player.x - e.x, dy = game.player.y - e.y;
+      if (dx || dy) dir = snapDir(dx, dy);
+    }
     e.attack = null;
     beginWindup(game, e, a.next, dir);
     return;

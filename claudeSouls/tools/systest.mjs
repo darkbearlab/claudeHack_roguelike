@@ -522,19 +522,22 @@ check('reading an attack is not the same as walking out of it for free', () => {
 });
 
 check('the tiles shown during a wind-up are the tiles that get hit', () => {
+  // Immutable *within* a wind-up. A combo's second stage legitimately shows
+  // different tiles - and, if it re-aims, tiles chosen after you moved - but it
+  // telegraphs them before it lands, which is the part that matters.
   const { g, e } = arena('promise', 'sentinel', 2);
   e.stamina = e.staminaMax;
-  let promised = null;
-  observe(g, e, 20, () => {
+  let promised = null, watching = null, stages = 0;
+  observe(g, e, 40, () => {
     if (e.state === STATE.WINDUP) {
       const now = e.attackTiles.map((q) => `${q.x},${q.y}`).sort().join('|');
-      if (!promised) promised = now;
-      else assert(now === promised, 'the telegraph moved after it was shown');
+      if (e.attack !== watching) { watching = e.attack; promised = now; stages++; }
+      else assert(now === promised, 'the telegraph moved during a single wind-up');
     }
-    return !!promised && e.state === STATE.RECOVER;
+    return stages >= 2 && e.state === STATE.RECOVER;
   });
-  assert(promised, 'the sentinel never wound up');
-  return 'telegraph is immutable once shown';
+  assert(stages > 0, 'the sentinel never wound up');
+  return `${stages} wind-ups watched, none changed after being shown`;
 });
 
 check('poise decides what can be interrupted', () => {
