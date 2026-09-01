@@ -34,13 +34,22 @@ you cannot tank damage; you can only be somewhere else.
 clock from turns to stamina, and every moment becomes the same question: one
 more hit, or keep enough to get out?
 
+Not every attack is announced, and which ones are is fixed per attack rather
+than rolled — an enemy that sometimes warns you cannot be learned. Attacks have
+**shapes**: lines punish retreating along them, two-part sweeps punish the
+instinctive sidestep, and the boss's ring cannot be left in a single step. And
+**poise** decides what can be interrupted, so a cheap jab can no longer postpone
+a heavy blow forever.
+
 Ten floors, eleven enemy species, bonfires that heal you and resurrect
 everything, and floors derived from the run seed — so a floor you have died on
 is a floor you have learned. Press a skill and drag out from your character to
 aim; release to commit.
 
-The design document also records what was rejected and why — parry, poise,
-posture, shortcuts, loot treadmills.
+The design document's [現況](claudeSouls/docs/DESIGN.md#現況) section is the
+current state in one place; the rest is how it got there, including three
+separate bugs that each presented as a balance problem and were nearly "fixed"
+by tuning the wrong numbers.
 
 ---
 

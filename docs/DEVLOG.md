@@ -396,3 +396,31 @@ The other lesson from that round is in `claudeSouls/docs/DESIGN.md`: the bot is
 the only balance instrument these games have, and when it dies a lot the first
 question is whether it is playing badly, not whether the numbers are wrong.
 Three "balance problems" in a row turned out to be the bot.
+
+## Documents drift in a particular direction
+
+Three separate places had gone stale in the same way, and it is worth naming the
+pattern because it is not "we forgot to update the docs".
+
+`claudeSouls/docs/DESIGN.md` was written as a pre-work spec and then had each
+round of playtest feedback appended to it. That is a good record of *how* the
+game got here and a bad answer to *what the game is now*: the "current numbers"
+section still described the roster from before attack shapes, poise and
+untelegraphed attacks existed, because nothing about appending a new chapter
+forces you to revisit an old one. The document now opens by saying which half is
+which, and the current state lives in one section built from the live data
+rather than retyped.
+
+The root README claimed poise was among the things "rejected and why". It had
+been rejected — I argued against it — and then the user was right and it shipped.
+A sentence describing a decision is exactly the sentence that rots when the
+decision is reversed, and nothing in the code will ever contradict it.
+
+The in-game splash line, by contrast, had not drifted at all, because it is
+`${DUNGEON_DEPTH} 層 · ${ENEMIES.length} 種敵人` — generated from the data it
+describes. That is the whole lesson: **the parts of the documentation that never
+went stale are the parts that were derived rather than written.** Where that is
+possible it should be done (the guide is generated and CI checks it; the skill
+icons are generated from the pattern table). Where it is not — design rationale,
+rejected options — the fix is not discipline, it is putting the volatile claims
+where a reader will see them next to the thing that supersedes them.
