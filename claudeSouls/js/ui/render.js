@@ -438,13 +438,7 @@ export class Renderer {
     // An elite is a normal species with more of it, so it needs to be readable
     // as one at a glance - the sprite is the same and the name only shows in
     // the log.
-    if (e.elite) {
-      ctx.strokeStyle = 'rgba(232,194,90,.85)';
-      ctx.lineWidth = Math.max(1, cell * 0.045);
-      ctx.beginPath();
-      ctx.arc(px + cell / 2, py + cell * 0.86, cell * 0.34, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    if (e.elite) this.glow(ctx, px, py, cell, 232, 150, 60);
 
     // State badge. The player should never have to click to learn this.
     if (winding) {
@@ -480,13 +474,7 @@ export class Renderer {
     // hardest thing on screen to find. In a game where the whole skill is
     // knowing which tile you are standing on relative to a red one, that is a
     // defect rather than a mood.
-    const g = ctx.createRadialGradient(
-      px + cell / 2, py + cell * 0.6, cell * 0.05,
-      px + cell / 2, py + cell * 0.6, cell * 0.62);
-    g.addColorStop(0, 'rgba(255,210,140,.42)');
-    g.addColorStop(1, 'rgba(255,190,120,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(px - cell * 0.15, py - cell * 0.15, cell * 1.3, cell * 1.3);
+    this.glow(ctx, px, py, cell, 255, 205, 135);
 
     if (this.mode === 'ascii') {
       this.glyph(ctx, '@', '#ffffff', px, py, cell, 1);
@@ -496,6 +484,25 @@ export class Renderer {
       if (img) this.blit(ctx, img, px, py, cell, 1, 1, spriteRotation(p.facing.dx, p.facing.dy, p.sprite));
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
+  }
+
+  /**
+   * A pool of light under something, to say "this one matters".
+   *
+   * A ring was tried twice - once under the player, once under an elite - and
+   * removed both times: at tile size it reads as a UI decoration sitting on the
+   * floor rather than as part of the creature. A glow reads as the thing
+   * itself, and the colour is free to carry meaning, so this is also where
+   * enemy tiers would go if they arrive.
+   */
+  glow(ctx, px, py, cell, r, g, b) {
+    const grad = ctx.createRadialGradient(
+      px + cell / 2, py + cell * 0.6, cell * 0.05,
+      px + cell / 2, py + cell * 0.6, cell * 0.62);
+    grad.addColorStop(0, `rgba(${r},${g},${b},.42)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(px - cell * 0.15, py - cell * 0.15, cell * 1.3, cell * 1.3);
   }
 
   drawProjectile(ctx, pr, px, py, cell) {
