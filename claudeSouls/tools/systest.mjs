@@ -921,8 +921,10 @@ check('a prepared item is limited, costs the turn, and refills at a bonfire', ()
   p.charges.flask = 0;
   assert(!g.usePrepared('item', null), 'drank from an empty flask');
 
-  // Bonfires refill; picking things up does not.
+  // Bonfires refill; picking things up does not. Nothing may be hunting you,
+  // which is a rule of its own - see the test below.
   g.player.x = g.level.bonfires[0].x; g.player.y = g.level.bonfires[0].y;
+  for (const q of g.level.enemies) q.aware = false;
   g.rest();
   assert(p.chargesOf('flask') === full, 'a bonfire did not refill the flask');
   return `${full} charges, refilled at the fire`;
@@ -1308,6 +1310,87 @@ check('resting heals, refills stamina and brings everything back', () => {
   assert(g.player.stamina === g.player.staminaMax, 'resting did not restore stamina');
   assert(g.level.livingEnemies().length === before, 'enemies did not come back');
   return `${before} enemies stood back up`;
+});
+
+check('you cannot sit down while something is hunting you', () => {
+  // Resting heals, refills stamina, refills charges AND puts every enemy back
+  // on its spawn. Without this it is a reset button you can press mid-fight,
+  // and the obvious use is to un-stick a bad position rather than recover from
+  // one - which is exactly what a speedrun would do with it.
+  const g = freshGame('hunted');
+  const p = g.player;
+  const b = g.level.bonfires[0];
+  p.x = b.x; p.y = b.y;
+  p.hp = 1;
+
+  const watcher = g.level.livingEnemies()[0];
+  assert(watcher, 'this floor has no enemies to be hunted by');
+  for (const e of g.level.enemies) e.aware = false;
+  watcher.aware = true;
+
+  assert(g.hunters() === 1, 'one aware enemy should count as one hunter');
+  // rest() returns whether the turn was spent, not whether it worked - resting
+  // does not advance the turn either way - so the effect is what to check.
+  g.rest();
+  assert(p.hp === 1, 'rested with something hunting');
+
+  // Awareness decays once you are out of sight, so breaking away is the way
+  // out - which makes disengaging a skill rather than a formality.
+  watcher.aware = false;
+  assert(g.hunters() === 0, 'losing awareness did not clear the hunt');
+  g.rest();
+  assert(p.hp === p.hpMax, 'could not rest with nothing hunting');
+  return 'no reset button mid-fight';
+});
+
+check('bodies block a diagonal, and a roll is the way through', () => {
+  // Until now a pincer could always be stepped out of, which quietly undercut
+  // packs, made block - the "nowhere to go" option - almost never correct, and
+  // made the falchion's shove a curiosity.
+  const { g, e } = arena('pinch', 'husk', 1);
+  const lvl = g.level;
+  const p = g.player;
+
+  // Two bodies on the cardinals either side of the diagonal we want to take.
+  const east = { x: p.x + 1, y: p.y }, south = { x: p.x, y: p.y + 1 };
+  if (!lvl.passable(east.x, east.y) || !lvl.passable(south.x, south.y)) return 'no room to set up';
+  lvl.enemies.length = 0; lvl.markEnemiesDirty();
+  for (const spot of [east, south]) {
+    const q = new Enemy('husk', g.rng);
+    lvl.addEnemy(q, spot.x, spot.y);
+  }
+
+  // Body-blocking is opt-in, and only the player's walk opts in - enemies never
+  // see it, because applying it to them paralysed packs entirely.
+  assert(!lvl.diagonalOk(p.x, p.y, p.x + 1, p.y + 1, true),
+         'walked diagonally out from between two bodies');
+  assert(lvl.diagonalOk(p.x, p.y, p.x + 1, p.y + 1),
+         'a roll cannot get past bodies either, so being pinched has no answer');
+
+  // Orthogonal movement is untouched: bodies do not corner you, they only stop
+  // you cutting between them.
+  const free = DIRS.filter((d) => !d.dx || !d.dy)
+    .filter((d) => lvl.passable(p.x + d.dx, p.y + d.dy) && !lvl.enemyAt(p.x + d.dx, p.y + d.dy));
+  for (const d of free) {
+    assert(lvl.diagonalOk(p.x, p.y, p.x + d.dx, p.y + d.dy, true),
+           'a body blocked an orthogonal step, which would create dead ends');
+  }
+
+  // And terrain is still terrain - a roll tumbles past a hound, not through a
+  // doorframe.
+  const walls = [];
+  for (let y = 1; y < lvl.h - 1 && walls.length < 1; y++) {
+    for (let x = 1; x < lvl.w - 1; x++) {
+      if (lvl.isDoorway(x, y)) { walls.push({ x, y }); break; }
+    }
+  }
+  for (const w of walls) {
+    for (const d of DIRS.filter((q) => q.dx && q.dy)) {
+      assert(!lvl.diagonalOk(w.x, w.y, w.x + d.dx, w.y + d.dy),
+             'a roll cut a corner through a doorway');
+    }
+  }
+  return 'pinched means pinched until you spend stamina';
 });
 
 check('death returns you to the bonfire instead of ending the run', () => {

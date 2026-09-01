@@ -68,7 +68,34 @@ export class Level {
   hazard() { return false; }   // no lava here; kept so engine/path.js can ask
 
   // The two rules engine/path.js asks the level about rather than importing.
-  diagonalOk(fx, fy, tx, ty) { return tilesDiagonalOk(this, fx, fy, tx, ty); }
+  /**
+   * Can something move diagonally from one tile to another?
+   *
+   * Terrain always blocks it - you cannot cut a corner through a wall or squeeze
+   * past a doorframe. Bodies block it too, but **only for the player**, and that
+   * asymmetry is deliberate rather than sloppy.
+   *
+   * The rule exists so that a pincer costs something: two enemies beside each
+   * other are a wall as far as walking is concerned, so slipping diagonally out
+   * from between them is no longer free, and the way through is a roll, which
+   * costs stamina. The player is the only actor with a stamina-priced way
+   * through. Applying it to enemies as well simply paralysed them - packs are
+   * placed in tight clusters on purpose, so their own packmates blocked every
+   * diagonal, and measured over forty turns of hunting not one of fifty-one
+   * enemies reached the player. That is not a tactic, it is a jam.
+   *
+   * So `bodies` is opt-in: the player's walk passes it, the player's roll does
+   * not (it tumbles past them, though never through a doorframe), and enemy
+   * movement and pathfinding never see it.
+   */
+  diagonalOk(fx, fy, tx, ty, bodies = false) {
+    if (!tilesDiagonalOk(this, fx, fy, tx, ty)) return false;
+    if (!bodies) return true;
+    const dx = tx - fx, dy = ty - fy;
+    if (!dx || !dy) return true;                     // orthogonal: bodies do not corner you
+    return !this.enemyAt(fx + dx, fy) && !this.enemyAt(fx, fy + dy);
+  }
+
   isDoorway(x, y) { return blocksDiagonal(this.at(x, y)); }
 
   isVisible(x, y) { return this.inBounds(x, y) && !!this.visible[this.idx(x, y)]; }

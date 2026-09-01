@@ -128,7 +128,7 @@ function safeSteps(game, danger) {
     const nx = p.x + d.dx, ny = p.y + d.dy;
     if (!game.level.passable(nx, ny)) continue;
     if (game.level.enemyAt(nx, ny)) continue;
-    if (!game.level.diagonalOk(p.x, p.y, nx, ny)) continue;
+    if (!game.level.diagonalOk(p.x, p.y, nx, ny, true)) continue;
     if (inDanger(danger, nx, ny)) continue;
     out.push(d);
   }
@@ -293,7 +293,10 @@ function act(game, rng) {
       const path = astar(lvl, p.x, p.y, home.x, home.y, { maxNodes: 3000 });
       if (path && path.length) {
         const d = DIRS.find((q) => q.dx === path[0].x - p.x && q.dy === path[0].y - p.y);
-        if (d && !lvl.enemyAt(path[0].x, path[0].y)) return { kind: 'move', dir: d };
+        if (d && !lvl.enemyAt(path[0].x, path[0].y) &&
+            lvl.diagonalOk(p.x, p.y, path[0].x, path[0].y, true)) {
+          return { kind: 'move', dir: d };
+        }
       }
     }
     if (out.steps.length) {
@@ -333,8 +336,12 @@ function act(game, rng) {
   const here = lvl.at(p.x, p.y);
   if (isChest(here) || isCorpse(here)) return { kind: 'take' };
 
-  // 5. Head down. Rest whenever a bonfire is underfoot and we are hurt.
-  if (isBonfire(lvl.at(p.x, p.y)) && p.hp < p.hpMax) return { kind: 'rest' };
+  // 5. Head down. Rest whenever a bonfire is underfoot and we are hurt - but
+  //    you cannot sit down while something is hunting you, and a refused rest
+  //    spends no turn, so asking anyway is an infinite loop. Break away or kill
+  //    it first, which is what the rule is for.
+  const hunted = game.hunters() > 0;
+  if (isBonfire(lvl.at(p.x, p.y)) && p.hp < p.hpMax && !hunted) return { kind: 'rest' };
 
   // 5b. Hurt, and nothing is on us right now: walk back to the fire.
   //
@@ -352,13 +359,15 @@ function act(game, rng) {
   // Resting is not free - it brings the whole floor back - so this waits until
   // half health, which is roughly the point where one more telegraph you misread
   // is fatal.
-  if (p.hp <= p.hpMax / 2 && p.bonfire && p.bonfire.depth === p.depth && !adj.length) {
+  if (p.hp <= p.hpMax / 2 && !hunted && p.bonfire && p.bonfire.depth === p.depth && !adj.length) {
     const path = astar(lvl, p.x, p.y, p.bonfire.x, p.bonfire.y, { maxNodes: 4000 });
     if (path && path.length) {
       const step = path[0];
       const d = DIRS.find((q) => q.dx === step.x - p.x && q.dy === step.y - p.y);
       const when = danger.get(`${step.x},${step.y}`);
-      if (d && !lvl.enemyAt(step.x, step.y) && (when === undefined || when >= 2)) {
+      if (d && !lvl.enemyAt(step.x, step.y) &&
+          lvl.diagonalOk(p.x, p.y, step.x, step.y, true) &&
+          (when === undefined || when >= 2)) {
         return { kind: 'move', dir: d };
       }
     }
@@ -378,7 +387,11 @@ function act(game, rng) {
       // threatened tile made the bot sit still for 20,000 turns whenever an
       // archer had a corridor covered, which is a bot flaw, not a level flaw.
       const when = danger.get(`${step.x},${step.y}`);
-      if (d && (when === undefined || when >= 2)) return { kind: 'move', dir: d };
+      // Bodies block diagonals for the player now, so a path step can be
+      // illegal by the time we take it. Walking into it spends no turn, and the
+      // run stalls - so check before committing.
+      if (d && lvl.diagonalOk(p.x, p.y, step.x, step.y, true) &&
+          (when === undefined || when >= 2)) return { kind: 'move', dir: d };
     }
   }
   // Genuinely stuck: go and remove whatever is holding the corridor.
@@ -389,7 +402,7 @@ function act(game, rng) {
     const path = astar(lvl, p.x, p.y, nearest.e.x, nearest.e.y, { maxNodes: 3000 });
     if (path && path.length) {
       const d = DIRS.find((q) => q.dx === path[0].x - p.x && q.dy === path[0].y - p.y);
-      if (d) return { kind: 'move', dir: d };
+      if (d && lvl.diagonalOk(p.x, p.y, path[0].x, path[0].y, true)) return { kind: 'move', dir: d };
     }
   }
   const any = safeSteps(game, danger);
@@ -418,7 +431,7 @@ async function run(seed, maxTurns, vow) {
   const mix = {};
   const floorDeaths = new Map();
   const killers = new Map();
-  let steps = 0, stall = 0, lastTurn = -1;
+  let steps = 0, stall = 0, lastTurn = -1, lastAction = null;
 
   // What is actually landing the killing blow. Per-floor death counts say
   // *where* the difficulty is; this says *what* it is, which is the number you
@@ -441,6 +454,7 @@ async function run(seed, maxTurns, vow) {
     const before = game.turn;
     const deathsBefore = game.player.deaths;
     const a = act(game, rng);
+    lastAction = a;
     if (process.env.ACTMIX) mix[a.kind] = (mix[a.kind] ?? 0) + 1;
 
     switch (a.kind) {
@@ -466,7 +480,15 @@ async function run(seed, maxTurns, vow) {
 
     steps++;
     if (game.turn === lastTurn) {
-      if (++stall > 300) throw new Error(`stalled on floor ${game.player.depth} at turn ${game.turn}`);
+      if (++stall > 300) {
+        const p = game.player;
+        const info = process.env.WHYSTALL
+          ? ` last=${JSON.stringify(lastAction)} hp=${p.hp} st=${p.stamina}` +
+            ` rec=${p.recover} adj=${DIRS.filter((d)=>game.level.enemyAt(p.x+d.dx,p.y+d.dy)).length}` +
+            ` msg="${game.messages.slice(-1)[0]?.text ?? ''}"`
+          : '';
+        throw new Error(`stalled on floor ${game.player.depth} at turn ${game.turn}${info}`);
+      }
     } else { stall = 0; lastTurn = game.turn; }
   }
 

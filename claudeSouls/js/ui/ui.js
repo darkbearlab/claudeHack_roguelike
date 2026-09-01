@@ -275,6 +275,11 @@ export class UI {
       return { name: 'Take back', sub: `${n} item${n === 1 ? '' : 's'}`, cmd: 'g', kind: 'take' };
     }
     if (isBonfire(here)) {
+      // Say WHY it is unavailable. A button that silently refuses is a bug as
+      // far as the player is concerned, and "something is still hunting you" is
+      // information they can act on.
+      const n = g.hunters();
+      if (n > 0) return { name: 'Hunted', sub: `${n} aware`, cmd: null, kind: 'blocked' };
       return { name: 'Rest', sub: 'bonfire', cmd: 'e', kind: 'rest' };
     }
     if (here === T.STAIRS_DOWN) {
@@ -291,7 +296,8 @@ export class UI {
     el.querySelector('.act-sub').textContent = a.sub ?? '';
     el.disabled = !a.cmd;
     el.classList.toggle('idle', !a.cmd);
-    for (const k of ['cancel', 'rest', 'descend', 'take']) el.classList.toggle(`is-${k}`, a.kind === k);
+    for (const k of ['cancel', 'rest', 'descend', 'take', 'blocked'])
+      el.classList.toggle(`is-${k}`, a.kind === k);
   }
 
   /** A skill, or one of the two prepared slots dressed up as one. */

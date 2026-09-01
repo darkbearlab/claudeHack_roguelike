@@ -388,8 +388,12 @@ export class Game {
     if (e && e.alive) return this.useSkill('strike', { dx, dy });
 
     if (!lvl.inBounds(nx, ny)) { this.msg('You cannot go that way.'); return false; }
-    if (!lvl.diagonalOk(p.x, p.y, nx, ny)) {
-      this.msg('Not diagonally through a doorway.');
+    if (!lvl.diagonalOk(p.x, p.y, nx, ny, true)) {
+      // Bodies count here, and the message has to say which it was or being
+      // pinched reads as the game refusing at random.
+      const pinched = lvl.diagonalOk(p.x, p.y, nx, ny);
+      this.msg(pinched ? 'They have you boxed in - roll.' : 'Not diagonally through a doorway.',
+               pinched ? 'warn' : undefined);
       return false;
     }
     const t = lvl.at(nx, ny);
@@ -788,6 +792,7 @@ export class Game {
       const nx = p.x + dir.dx, ny = p.y + dir.dy;
       if (!this.level.passable(nx, ny)) break;
       if (this.level.enemyAt(nx, ny)) break;
+      // No `bodies` flag: a roll tumbles past them. It still respects terrain.
       if (!this.level.diagonalOk(p.x, p.y, nx, ny)) break;
       p.x = nx; p.y = ny; moved++;
     }
@@ -796,9 +801,27 @@ export class Game {
 
   // -------------------------------------------------------- bonfire & floors
 
+  /** How many things currently know where you are. */
+  hunters() {
+    return this.level ? this.level.livingEnemies().filter((e) => e.aware).length : 0;
+  }
+
   rest() {
     const p = this.player;
     if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('There is no bonfire here.'); return false; }
+    // You cannot sit down while something is hunting you.
+    //
+    // Resting heals, refills stamina, refills charges AND puts every enemy on
+    // the floor back on its spawn - so without this it is a reset button you
+    // can press in the middle of a fight, and the obvious use is to un-stick a
+    // bad position rather than to recover from one. Awareness decays once you
+    // have been out of sight for a while, so breaking away is the way out, and
+    // that makes disengaging a skill rather than a formality.
+    const n = this.hunters();
+    if (n > 0) {
+      this.msg(`Something is still hunting you. (${n})`, 'warn');
+      return false;
+    }
     const b = this.level.bonfireAt(p.x, p.y);
     p.bonfire = { depth: p.depth, id: b?.id ?? 0, x: p.x, y: p.y };
     p.hp = p.hpMax;
