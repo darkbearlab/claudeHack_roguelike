@@ -47,7 +47,7 @@ export function saveGame(game) {
         // hpMax and damage reduction are not stored: they are read off the
         // armour, and storing a derived value is how a save and a rules change
         // quietly start disagreeing.
-        equip: p.equip, pack: p.pack,
+        equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -106,6 +106,8 @@ export function loadGame(game) {
     sprite: d.player.sprite, skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
+    prep: { ...p.prep, ...(d.player.prep ?? {}) },
+    charges: d.player.charges ?? {},
     deaths: d.player.deaths, kills: d.player.kills, turns: d.player.turns,
     bonfire: d.player.bonfire,
   });

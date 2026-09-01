@@ -211,6 +211,10 @@ body { overflow: hidden; }
 /* An empty slot is a hole with a name on it, so the grid never reflows when a
    weapon changes and the player can see what they are missing. */
 .skill.empty { opacity: .3; border-style: dashed; }
+/* A prepared thing counts down uses rather than cooldown turns, so its
+   corner number is a stock, not a timer. */
+.skill.prep { border-color: #3d4a52; }
+.skill.prep .cd { color: var(--cool); }
 .skill.empty .nm { padding-left: 9px; }
 .skill.action.idle { opacity: .4; }
 .skill.action.idle .act-name { color: var(--dim); }
@@ -258,7 +262,7 @@ body { overflow: hidden; }
     .skill .ico { margin: 0 auto; }
     /* An empty slot has no icon competing for the width, and its whole job is
        to say what is missing - so it keeps its label. */
-    .skill.empty .nm { display: block; font-size: 10px; padding-left: 9px; }
+    .skill.empty .nm, .skill.prep .nm { display: block; font-size: 10px; padding-left: 9px; }
   }
 }
 

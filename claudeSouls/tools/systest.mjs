@@ -14,7 +14,8 @@ import { generateLevel } from '../js/map/mapgen.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
-import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT } from '../js/data/items.js';
+import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
+         CONSUMABLES, CONSUMABLE_BY_KEY } from '../js/data/items.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
@@ -758,6 +759,80 @@ check('you cannot block bare-handed', () => {
   assert(!g.player.hasSkill('block'), 'a dagger grants a block');
   assert(!g.useSkill('block', { dx: 1, dy: 0 }), 'blocked without a shield');
   return 'no shield, no block';
+});
+
+check('a prepared item is limited, costs the turn, and refills at a bonfire', () => {
+  // This one exists because of a measured problem, not a wishlist: health only
+  // came back at a bonfire, so a run was a slow slide from full to dead with
+  // nothing you could do about it mid-floor. The bot died at full stamina with
+  // six escape routes open, on chip damage it had taken three fights ago.
+  const { g } = arena('flask', 'husk', 6);
+  const p = g.player;
+  assert(p.prepared('item')?.key === 'flask', 'the starting kit has no flask');
+
+  p.hp = 3;
+  const full = p.chargesOf('flask');
+  const t0 = g.turn;
+  assert(g.usePrepared('item', null) === true, 'drinking did not spend the turn');
+  g.worldTurn();
+  assert(g.turn === t0 + 1, 'drinking was free');
+  assert(p.hp > 3, 'drinking did not heal');
+  assert(p.chargesOf('flask') === full - 1, 'drinking did not cost a charge');
+
+  p.charges.flask = 0;
+  assert(!g.usePrepared('item', null), 'drank from an empty flask');
+
+  // Bonfires refill; picking things up does not.
+  g.player.x = g.level.bonfires[0].x; g.player.y = g.level.bonfires[0].y;
+  g.rest();
+  assert(p.chargesOf('flask') === full, 'a bonfire did not refill the flask');
+  return `${full} charges, refilled at the fire`;
+});
+
+check('preparing costs a turn and swaps through the pack', () => {
+  const { g } = arena('prep', 'husk', 6);
+  const p = g.player;
+  p.pack.push('whetstone');
+  const was = p.prep.item;
+
+  assert(g.prepareFromPack('item', 'whetstone') === true, 'preparing did not spend a turn');
+  assert(p.prep.item === 'whetstone', 'the whetstone is not readied');
+  assert(p.pack.includes(was), 'the old item did not go back in the pack');
+  assert(!p.pack.includes('whetstone'), 'the readied item is still in the pack too');
+
+  assert(!g.prepareFromPack('magic', 'whetstone'), 'an item was readied into the spell slot');
+  assert(!g.prepareFromPack('item', 'sword'), 'a sword was readied as an item');
+  return 'one item, one spell, a turn each';
+});
+
+check('a spell is aimed like any other skill and flies like any other attack', () => {
+  const { g, e } = arena('spell', 'husk', 4);
+  const p = g.player;
+  assert(p.prepared('magic'), 'the starting kit has no spell');
+  g.prepareFromPack('magic', null);
+  p.pack.push('firebolt');
+  g.prepareFromPack('magic', 'firebolt');
+
+  const before = p.chargesOf('firebolt');
+  assert(g.useSkill('prep:magic', { dx: 1, dy: 0 }) === true, 'casting did not spend the turn');
+  assert(p.chargesOf('firebolt') === before - 1, 'casting did not cost a charge');
+  assert(g.level.projectiles.length > 0, 'the bolt did not go anywhere');
+
+  // And it is on the board like everything else, so it can miss and it can hit
+  // the wrong thing.
+  const pr = g.level.projectiles[0];
+  assert(pr.fromPlayer, 'the player\'s own bolt is not marked as theirs');
+  return 'cast, flies, costs a charge';
+});
+
+check('every consumable is reachable and does something', () => {
+  for (const c of CONSUMABLES) {
+    assert(c.charges > 0, `${c.key} has no charges`);
+    assert(c.kind === 'item' || c.kind === 'magic', `${c.key} is neither item nor magic`);
+    assert(c.heal || c.damage || c.pattern || c.projectile, `${c.key} does nothing at all`);
+    if (c.directional) assert(c.pattern || c.projectile, `${c.key} is aimed but has no shape`);
+  }
+  return `${CONSUMABLES.length} consumables`;
 });
 
 // ===========================================================================

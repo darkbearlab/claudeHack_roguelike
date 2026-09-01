@@ -30,7 +30,7 @@ import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire } from '../map/tiles.js';
-import { SLOT, ITEM_BY_KEY, slotsFor } from '../data/items.js';
+import { SLOT, ITEM_BY_KEY, slotsFor, isConsumable, CONSUMABLE_BY_KEY } from '../data/items.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -127,8 +127,8 @@ export class UI {
       { kind: 'skill', key: main ? main.primary : null, label: 'Main' },
       { kind: 'skill', key: main ? main.secondary : null, label: 'Main 2' },
       { kind: 'skill', key: offIsWeapon ? off.primary : null, label: 'Off' },
-      { kind: 'slot', label: 'Magic' },
-      { kind: 'slot', label: 'Item' },
+      { kind: 'prep', slot: 'magic', label: 'Magic' },
+      { kind: 'prep', slot: 'item', label: 'Item' },
       { kind: 'skill', key: p?.shield ? 'block' : null, label: 'Block' },
       { kind: 'skill', key: 'roll', label: 'Roll' },
       { kind: 'action' },
@@ -146,7 +146,8 @@ export class UI {
    */
   layoutSignature() {
     const arc = this.game.player?.shield?.block?.arc ?? 0;
-    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|') + `#${arc}`;
+    const prep = ['item', 'magic'].map((k) => this.game.player?.prep?.[k] ?? '-').join(',');
+    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|') + `#${arc}#${prep}`;
   }
 
   buildSkillBar() {
@@ -169,6 +170,39 @@ export class UI {
           ev.preventDefault();
           this.startGesture(ev, cell.key, b);
         });
+        bar.appendChild(b);
+        return;
+      }
+
+      if (cell.kind === 'prep') {
+        const c = p?.prepared(cell.slot) ?? null;
+        const b = document.createElement('button');
+        b.className = c ? 'skill prep' : 'skill empty';
+        b.disabled = !c;
+        b.dataset.prep = cell.slot;
+        if (c) {
+          b.title = c.desc ?? '';
+          b.innerHTML = `<span class="num">${i + 1}</span>` +
+                        `<span class="nm">${escapeHtml(c.name)}</span>` +
+                        `<span class="cost"></span><span class="cd"></span>`;
+          if (c.directional) {
+            // Directional ones are aimed like any other skill: press, drag out,
+            // release. Keeping one gesture for everything is why there is no
+            // separate targeting mode to learn.
+            b.addEventListener('pointerdown', (ev) => {
+              ev.preventDefault();
+              this.startGesture(ev, `prep:${cell.slot}`, b);
+            });
+          } else {
+            b.addEventListener('click', (ev) => {
+              ev.preventDefault();
+              if (this.game.usePrepared(cell.slot, null)) this.feed('.');
+            });
+          }
+        } else {
+          b.innerHTML = `<span class="num">${i + 1}</span>` +
+                        `<span class="nm">${escapeHtml(cell.label)}</span>`;
+        }
         bar.appendChild(b);
         return;
       }
@@ -253,12 +287,23 @@ export class UI {
     for (const k of ['cancel', 'rest', 'descend']) el.classList.toggle(`is-${k}`, a.kind === k);
   }
 
+  /** A skill, or one of the two prepared slots dressed up as one. */
+  skillDef(key) {
+    if (typeof key === 'string' && key.startsWith('prep:')) {
+      return this.game.player?.prepared(key.slice(5)) ?? null;
+    }
+    return SKILL_BY_KEY[key] ?? null;
+  }
+
   startGesture(ev, skillKey, fromEl) {
     if (!this.game.running || this.game.busy) return;
-    const def = SKILL_BY_KEY[skillKey];
+    const def = this.skillDef(skillKey);
+    if (!def) return;
     const slot = this.game.player.skill(skillKey);
-    if (!def || !slot) return;
-    if (slot.cd > 0) { this.pushMessage(`${def.name} is not ready (${slot.cd}).`, 'warn'); return; }
+    if (slot && slot.cd > 0) { this.pushMessage(`${def.name} is not ready (${slot.cd}).`, 'warn'); return; }
+    if (skillKey.startsWith('prep:') && this.game.player.chargesOf(def.key) <= 0) {
+      this.pushMessage(`The ${def.name} is spent.`, 'warn'); return;
+    }
     const cost = this.game.player.costOf(skillKey);
     if (this.game.player.stamina < cost) {
       this.pushMessage(`Not enough stamina for ${def.name}.`, 'warn');
@@ -346,7 +391,7 @@ export class UI {
     if (Math.hypot(dx, dy) < AIM_DEADZONE) {
       this.aimDir = null;
       this.renderer.aim = null;
-      this.renderMessages(`${SKILL_BY_KEY[this.aimSkill].name}: drag away from yourself to aim.`);
+      this.renderMessages(`${this.skillDef(this.aimSkill).name}: drag away from yourself to aim.`);
       this.render();
       return;
     }
@@ -357,7 +402,7 @@ export class UI {
     if (changed && navigator.vibrate) { try { navigator.vibrate(8); } catch { /* ignore */ } }
 
     this.renderer.aim = { dir, tiles: this.previewTiles(this.aimSkill, dir) };
-    const def = SKILL_BY_KEY[this.aimSkill];
+    const def = this.skillDef(this.aimSkill);
     const cost = this.game.player.costOf(this.aimSkill);
     // The readout goes in the message line because a finger covers the tiles.
     this.renderMessages(`${def.name} → ${dirName(dir)}   (${cost} stamina` +
@@ -366,11 +411,12 @@ export class UI {
   }
 
   previewTiles(key, dir) {
-    const def = SKILL_BY_KEY[key];
+    const def = this.skillDef(key);
     const p = this.game.player;
     const lvl = this.game.level;
+    if (!def) return [];
 
-    if (def.ranged) {
+    if (def.ranged || def.projectile) {
       const out = [];
       let x = p.x, y = p.y;
       for (let i = 0; i < def.range; i++) {
@@ -418,7 +464,7 @@ export class UI {
 
     // A quick tap on the skill button arms it and waits for a second gesture.
     if (g.fromSkillBar && !g.moved) {
-      this.renderMessages(`${SKILL_BY_KEY[skill].name}: drag out from yourself, or press a direction key.`);
+      this.renderMessages(`${this.skillDef(skill).name}: drag out from yourself, or press a direction key.`);
       this.render();
       return;
     }
@@ -582,6 +628,18 @@ export class UI {
     if (!p) return;
     // Swapping a weapon changes which buttons exist, and the bar is built once.
     if (this.layoutSignature() !== this.builtSignature) this.buildSkillBar();
+    for (const b of this.el.skills.querySelectorAll('.skill[data-prep]')) {
+      const c = p.prepared(b.dataset.prep);
+      if (!c) continue;
+      const left = p.chargesOf(c.key);
+      b.querySelector('.cost').textContent = c.stamina ? `${c.stamina}` : '';
+      b.querySelector('.cd').textContent = `${left}`;
+      b.classList.toggle('cooling', left <= 0);
+      b.classList.toggle('poor', !!c.stamina && p.stamina < c.stamina);
+      b.classList.toggle('armed', this.aimSkill === `prep:${b.dataset.prep}`);
+      b.disabled = left <= 0;
+    }
+
     for (const b of this.el.skills.querySelectorAll('.skill[data-skill]')) {
       const key = b.dataset.skill;
       const def = SKILL_BY_KEY[key];
@@ -637,8 +695,22 @@ export class UI {
              `<td>${it ? `<button class="btn" data-off="${slot}">取下</button>` : ''}</td></tr>`;
     };
 
+    const readied = (kind, label) => {
+      const c = p.prepared(kind);
+      return `<tr><td class="key">${label}</td>` +
+             `<td>${c ? `${escapeHtml(c.name)} <span class="dim">(${p.chargesOf(c.key)})</span>` : '<i>空</i>'}</td>` +
+             `<td>${c ? `<button class="btn" data-unprep="${kind}">收起</button>` : ''}</td></tr>`;
+    };
+
     const rows = p.pack.length
       ? p.pack.map((k, i) => {
+          if (isConsumable(k)) {
+            const c = CONSUMABLE_BY_KEY[k];
+            return `<tr><td class="key">${i + 1}</td><td>${escapeHtml(c.name)}<br>` +
+                   `<span class="dim">${escapeHtml(c.desc ?? '')}</span></td>` +
+                   `<td><button class="btn" data-prepare="${c.kind}" data-item="${escapeHtml(k)}">` +
+                   `${c.kind === 'magic' ? '記憶' : '備用'}</button></td></tr>`;
+          }
           const it = ITEM_BY_KEY[k];
           if (!it) return '';
           const where = slotsFor(it).map((sl) =>
@@ -651,7 +723,8 @@ export class UI {
 
     ov.innerHTML = `<h2>背包</h2>
       <p>看是免費的。<b>換裝會推進一個回合</b>——所以帶第二把武器是計畫,不是選單。</p>
-      <table>${worn(SLOT.MAIN, '主手')}${worn(SLOT.OFF, '副手')}${worn(SLOT.ARMOUR, '防具')}</table>
+      <table>${worn(SLOT.MAIN, '主手')}${worn(SLOT.OFF, '副手')}${worn(SLOT.ARMOUR, '防具')}
+      ${readied('magic', '記憶')}${readied('item', '備用')}</table>
       <h2>攜帶</h2>
       <table>${rows}</table>
       <div class="foot"><button class="btn" data-act="close">關閉 (Esc)</button></div>`;
@@ -668,6 +741,17 @@ export class UI {
     }
     for (const b of ov.querySelectorAll('[data-off]')) {
       b.addEventListener('click', () => swap(b.dataset.off, null));
+    }
+    const ready = (kind, key) => {
+      if (!this.game.prepareFromPack(kind, key)) { this.showPack(); return; }
+      close();
+      this.feed('.');
+    };
+    for (const b of ov.querySelectorAll('[data-prepare]')) {
+      b.addEventListener('click', () => ready(b.dataset.prepare, b.dataset.item));
+    }
+    for (const b of ov.querySelectorAll('[data-unprep]')) {
+      b.addEventListener('click', () => ready(b.dataset.unprep, null));
     }
     ov.scrollTop = 0;
     this.pending = { onKey: () => close() };

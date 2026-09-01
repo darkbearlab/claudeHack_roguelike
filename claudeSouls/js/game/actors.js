@@ -15,7 +15,8 @@
 
 import { ENEMY_BY_KEY } from '../data/enemies.js';
 import { PLAYER, SKILLS, SKILL_BY_KEY } from '../data/skills.js';
-import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour } from '../data/items.js';
+import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour,
+         CONSUMABLE_BY_KEY } from '../data/items.js';
 
 export const NORMAL_SPEED = 12;
 
@@ -46,6 +47,9 @@ export class Player {
     // Equipment, and the backpack it comes out of.
     this.equip = { main: null, off: null, armour: null };
     this.blocking = null;             // {dx,dy} while the shield is up
+    this.prep = { item: null, magic: null };
+    this.edge = 0;                    // a whetstone's bonus, spent on the next hit
+    this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
 
     // A cooldown slot for *every* skill in the game, not just the ones you can
@@ -91,6 +95,40 @@ export class Player {
     if (this.shield) out.push('block');
     for (const s of SKILLS) if (s.always && !out.includes(s.key)) out.push(s.key);
     return out;
+  }
+
+  /**
+   * What is prepared, and how many uses are left.
+   *
+   * Two slots, one for an item and one for a spell, because they cost a button
+   * each and there are only nine. Changing what is in them costs a turn like
+   * any other swap - which is what turns a pack full of options into a decision
+   * made before the fight rather than a menu opened during it.
+   */
+  prepared(kind) {
+    const key = this.prep[kind];
+    return key ? CONSUMABLE_BY_KEY[key] ?? null : null;
+  }
+
+  chargesOf(key) { return this.charges[key] ?? 0; }
+
+  /** Bonfires refill charges. Picking things up does not. */
+  refillCharges() {
+    for (const kind of ['item', 'magic']) {
+      const key = this.prep[kind];
+      if (key && CONSUMABLE_BY_KEY[key]) this.charges[key] = CONSUMABLE_BY_KEY[key].charges;
+    }
+  }
+
+  prepare(kind, key) {
+    if (key && !CONSUMABLE_BY_KEY[key]) return { ok: false, why: 'that is not something you can ready' };
+    if (key && CONSUMABLE_BY_KEY[key].kind !== kind) return { ok: false, why: 'that does not go in that slot' };
+    const was = this.prep[kind];
+    this.prep[kind] = key ?? null;
+    // A newly prepared thing arrives full; one you have already been drinking
+    // from keeps what is left of it.
+    if (key && this.charges[key] === undefined) this.charges[key] = CONSUMABLE_BY_KEY[key].charges;
+    return { ok: true, displaced: was ? [was] : [] };
   }
 
   /** The shield in your off hand, if that is what is in it. */
@@ -192,6 +230,9 @@ export class Player {
 
   /** What a skill actually costs, with everything you are carrying. */
   costOf(key) {
+    if (typeof key === 'string' && key.startsWith('prep:')) {
+      return this.prepared(key.slice(5))?.stamina ?? 0;
+    }
     if (key === 'roll') return this.rollCost();
     const def = SKILL_BY_KEY[key];
     if (!def) return 0;

@@ -28,7 +28,8 @@ import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, tileName } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
-import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor } from '../data/items.js';
+import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
+         CONSUMABLE_BY_KEY, isConsumable } from '../data/items.js';
 import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
@@ -65,6 +66,8 @@ export class Game {
     this.player.equipItem(SLOT.MAIN, kit.main);
     this.player.equipItem(SLOT.OFF, kit.off);
     this.player.pack = [...kit.pack];
+    this.player.prepare('item', kit.item ?? null);
+    this.player.prepare('magic', kit.magic ?? null);
     this.player.hp = this.player.hpMax;
     // Ranger rather than rogue for the light kit: the rogue sprite is a dark
     // hooded figure and effectively disappears against dark stone at phone tile
@@ -267,7 +270,9 @@ export class Game {
 
   hurtEnemy(e, amount, byPlayer, impact = 0) {
     if (!e.alive) return;
-    e.hp -= amount;
+    let dmg = amount;
+    if (byPlayer && this.player.edge) { dmg += this.player.edge; this.player.edge = 0; }
+    e.hp -= dmg;
     if (byPlayer && impact > 0) e.stagger(impact);
     if (e.hp <= 0) {
       e.alive = false;
@@ -431,9 +436,87 @@ export class Game {
     return true;               // <- advances the turn
   }
 
+  /**
+   * Use whatever is in a prepared slot. Always spends the turn.
+   *
+   * Drinking is not free and neither is casting: standing still to heal while
+   * something winds up is the decision, and it is only interesting because it
+   * costs you the turn you could have spent leaving.
+   */
+  usePrepared(kind, dir) {
+    const p = this.player;
+    const c = p.prepared(kind);
+    if (!c) { this.msg(`You have no ${kind} readied.`, 'warn'); return false; }
+    if (p.chargesOf(c.key) <= 0) { this.msg(`The ${c.name} is spent.`, 'warn'); return false; }
+    if (c.stamina && !p.canAfford(c.stamina)) { this.msg('Not enough stamina.', 'warn'); return false; }
+    if (c.directional && !dir) { this.msg(`${c.name}: pick a direction.`, 'warn'); return false; }
+
+    p.charges[c.key] = p.chargesOf(c.key) - 1;
+    if (c.stamina) p.spend(c.stamina);
+    if (dir) p.face(dir.dx, dir.dy);
+
+    if (c.heal) {
+      const before = p.hp;
+      p.hp = Math.min(p.hpMax, p.hp + c.heal);
+      this.msg(`You drink. (+${p.hp - before})`, 'good');
+      return true;
+    }
+
+    if (c.projectile) {
+      this.level.projectiles.push(makeProjectile({
+        x: p.x, y: p.y, dx: dir.dx, dy: dir.dy,
+        speed: c.projectile.speed, damage: c.damage, impact: c.impact,
+        glyph: c.projectile.glyph, colour: c.projectile.colour,
+        fromPlayer: true, life: c.range + 2,
+      }));
+      this.msg(`You cast ${c.name}.`);
+      return true;
+    }
+
+    if (c.pattern) {
+      const tiles = attackTiles(p.x, p.y, dir.dx, dir.dy, c.pattern);
+      let hit = 0;
+      for (const t of tiles) {
+        const e = this.level.enemyAt(t.x, t.y);
+        if (e && e.alive) { this.hurtEnemy(e, c.damage, true, c.impact); hit++; }
+      }
+      this.ui?.animateTrail?.(tiles, '*', '#ff9a3c');
+      this.msg(hit ? `${capitalise(c.name)} tears through ${hit}.` : `${capitalise(c.name)} hits nothing.`);
+      return true;
+    }
+
+    // A buff with no shape of its own: the whetstone.
+    if (c.damage) {
+      p.edge = c.damage;
+      this.msg(`You sharpen your weapon. (+${c.damage} next hit)`, 'good');
+      return true;
+    }
+
+    return true;
+  }
+
+  /** Ready a consumable from the pack. Costs a turn, like any other swap. */
+  prepareFromPack(kind, key) {
+    const p = this.player;
+    if (key !== null && !p.pack.includes(key)) { this.msg('You are not carrying that.', 'warn'); return false; }
+    if (key !== null && !isConsumable(key)) { this.msg('That is not something you ready.', 'warn'); return false; }
+    if (key !== null && p.prep[kind] === key) return false;
+
+    const res = p.prepare(kind, key);
+    if (!res.ok) { this.msg(res.why, 'warn'); return false; }
+    if (key !== null) p.pack = p.pack.filter((k) => k !== key);
+    for (const k of res.displaced) p.pack.push(k);
+    const c = key ? CONSUMABLE_BY_KEY[key] : null;
+    this.msg(c ? `You ready the ${c.name}.` : 'You put it away.');
+    return true;
+  }
+
   // -------------------------------------------------------------- skills
 
   useSkill(key, dir) {
+    // The two prepared slots ride the same path as a skill so that the button,
+    // the drag gesture, the keyboard and the bot all have one way in.
+    if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir);
     const p = this.player;
     const def = SKILL_BY_KEY[key];
     const slot = p.skill(key);
@@ -531,6 +614,7 @@ export class Game {
     p.bonfire = { depth: p.depth, id: b?.id ?? 0, x: p.x, y: p.y };
     p.hp = p.hpMax;
     p.stamina = p.staminaMax;
+    p.refillCharges();
     for (const s of p.skills) s.cd = 0;
     this.stats.rests++;
 
@@ -602,6 +686,7 @@ export class Game {
     p.x = b.x; p.y = b.y;
     p.hp = p.hpMax;
     p.stamina = p.staminaMax;
+    p.refillCharges();
     for (const s of p.skills) s.cd = 0;
     this.level.projectiles = [];
     this.afterMove();

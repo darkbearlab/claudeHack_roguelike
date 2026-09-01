@@ -136,8 +136,71 @@ export function skillsFrom(it, slot) {
   return [];
 }
 
+
+// ---------------------------------------------------------------------------
+// Consumables and spells.
+//
+// Both work the same way and that is the point: you **prepare** one of each
+// from the pack, it occupies its own button, and changing what is prepared
+// costs a turn like any other swap. On eight buttons you cannot have a
+// twenty-item inventory reachable mid-fight, and forcing the choice earlier
+// turns inventory management into a plan made at the bonfire rather than a menu
+// scrubbed through while something winds up.
+//
+// Charges refill at a bonfire, not on pickup. That is what makes them a
+// resource for the stretch between fires rather than a stack to hoard.
+
+const consumable = (key, o) => ({
+  key,
+  name: o.name,
+  kind: o.kind,                 // 'item' | 'magic'
+  weight: o.weight ?? 0,
+  charges: o.charges,
+  stamina: o.stamina ?? 0,
+  directional: o.directional ?? false,
+  heal: o.heal ?? 0,
+  damage: o.damage ?? 0,
+  impact: o.impact ?? 0,
+  pattern: o.pattern ?? null,
+  projectile: o.projectile ?? null,
+  range: o.range ?? 0,
+  desc: o.desc,
+});
+
+export const CONSUMABLES = [
+  // The one that fixes a measured problem rather than adding a new one: health
+  // only came back at a bonfire, so a run was a slow slide from full to dead
+  // with nothing you could do about it mid-floor. Limited, prepared in advance,
+  // and it costs you the turn.
+  consumable('flask', {
+    name: 'ember flask', kind: 'item', charges: 3, heal: 5, weight: 1,
+    desc: '喝一口回 5 點生命。三次,在篝火補滿。喝的時候你是不動的。',
+  }),
+  consumable('whetstone', {
+    name: 'whetstone', kind: 'item', charges: 2, weight: 1,
+    desc: '磨利手上的武器:下一擊傷害 +3。',
+    damage: 3,
+  }),
+  consumable('firebolt', {
+    name: 'firebolt', kind: 'magic', charges: 3, weight: 0, stamina: 4,
+    directional: true, damage: 5, impact: 3, range: 8,
+    projectile: { speed: 3, glyph: '*', colour: '#ff9a3c' },
+    desc: '一發火球,會飛過去。三次。',
+  }),
+  consumable('quake', {
+    name: 'quake', kind: 'magic', charges: 2, weight: 0, stamina: 6,
+    directional: true, damage: 4, impact: 6, pattern: 'arc5',
+    desc: '前方五格,衝擊值極高——打得斷幾乎任何招式。兩次。',
+  }),
+];
+
+export const CONSUMABLE_BY_KEY = Object.fromEntries(CONSUMABLES.map((c) => [c.key, c]));
+export const isConsumable = (key) => !!CONSUMABLE_BY_KEY[key];
+
 /** What a run starts with. The vow picks the armour and nothing else. */
 export const STARTING_KIT = {
-  light: { main: 'sword', off: 'dagger', armour: 'leathers', pack: ['spear', 'buckler'] },
-  heavy: { main: 'sword', off: 'dagger', armour: 'mail', pack: ['mace', 'tower'] },
+  light: { main: 'sword', off: 'dagger', armour: 'leathers',
+           pack: ['spear', 'buckler'], item: 'flask', magic: 'firebolt' },
+  heavy: { main: 'sword', off: 'dagger', armour: 'mail',
+           pack: ['mace', 'tower'], item: 'flask', magic: 'quake' },
 };

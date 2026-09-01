@@ -317,6 +317,15 @@ function act(game, rng) {
     return { kind: 'wait' };
   }
 
+  // 4b. Hurt, and carrying something that fixes that. Drinking costs the turn,
+  //     so it is only right when the alternative is worse - which is why it
+  //     waits for half health rather than topping up after every scratch.
+  const flask = p.prepared('item');
+  if (flask?.heal && p.chargesOf(flask.key) > 0 && p.hp <= p.hpMax / 2) {
+    const exposed = adj.length > 0 || inDanger(danger, p.x, p.y);
+    if (!exposed) return { kind: 'skill', key: 'prep:item', dir: null };
+  }
+
   // 5. Head down. Rest whenever a bonfire is underfoot and we are hurt.
   if (isBonfire(lvl.at(p.x, p.y)) && p.hp < p.hpMax) return { kind: 'rest' };
 
@@ -427,7 +436,8 @@ async function run(seed, maxTurns, vow) {
 
     switch (a.kind) {
       case 'skill': {
-        const spent = game.useSkill(a.key, { dx: a.dir.dx, dy: a.dir.dy });
+        // Some things are aimed and some are not - a flask has no direction.
+        const spent = game.useSkill(a.key, a.dir ? { dx: a.dir.dx, dy: a.dir.dy } : null);
         if (spent) game.worldTurn();
         break;
       }
