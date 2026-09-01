@@ -300,9 +300,11 @@ const ELITES = [
 ];
 
 const ELITE_DROP = [
-  { upto: 4, keys: ['blades', 'hatchet', 'buckler', 'brigandine', 'whetstone'] },
-  { upto: 7, keys: ['spear', 'mace', 'falchion', 'kite', 'firebomb', 'blink'] },
-  { upto: 99, keys: ['halberd', 'greataxe', 'warhammer', 'pike', 'tower', 'plate', 'ward'] },
+  { upto: 4, keys: ['blades', 'hatchet', 'buckler', 'brigandine', 'whetstone', 'oil_ember'] },
+  { upto: 7, keys: ['spear', 'mace', 'falchion', 'kite', 'firebomb', 'blink',
+                    'stone_keen', 'oil_frost'] },
+  { upto: 99, keys: ['halberd', 'greataxe', 'warhammer', 'pike', 'tower', 'plate', 'ward',
+                     'stone_light', 'stone_keen'] },
 ];
 
 const pickFrom = (table, depth, rng) => {

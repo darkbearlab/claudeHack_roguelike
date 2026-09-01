@@ -435,10 +435,12 @@ function wantsStore(depth, rng) {
  * cannot mean bigger numbers, only harder choices.
  */
 const STORE_TABLE = [
-  { upto: 3, keys: ['rags', 'brigandine', 'bone', 'buckler', 'blades', 'hatchet', 'sword', 'knife'] },
+  { upto: 3, keys: ['rags', 'brigandine', 'bone', 'buckler', 'blades', 'hatchet', 'sword',
+                    'knife', 'oil_ember'] },
   { upto: 7, keys: ['spear', 'mace', 'falchion', 'halberd', 'kite', 'mail', 'brigandine',
-                    'firebomb', 'whetstone', 'blink'] },
-  { upto: 99, keys: ['greataxe', 'warhammer', 'pike', 'tower', 'plate', 'bow', 'ward', 'blink'] },
+                    'firebomb', 'whetstone', 'blink', 'stone_keen', 'oil_frost'] },
+  { upto: 99, keys: ['greataxe', 'warhammer', 'pike', 'tower', 'plate', 'bow', 'ward', 'blink',
+                     'stone_keen', 'stone_light'] },
 ];
 
 function lootFor(depth, rng) {

@@ -31,6 +31,7 @@ import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
          CONSUMABLE_BY_KEY, isConsumable } from '../data/items.js';
 import { soulsFor, TRACKS, TRACK_BY_KEY, priceOf } from '../data/souls.js';
+import { AFFIX_BY_KEY, canGrant, affixesOn, TEMP_HITS } from '../data/affixes.js';
 import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
@@ -646,6 +647,26 @@ export class Game {
     if (c.stamina) p.spend(c.stamina);
     if (dir) p.face(dir.dx, dir.dy);
 
+    if (c.grants || c.tempAffix) {
+      const it = p.item(SLOT.MAIN);
+      if (!it) { this.msg('You have nothing in your main hand.', 'warn'); return false; }
+      const st = (p.affix[it.key] ??= {});
+      const a = AFFIX_BY_KEY[c.grants ?? c.tempAffix];
+
+      if (c.grants) {
+        if (!canGrant(it, st)) {
+          this.msg(`The ${it.name} will not take any more work.`, 'warn');
+          return false;
+        }
+        st.granted = c.grants;
+        this.msg(`The ${it.name} is now ${a.name}. ${a.hint}`, 'magic');
+      } else {
+        st.temp = { key: c.tempAffix, hits: TEMP_HITS };
+        this.msg(`${a.name}: the next ${TEMP_HITS} hits. ${a.hint}`, 'magic');
+      }
+      return true;
+    }
+
     if (c.shield) {
       // Direction-blind on purpose: this is the answer to the things a shield
       // cannot help with - a charge that runs you over, or being surrounded.
@@ -798,8 +819,9 @@ export class Game {
       return false;                    // <- does not advance the turn
     }
 
+    const m = p.mods(key);
     p.spend(cost);
-    if (def.cooldown) slot.cd = def.cooldown;
+    if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
     // Recovery is set AFTER the blow lands, and counts down in tick() - so the
     // turn you swung is yours and the turns after it are not.
     if (def.recovery) p.recover = def.recovery;
@@ -807,7 +829,8 @@ export class Game {
     if (def.ranged) {
       this.level.projectiles.push(makeProjectile({
         x: p.x, y: p.y, dx: dir.dx, dy: dir.dy,
-        speed: def.projectile.speed, damage: def.damage, impact: def.impact ?? 0,
+        speed: def.projectile.speed, damage: def.damage + m.damage,
+        impact: (def.impact ?? 0) + m.impact,
         glyph: def.projectile.glyph, colour: def.projectile.colour,
         fromPlayer: true, life: def.range + 2,
       }));
@@ -824,8 +847,9 @@ export class Game {
       if (e && e.alive) {
         const wasWindup = e.state === STATE.WINDUP;
         const poiseBefore = e.poiseLeft;
-        this.hurtEnemy(e, def.damage, true, def.impact ?? 0);
-        if (def.knock && e.alive) this.knockBack(e, dir, def.knock);
+        this.hurtEnemy(e, def.damage + m.damage, true, (def.impact ?? 0) + m.impact);
+        const push = (def.knock ?? 0) + m.knock;
+        if (push && e.alive) this.knockBack(e, dir, push);
         hit++;
         if (wasWindup && e.alive) {
           if (e.poiseLeft === e.poise && poiseBefore !== e.poise) {
@@ -835,6 +859,13 @@ export class Game {
           }
         }
       }
+    }
+    // A temporary affix is measured in hits that land, not turns that pass -
+    // the same currency the consumables already count in, and a unit you can
+    // plan around.
+    if (hit) {
+      const spent = p.wearAffix(key);
+      if (spent) this.msg(`The ${AFFIX_BY_KEY[spent].name} wears off.`, 'warn');
     }
     this.animateTrail(tiles, '/', '#ffd75f');
     if (!hit) this.msg(`${def.name} hits nothing.`);

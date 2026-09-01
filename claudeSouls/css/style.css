@@ -279,6 +279,14 @@ body { overflow: hidden; }
   }
 }
 
+/* Affixes are colour-coded by where they came from, because "which part of this
+   weapon is the weapon" is the question the three slots exist to answer. */
+.af { display: inline-block; font-size: 11px; padding: 0 5px; margin-right: 4px;
+      border-radius: 3px; border: 1px solid; }
+.af-innate  { color: #e8c25a; border-color: #6a5a28; }
+.af-granted { color: var(--cool); border-color: #3f5a6a; }
+.af-temp    { color: var(--good); border-color: #2f5a3a; }
+
 /* --------------------------------------------------------------- overlays */
 #overlay {
   /* Above the HUD. The gauges overlay the map, and an overlay that a health bar

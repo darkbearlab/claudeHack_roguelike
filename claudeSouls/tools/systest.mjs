@@ -18,6 +18,7 @@ import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
 import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
          CONSUMABLES, CONSUMABLE_BY_KEY } from '../js/data/items.js';
 import { TRACKS, soulsFor, priceOf } from '../js/data/souls.js';
+import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { saveGame, loadGame } from '../js/game/save.js';
@@ -792,6 +793,101 @@ check('walking into something swings whatever you are holding', () => {
   return 'the main hand decides';
 });
 
+check('one affix per source, and two innate means no more work', () => {
+  // The constraint is the design. Every affix can be traced to where it came
+  // from, which is what stops them turning into the stat soup they become
+  // everywhere else - and it makes "a strong found weapon" and "a customisable
+  // weapon" two different weapons rather than one strictly better one.
+  const { g } = arena('affix', 'husk', 6);
+  const p = g.player;
+
+  p.equipItem(SLOT.MAIN, 'sword');
+  assert(canGrant(ITEM_BY_KEY.sword, p.affix.sword), 'a plain sword cannot be worked on');
+
+  p.pack.push('stone_keen');
+  g.prepareFromPack('item', 'stone_keen');
+  p.stamina = p.staminaMax;
+  assert(g.usePrepared('item', null), 'the stone did nothing');
+  assert(p.affix.sword.granted === 'keen', 'the sword did not take the affix');
+  assert(p.mods('strike').knock === 1, 'the affix changed nothing about the skill');
+
+  // Second stone: refused, because the granted slot is taken.
+  p.pack.push('stone_light');
+  g.prepareFromPack('item', 'stone_light');
+  p.stamina = p.staminaMax;
+  g.usePrepared('item', null);
+  assert(p.affix.sword.granted === 'keen', 'a second stone overwrote the first');
+
+  // Two innate: nothing fits, ever.
+  const hammer = ITEM_BY_KEY.warhammer;
+  assert((hammer.affixes ?? []).length === 2, 'the warhammer lost its innate pair');
+  assert(!canGrant(hammer, p.affix.warhammer), 'a fully forged weapon accepted more work');
+  p.equipItem(SLOT.MAIN, 'warhammer');
+  assert(p.mods('pound').damage > 0 && p.mods('pound').impact > 0,
+         'the warhammer does not feel its own innate affixes');
+  return 'innate, granted, temp - one each';
+});
+
+check('a temporary affix is spent in hits that land, not turns that pass', () => {
+  const { g, e } = arena('oil', 'husk', 1);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'sword');
+  p.pack.push('oil_ember');
+  g.prepareFromPack('item', 'oil_ember');
+  p.stamina = p.staminaMax;
+  assert(g.usePrepared('item', null), 'the oil did nothing');
+  assert(p.affix.sword.temp.hits === TEMP_HITS, 'the oil did not set a hit count');
+
+  // Turns alone must not spend it.
+  for (let i = 0; i < 4; i++) g.worldTurn();
+  assert(p.affix.sword.temp.hits === TEMP_HITS, 'time wore the oil off');
+
+  const base = SKILL_BY_KEY.strike.damage;
+  let boosted = 0;
+  for (let i = 0; i < TEMP_HITS + 2; i++) {
+    e.hp = 999; e.x = p.x + 1; e.y = p.y; g.level.markEnemiesDirty();
+    p.stamina = p.staminaMax; p.recover = 0; p.skill('strike').cd = 0;
+    const before = e.hp;
+    g.useSkill('strike', { dx: 1, dy: 0 });
+    if (before - e.hp > base) boosted++;
+  }
+  assert(boosted === TEMP_HITS, `${boosted} boosted hits, expected exactly ${TEMP_HITS}`);
+  assert(!(p.affix.sword.temp.hits > 0), 'the oil never ran out');
+  return `${TEMP_HITS} hits, and turns do not count`;
+});
+
+check('affixes change weight, and weight is felt', () => {
+  const { g } = arena('affix-w', 'husk', 6);
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'greataxe');
+  p.equipItem(SLOT.OFF, null);
+  const before = { weight: p.weight, roll: p.rollCost() };
+
+  p.affix.greataxe = { granted: 'light' };
+  assert(p.weight < before.weight, 'a lightening affix did not change the weight');
+  assert(p.rollCost() <= before.roll, 'lighter gear did not make rolling cheaper');
+  return `${before.weight} -> ${p.weight}`;
+});
+
+check('no affix rewrites a pattern, so the button icons cannot lie', () => {
+  // The shape icons are generated from the pattern table precisely so they
+  // cannot drift from what the attack does. An affix that changed the pattern
+  // would put that back.
+  for (const a of AFFIXES) {
+    assert(!('pattern' in a), `${a.key} changes a pattern`);
+    for (const f of ['damage', 'impact', 'knock', 'stamina', 'cooldown', 'weight']) {
+      assert(typeof a[f] === 'number', `${a.key}.${f} is not a number`);
+    }
+  }
+  // And every stone or oil names an affix that exists.
+  for (const c of CONSUMABLES) {
+    for (const k of [c.grants, c.tempAffix]) {
+      if (k) assert(AFFIX_BY_KEY[k], `${c.key} grants unknown affix "${k}"`);
+    }
+  }
+  return `${AFFIXES.length} affixes, all numeric`;
+});
+
 check('a two-handed weapon really takes both hands', () => {
   const { g } = arena('twohand', 'husk', 4);
   const p = g.player;
@@ -1063,7 +1159,8 @@ check('every consumable is reachable and does something', () => {
   for (const c of CONSUMABLES) {
     assert(c.charges > 0, `${c.key} has no charges`);
     assert(c.kind === 'item' || c.kind === 'magic', `${c.key} is neither item nor magic`);
-    assert(c.heal || c.damage || c.pattern || c.projectile || c.shield || c.teleport,
+    assert(c.heal || c.damage || c.pattern || c.projectile || c.shield || c.teleport ||
+           c.grants || c.tempAffix,
            `${c.key} does nothing at all`);
     if (c.directional) {
       assert(c.pattern || c.projectile || c.teleport, `${c.key} is aimed but has no shape`);

@@ -32,6 +32,7 @@ const weapon = (key, o) => ({
   weight: o.weight,
   primary: o.primary,
   secondary: o.secondary,
+  affixes: o.affixes ?? [],     // innate; two of them means nothing more fits
   desc: o.desc,
 });
 
@@ -97,8 +98,11 @@ export const ITEMS = [
     name: 'halberd', hands: 2, weight: 10, primary: 'hew', secondary: 'backsweep',
     desc: '雙手。先左掃再右掃——敵人的那套兩段掃,終於在你手上。',
   }),
+  // Two innate affixes, so nothing can ever be added: the strong found weapon
+  // and the customisable one are different weapons, and that is the trade.
   weapon('warhammer', {
     name: 'warhammer', hands: 2, weight: 14, primary: 'pound', secondary: 'sunder',
+    affixes: ['tempered', 'frost'],
     desc: '雙手。次要技能清掉你周圍一圈,然後你會站在原地兩回合。',
   }),
   weapon('pike', {
@@ -110,7 +114,7 @@ export const ITEMS = [
     desc: '很輕、很便宜。一條精力砍十次,配合擊殺退還 CD。',
   }),
   weapon('falchion', {
-    name: 'falchion', weight: 5, primary: 'chop', secondary: 'shove',
+    name: 'falchion', weight: 5, primary: 'chop', secondary: 'shove', affixes: ['keen'],
     desc: '命中會把東西推開。次要技能幾乎不造成傷害——它是用來搬動敵人的。',
   }),
   weapon('hatchet', {
@@ -218,6 +222,8 @@ const consumable = (key, o) => ({
   damage: o.damage ?? 0,
   impact: o.impact ?? 0,
   knock: o.knock ?? 0,
+  grants: o.grants ?? null,     // a permanent affix for the main hand
+  tempAffix: o.tempAffix ?? null,
   teleport: o.teleport ?? 0,
   shield: o.shield ?? 0,
   pattern: o.pattern ?? null,
@@ -272,6 +278,26 @@ export const CONSUMABLES = [
     name: 'firebomb', kind: 'item', charges: 2, weight: 1, stamina: 4,
     directional: true, damage: 4, impact: 3, pattern: 'arc3', knock: 1,
     desc: '前方三格,並把它們推開一格。兩次。',
+  }),
+  consumable('stone_keen', {
+    name: 'keening stone', kind: 'item', charges: 1, weight: 1,
+    grants: 'keen',
+    desc: '永久給主手武器「銳利」:主要技能命中後推開一格。武器已有兩條天生詞條的話用不了。',
+  }),
+  consumable('stone_light', {
+    name: 'paring stone', kind: 'item', charges: 1, weight: 1,
+    grants: 'light',
+    desc: '永久給主手武器「輕量」:重量 −3。',
+  }),
+  consumable('oil_ember', {
+    name: 'ember oil', kind: 'item', charges: 2, weight: 1,
+    tempAffix: 'ember',
+    desc: '接下來 5 次命中傷害 +2。抹在手上那把武器上。',
+  }),
+  consumable('oil_frost', {
+    name: 'frost oil', kind: 'item', charges: 2, weight: 1,
+    tempAffix: 'frost',
+    desc: '接下來 5 次命中衝擊 +2——打得斷本來打不斷的東西。',
   }),
   consumable('ward', {
     name: 'ward', kind: 'magic', charges: 2, weight: 0, stamina: 5, shield: 1,

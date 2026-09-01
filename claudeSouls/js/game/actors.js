@@ -17,6 +17,7 @@ import { ENEMY_BY_KEY } from '../data/enemies.js';
 import { PLAYER, SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour,
          CONSUMABLE_BY_KEY } from '../data/items.js';
+import { modsFor, weightMod, affixesOn, canGrant, AFFIX_BY_KEY, TEMP_HITS } from '../data/affixes.js';
 
 export const NORMAL_SPEED = 12;
 
@@ -53,6 +54,10 @@ export class Player {
     this.warded = 0;                  // blows a ward will still absorb
     this.souls = 0;                   // unbanked; dropped where you die
     this.ranks = {};                  // track key -> rank bought
+    // itemKey -> { granted, temp:{key,hits} }. Keyed by item rather than by
+    // instance because the pack itself holds keys; if items ever gain
+    // identities this moves with them.
+    this.affix = {};
     this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
     this.unbanked = [];               // picked up since the last fire; dropped on death
@@ -79,11 +84,40 @@ export class Player {
 
   get armourReduce() { return this.item(SLOT.ARMOUR)?.reduce ?? 0; }
 
-  /** Total weight carried. Nothing reads this yet; the economy comes next. */
+  /** Total weight carried, affixes included. */
   get weight() {
     let w = 0;
-    for (const s of Object.keys(this.equip)) w += this.item(s)?.weight ?? 0;
-    return w;
+    for (const s of Object.keys(this.equip)) {
+      const it = this.item(s);
+      if (!it) continue;
+      w += it.weight + weightMod(it, this.affix[it.key]);
+    }
+    return Math.max(0, w);
+  }
+
+  /** Which equipped item grants a skill, if any. */
+  itemGranting(skillKey) {
+    for (const s of [SLOT.MAIN, SLOT.OFF]) {
+      const it = this.item(s);
+      if (!it) continue;
+      if (it.primary === skillKey || it.secondary === skillKey) return it;
+    }
+    return null;
+  }
+
+  /** The numeric change this skill's affixes make. Deltas, not a rewritten def. */
+  mods(skillKey) {
+    const it = this.itemGranting(skillKey);
+    return modsFor(it, it ? this.affix[it.key] : null, skillKey);
+  }
+
+  /** Spend one hit off any temporary affix on the weapon that just swung. */
+  wearAffix(skillKey) {
+    const it = this.itemGranting(skillKey);
+    const st = it && this.affix[it.key];
+    if (!st?.temp || st.temp.hits <= 0) return null;
+    st.temp.hits--;
+    return st.temp.hits === 0 ? st.temp.key : null;   // the one that just ran out
   }
 
   /**
@@ -279,7 +313,7 @@ export class Player {
     if (key === 'roll') return this.rollCost();
     const def = SKILL_BY_KEY[key];
     if (!def) return 0;
-    return def.stamina + this.actionSurcharge;
+    return Math.max(1, def.stamina + this.mods(key).stamina) + this.actionSurcharge;
   }
 
   /**

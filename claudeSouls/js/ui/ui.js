@@ -32,6 +32,7 @@ import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, isChest, isCorpse } from '../map/tiles.js';
 import { SLOT, ITEM_BY_KEY, slotsFor, isConsumable, CONSUMABLE_BY_KEY } from '../data/items.js';
 import { TRACKS, priceOf } from '../data/souls.js';
+import { affixesOn, AFFIX_BY_KEY } from '../data/affixes.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { HELP_HTML } from './help.js';
 
@@ -735,9 +736,25 @@ export class UI {
     const ov = this.el.overlay;
     ov.hidden = false;
 
+    // Every affix says where it came from. That is the whole design of the three
+    // slots - a player reading a weapon should know which part of it is the
+    // weapon, which part they put there, and which part is about to run out.
+    const SLOT_LABEL = { innate: '天生', granted: '後天', temp: '暫時' };
+    const affixLine = (it) => {
+      if (!it) return '';
+      const on = affixesOn(it, p.affix[it.key]);
+      if (!on.length) return '';
+      return '<br>' + on.map((a) => {
+        const name = escapeHtml(AFFIX_BY_KEY[a.key].name);
+        const left = a.hits ? `×${a.hits}` : '';
+        return `<span class="af af-${a.slot}">${SLOT_LABEL[a.slot]} ${name}${left}</span>`;
+      }).join(' ');
+    };
+
     const worn = (slot, label) => {
       const it = p.item(slot);
-      return `<tr><td class="key">${label}</td><td>${it ? escapeHtml(it.name) : '<i>空</i>'}</td>` +
+      return `<tr><td class="key">${label}</td>` +
+             `<td>${it ? escapeHtml(it.name) + affixLine(it) : '<i>空</i>'}</td>` +
              `<td>${it ? `<button class="btn" data-off="${slot}">取下</button>` : ''}</td></tr>`;
     };
 
@@ -762,7 +779,7 @@ export class UI {
           const where = slotsFor(it).map((sl) =>
             `<button class="btn" data-on="${sl}" data-item="${escapeHtml(k)}">` +
             `${sl === SLOT.ARMOUR ? '穿上' : sl === SLOT.MAIN ? '主手' : '副手'}</button>`).join(' ');
-          return `<tr><td class="key">${i + 1}</td><td>${escapeHtml(it.name)}<br>` +
+          return `<tr><td class="key">${i + 1}</td><td>${escapeHtml(it.name)}${affixLine(it)}<br>` +
                  `<span class="dim">${escapeHtml(it.desc ?? '')}</span></td><td>${where}</td></tr>`;
         }).join('')
       : '<tr><td colspan="3"><i>背包是空的。</i></td></tr>';

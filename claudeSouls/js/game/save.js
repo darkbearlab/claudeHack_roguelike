@@ -54,7 +54,7 @@ export function saveGame(game) {
         // armour, and storing a derived value is how a save and a rules change
         // quietly start disagreeing.
         equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
-        unbanked: p.unbanked, souls: p.souls, ranks: p.ranks,
+        unbanked: p.unbanked, souls: p.souls, ranks: p.ranks, affix: p.affix,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -116,6 +116,7 @@ export function loadGame(game) {
     unbanked: d.player.unbanked ?? [],
     souls: d.player.souls ?? 0,
     ranks: d.player.ranks ?? {},
+    affix: d.player.affix ?? {},
     prep: { ...p.prep, ...(d.player.prep ?? {}) },
     charges: d.player.charges ?? {},
     deaths: d.player.deaths, kills: d.player.kills, turns: d.player.turns,

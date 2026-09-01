@@ -20,6 +20,7 @@ import { ITEMS, CONSUMABLES } from '../js/data/items.js';
 import { ENEMIES } from '../js/data/enemies.js';
 import { DUNGEON_DEPTH, MAX_STRAIT } from '../js/map/mapgen.js';
 import { TRACKS } from '../js/data/souls.js';
+import { AFFIXES } from '../js/data/affixes.js';
 
 const doc = readFileSync(new URL('../docs/DESIGN.md', import.meta.url), 'utf8');
 
@@ -42,6 +43,7 @@ const CLAIMS = [
   [`${SKILLS.length} 個技能`, 'skill count'],
   [`${ITEMS.length} 件裝備`, 'equipment count'],
   [`${CONSUMABLES.length} 個消耗品`, 'consumable count'],
+  [`${AFFIXES.length} 種詞條`, 'affixes'],
   [`${TRACKS.length} 條成長線`, 'soul tracks'],
   [`${weapons} 把武器`, 'weapons'],
   [`${shields} 面盾`, 'shields'],
