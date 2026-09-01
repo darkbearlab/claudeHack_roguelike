@@ -31,6 +31,7 @@ export function makeProjectile(o) {
     speed: o.speed ?? 3,
     damage: o.damage,
     fromPlayer: !!o.fromPlayer,
+    impact: o.impact ?? 0,
     glyph: o.glyph ?? '*',
     colour: o.colour ?? '#e0d0a0',
     life: o.life ?? 12,
@@ -74,7 +75,7 @@ export function stepProjectiles(game) {
         if (!p.fromPlayer) {
           game.msg(`The ${p.glyph === '*' ? 'cinder' : 'arrow'} strikes the ${e.name}!`, 'good');
         }
-        game.hurtEnemy(e, p.damage, p.fromPlayer);
+        game.hurtEnemy(e, p.damage, p.fromPlayer, p.impact);
         dead = true;
         break;
       }

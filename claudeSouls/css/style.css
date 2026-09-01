@@ -116,17 +116,34 @@ body { overflow: hidden; }
 #pad button.wide { font-size: 11px; }
 #pad button:active { background: var(--ember); color: #000; }
 
-#skillbar { flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+/* minmax(0, 1fr), not 1fr: a bare 1fr refuses to shrink below the content's
+   intrinsic width, so adding the shape icons pushed the third button off the
+   right-hand edge of a phone. */
+#skillbar { flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 4px; }
 .skill {
   position: relative; height: 40px; padding: 2px 6px;
   background: var(--panel); color: var(--fg);
   border: 1px solid var(--line); border-radius: 6px;
   font: inherit; font-size: 12px; text-align: left; cursor: pointer;
   touch-action: none;           /* the drag belongs to us, not the browser */
-  display: flex; flex-direction: column; justify-content: center;
+  display: flex; flex-direction: row; align-items: center; gap: 4px;
 }
 .skill .num  { position: absolute; top: 2px; left: 5px; font-size: 9px; color: var(--dim); }
-.skill .nm   { font-size: 12px; padding-left: 9px; }
+.skill .nm   { font-size: 12px; padding-left: 9px; flex: 1 1 auto;
+               white-space: nowrap; overflow: hidden; text-overflow: clip; }
+
+/* The shape map on each button. Same colour language as the map itself:
+   red is what gets hit, blue is where you end up, pale is you.
+   Laid out in the flow rather than pinned, so it can never sit on top of the
+   skill's name - the icon is there to make the button readable, and an icon
+   that hides the label defeats itself. The bottom-right corner is left clear
+   for the stamina cost. */
+.skill .ico  { flex: 0 0 auto; height: 26px; width: auto;
+               margin-right: 9px; overflow: visible; }
+.skill .ic-hit  { fill: var(--blood); }
+.skill .ic-step { fill: var(--cool); opacity: .55; }
+.skill .ic-me   { fill: var(--fg); opacity: .9; }
 .skill .cost { position: absolute; bottom: 2px; right: 6px; font-size: 10px; color: var(--good); }
 .skill .cd   { position: absolute; top: 2px; right: 6px; font-size: 11px; color: var(--ember); }
 .skill.armed  { border-color: var(--cool); background: #16222c; }
@@ -136,12 +153,25 @@ body { overflow: hidden; }
 .skill:active { background: var(--ember); color: #000; }
 
 @media (max-width: 560px), (max-height: 560px) {
-  #topbar { min-height: 26px; padding: 2px 5px; }
+  #topbar { min-height: 26px; padding: 2px 5px; gap: 5px; }
+  /* The wordmark is decoration; the floor number is information. On a phone
+     the title was eating the whole status line, so it goes. */
+  #title { display: none; }
   #statusline { font-size: 10.5px; }
+  #statusline .roomy { display: none; }
   #msgbar { min-height: 30px; max-height: 52px; font-size: 12px; }
-  #pad { grid-template-columns: repeat(3, 42px); }
+  /* Stack the footer on a phone.
+     Side by side, the d-pad took 134 of the 375 available pixels and the skill
+     buttons came out 70px wide - not enough for a shape icon AND the skill's
+     name, so the names were being clipped to "Str" and "Lung". Full width gives
+     each button ~119px, which fits both. The map does not lose any tile size
+     for it: the cell is limited by width (375/9), not by height. */
+  #controls { flex-direction: column; align-items: stretch; gap: 6px; }
+  #skillbar { order: 1; }
+  #pad { order: 2; grid-template-columns: repeat(3, 42px); justify-content: center; }
   #pad button { height: 37px; }
   .skill { height: 37px; }
+  .skill .ico { height: 22px; margin-right: 7px; }
   #hpbar i { width: 9px; height: 9px; }
 }
 

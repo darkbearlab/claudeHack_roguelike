@@ -15,16 +15,52 @@ import { DIRS } from '../../../engine/util.js';
 
 const SQ = Math.SQRT1_2;   // 0.7071
 
-/** Patterns are lists of [x, y] offsets in "facing east" space. */
+/**
+ * Patterns are lists of [x, y] offsets in "facing east" space.
+ *
+ * The set exists to make **one step backwards stop being the universal answer**.
+ * Before this, every attack was reach-1 and the whole game could be played by
+ * retreating one tile and walking back in - which cost no stamina, so the
+ * stamina system never engaged at all. Each shape below wants a different
+ * response:
+ *
+ *   front / arc3     step back, or sideways
+ *   line3 / line6    step SIDEWAYS - retreating along the lane does nothing
+ *   arc5             a wide wall; going round it takes two tiles, so: roll
+ *   around           you need two tiles of movement to leave: roll
+ *   sweepL / sweepR  the two halves of a combination - see enemies.js
+ */
 export const PATTERNS = {
   front:    [[1, 0]],
   arc3:     [[1, -1], [1, 0], [1, 1]],
+  arc5:     [[1, -2], [1, -1], [1, 0], [1, 1], [1, 2]],
   reach2:   [[1, 0], [2, 0]],
+  line3:    [[1, 0], [2, 0], [3, 0]],
+  line6:    [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]],
+
+  // The two halves of a sweep. Their union covers the whole front semicircle,
+  // so the instinctive dodge - step to the side the blade has already passed -
+  // walks straight into the second half. The escapes are backwards out of the
+  // reach, or behind the attacker, and both take more than one step.
+  sweepL:   [[0, -1], [1, -1], [2, -1], [1, 0]],
+  sweepR:   [[0, 1], [1, 1], [2, 1], [1, 0], [2, 0]],
+
+  // Radial. These are listed in RADIAL below and are NOT rotated: a ring has
+  // no facing, and rotating one by 45 degrees rounds its outer tiles onto each
+  // other - the old sparse `around2` star lost four tiles that way, and leaked
+  // two more even facing east, so a single sidestep walked out of the boss's
+  // signature attack. It is a solid 5x5 now: you need two tiles of movement,
+  // which means a roll, which means stamina. That is the entire point of it.
   around:   [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]],
-  around2:  [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
-             [2, 0], [0, 2], [-2, 0], [0, -2], [2, 2], [2, -2], [-2, 2], [-2, -2]],
-  cleave:   [[1, -1], [1, 0], [1, 1], [2, 0]],
+  around2:  [[-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2],
+             [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+             [-2,  0], [-1,  0],           [1,  0], [2,  0],
+             [-2,  1], [-1,  1], [0,  1], [1,  1], [2,  1],
+             [-2,  2], [-1,  2], [0,  2], [1,  2], [2,  2]],
 };
+
+/** Shapes that have no facing, and so must not be rotated. */
+export const RADIAL = new Set(['around', 'around2']);
 
 /** Normalise any direction to a unit vector, diagonals included. */
 export function unit(dx, dy) {
@@ -49,10 +85,11 @@ export function rotate(ox, oy, dx, dy) {
  */
 export function attackTiles(x, y, dx, dy, patternName) {
   const pat = PATTERNS[patternName] ?? PATTERNS.front;
+  const spin = !RADIAL.has(patternName);
   const seen = new Set();
   const out = [];
   for (const [ox, oy] of pat) {
-    const r = rotate(ox, oy, dx, dy);
+    const r = spin ? rotate(ox, oy, dx, dy) : { x: ox, y: oy };
     const tx = x + r.x, ty = y + r.y;
     const k = tx * 10000 + ty;
     if (seen.has(k)) continue;

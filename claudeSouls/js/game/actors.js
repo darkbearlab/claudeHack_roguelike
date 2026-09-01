@@ -122,10 +122,14 @@ export class Enemy {
     this.energy = rng ? rng.rn2(NORMAL_SPEED) : 0;
     this.alive = true;
 
+    this.poise = spec.poise;
+    this.poiseLeft = spec.poise;
+
     this.state = STATE.READY;
     this.timer = 0;                 // turns left in the current state
     this.attack = null;             // the attack being wound up
     this.attackTiles = null;        // resolved at wind-up start, shown to the player
+    this.attackDir = null;
     this.aware = false;
     this.lastKnown = null;
   }
@@ -159,15 +163,25 @@ export class Enemy {
   }
 
   /**
-   * Being hit during a wind-up pushes the blow back a turn.
+   * Being hit during a wind-up can push the blow back a turn - but only if the
+   * hit is heavy enough.
    *
-   * This is the half of "poise" worth keeping. Without it the only answer to a
-   * telegraph is to roll, and the fight has exactly one rhythm; with it, every
-   * telegraph is a choice between getting out of the way and getting in the
-   * way. It costs one line and doubles the decision space.
+   * The interrupt on its own was a mistake. It gave every telegraph a second
+   * answer, which was the point, but it made the *cheapest* answer universal:
+   * a 4-stamina jab could postpone a 7-stamina overhead indefinitely, so 1v1
+   * was solved by standing still and swinging. Poise is the price the interrupt
+   * always needed. A brute at poise 8 cannot be interrupted by anything the
+   * player owns inside a three-turn wind-up, so against a brute you have to
+   * move - which is the whole game.
+   *
+   * Poise refills when the wind-up ends, so it is per-attack rather than a
+   * second health bar to grind down.
    */
-  stagger() {
+  stagger(impact = 1) {
     if (this.state !== STATE.WINDUP) return false;
+    this.poiseLeft -= impact;
+    if (this.poiseLeft > 0) return false;
+    this.poiseLeft = this.poise;
     this.timer++;
     return true;
   }

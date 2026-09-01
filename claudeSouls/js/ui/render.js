@@ -82,7 +82,11 @@ export class Renderer {
     if (this.mode === 'ascii') {
       base = Math.max(Math.min(W / lvl.w, H / lvl.h), 9 * this.dpr);
     } else {
-      const MIN_COLS = 13, MIN_ROWS = 8;
+      // 9x6 rather than 13x8. On a 375px phone that is ~41 CSS pixels a tile
+      // instead of ~29, which is the difference between recognising a brute by
+      // its sprite and having to read the message log to find out what hit you.
+      // Only binds on small screens: on a desktop the 92px cap below wins.
+      const MIN_COLS = 9, MIN_ROWS = 6;
       base = Math.min(W / MIN_COLS, H / MIN_ROWS);
       base = Math.max(18 * this.dpr, Math.min(base, 92 * this.dpr));
     }
@@ -167,6 +171,9 @@ export class Renderer {
 
     // --- the player
     this.drawPlayer(ctx, p, (p.x - v.ox) * v.cell, (p.y - v.oy) * v.cell, v.cell);
+
+    // --- threats the bigger tiles pushed off the edge
+    this.drawOffscreenThreats(ctx, v);
 
     if (this.overlayTrail) this.drawTrail(ctx, v);
   }
@@ -297,6 +304,82 @@ export class Renderer {
     }
   }
 
+  /**
+   * Threats that are winding up outside the viewport.
+   *
+   * This is the bill for making the tiles bigger. The camera now shows nine
+   * columns, the player's field of view is eleven tiles, and the horned one
+   * telegraphs a six-tile charge lane - so it is entirely possible for
+   * something to announce an attack that will reach you from off screen. A
+   * telegraph you cannot see is not a telegraph, and the whole game is built on
+   * the promise that every blow is announced, so the announcement has to
+   * survive leaving the frame.
+   *
+   * Drawn as a marker pinned to the edge in the threat's direction, using the
+   * same red and the same urgency ramp as the tiles themselves, so it reads as
+   * the same language rather than as a new symbol to learn.
+   */
+  drawOffscreenThreats(ctx, v) {
+    const lvl = this.game.level;
+    const p = this.game.player;
+    const px = (p.x - v.ox) * v.cell + v.cell / 2;
+    const py = (p.y - v.oy) * v.cell + v.cell / 2;
+
+    // Capped, not proportional: at 83 device pixels a tile an arrow scaled to
+    // the grid is as big as the thing it is pointing at, and it lands on top of
+    // the very telegraph squares it is meant to complement.
+    const r = Math.min(v.cell * 0.3, 20 * this.dpr);
+    const marks = [];
+    for (const e of lvl.enemies) {
+      if (!e.alive || e.state !== STATE.WINDUP) continue;
+      if (!lvl.isVisible(e.x, e.y)) continue;
+      const rx = e.x - v.ox, ry = e.y - v.oy;
+      if (rx >= 0 && ry >= 0 && rx < v.cols && ry < v.rows) continue;
+      marks.push({ x: e.x, y: e.y, heat: 1 - Math.min(1, (e.timer - 1) / 3) });
+    }
+    for (const pr of lvl.projectiles) {
+      if (pr.fromPlayer) continue;
+      const rx = pr.x - v.ox, ry = pr.y - v.oy;
+      if (rx >= 0 && ry >= 0 && rx < v.cols && ry < v.rows) continue;
+      if (!lvl.isVisible(pr.x, pr.y)) continue;
+      marks.push({ x: pr.x, y: pr.y, heat: 0.75 });
+    }
+    if (!marks.length) return;
+
+    for (const m of marks) {
+      const tx = (m.x - v.ox) * v.cell + v.cell / 2;
+      const ty = (m.y - v.oy) * v.cell + v.cell / 2;
+      const cx = Math.max(r, Math.min(v.W - r, tx));
+      const cy = Math.max(r, Math.min(v.H - r, ty));
+      const ang = Math.atan2(ty - py, tx - px);
+      const a = 0.55 + m.heat * 0.45;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(ang);
+      // A dark disc first, so the arrow is legible whether it lands on stone,
+      // on floor, or on top of another telegraph.
+      ctx.fillStyle = 'rgba(8,6,6,.72)';
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = `rgba(240,80,64,${a})`;
+      ctx.strokeStyle = `rgba(255,190,170,${a})`;
+      ctx.lineWidth = Math.max(1, r * 0.12);
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(r * 0.72, 0);
+      ctx.lineTo(-r * 0.34, -r * 0.6);
+      ctx.lineTo(-r * 0.1, 0);
+      ctx.lineTo(-r * 0.34, r * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   drawAim(ctx, v) {
     for (const t of this.aim.tiles) {
       const rx = t.x - v.ox, ry = t.y - v.oy;
@@ -374,11 +457,6 @@ export class Renderer {
       if (img) this.blit(ctx, img, px, py, cell, 1, 1, facingAngle(p.facing.dx, p.facing.dy));
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
-    ctx.strokeStyle = 'rgba(255,215,95,.8)';
-    ctx.lineWidth = Math.max(1, cell * 0.05);
-    ctx.beginPath();
-    ctx.arc(px + cell / 2, py + cell * 0.84, cell * 0.3, 0, Math.PI * 2);
-    ctx.stroke();
   }
 
   drawProjectile(ctx, pr, px, py, cell) {

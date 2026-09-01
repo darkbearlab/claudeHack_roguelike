@@ -105,6 +105,7 @@ export class UI {
     bar.innerHTML = SKILLS.map((s, i) => `
       <button class="skill" data-skill="${s.key}" title="${escapeHtml(s.hint)}">
         <span class="num">${i + 1}</span>
+        ${skillIcon(s)}
         <span class="nm">${escapeHtml(s.name)}</span>
         <span class="cost"></span>
         <span class="cd"></span>
@@ -433,9 +434,12 @@ export class UI {
     const alive = lvl ? lvl.livingEnemies().length : 0;
     this.el.status.innerHTML =
       `<span class="lo">Floor</span> <b>${p.depth}</b>/${DUNGEON_DEPTH}` +
-      `　<span class="lo">Deaths</span> <b>${p.deaths}</b>` +
       `　<span class="lo">Foes</span> <b>${alive}</b>` +
-      `　<span class="lo">T</span> ${this.game.turn}`;
+      // Deaths and turn count are how a run reads afterwards, not how it is
+      // played. On a phone the line is one ellipsis away from hiding the floor
+      // number, so the retrospective half steps aside.
+      `<span class="roomy">　<span class="lo">Deaths</span> <b>${p.deaths}</b>` +
+      `　<span class="lo">T</span> ${this.game.turn}</span>`;
   }
 
   renderSkillBar() {
@@ -559,6 +563,55 @@ function normaliseKey(ev) {
   if (ev.code?.startsWith('Numpad') && /^[0-9]$/.test(k)) return 'numpad' + k;
   if (k.length === 1) return k;
   return null;
+}
+
+/**
+ * A little map of what a skill actually does, drawn on the button.
+ *
+ * The complaint that prompted this was exact: the skills give no visual
+ * feedback about what they correspond to. "Sweep" and "Strike" are words, and
+ * a word does not tell you that one covers three tiles and the other covers
+ * one - so the only way to learn the difference was to spend the stamina and
+ * read the log afterwards. On a phone, where the buttons are the entire
+ * interface, that is the difference between a game you can read and a game you
+ * have to memorise.
+ *
+ * The shapes are derived from the same pattern table the attacks resolve
+ * against, not drawn by hand, so an icon cannot quietly start lying about what
+ * its skill does.
+ */
+function skillIcon(def) {
+  const hit = [], step = [];
+
+  if (def.move) {
+    // Roll: pure movement, no tiles struck.
+    for (let i = 1; i <= (def.dash ?? 1); i++) step.push({ x: 0, y: -i });
+  } else if (def.ranged) {
+    // The knife keeps flying after your turn ends, so the lane fades out
+    // rather than stopping at a tidy edge.
+    for (let i = 1; i <= 3; i++) hit.push({ x: 0, y: -i, fade: i / 3 });
+  } else {
+    const reach = def.dash ?? 0;
+    for (let i = 1; i <= reach; i++) step.push({ x: 0, y: -i });
+    for (const t of attackTiles(0, -reach, 0, -1, def.pattern ?? 'front')) hit.push(t);
+  }
+
+  const all = [{ x: 0, y: 0 }, ...hit, ...step];
+  const minX = Math.min(...all.map((c) => c.x)), maxX = Math.max(...all.map((c) => c.x));
+  const minY = Math.min(...all.map((c) => c.y)), maxY = Math.max(...all.map((c) => c.y));
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  const S = 10, G = 1.8;
+
+  const cell = (c, cls) =>
+    `<rect class="${cls}" x="${(c.x - minX) * S + G / 2}" y="${(c.y - minY) * S + G / 2}" ` +
+    `width="${S - G}" height="${S - G}" rx="1.7"` +
+    (c.fade ? ` opacity="${(1.05 - c.fade * 0.55).toFixed(2)}"` : '') + '/>';
+
+  return `<svg class="ico" viewBox="0 0 ${w * S} ${h * S}" width="${w * S}" height="${h * S}" aria-hidden="true">` +
+    step.map((c) => cell(c, 'ic-step')).join('') +
+    hit.map((c) => cell(c, 'ic-hit')).join('') +
+    cell({ x: 0, y: 0 }, 'ic-me') +
+    '</svg>';
 }
 
 function escapeHtml(s) {

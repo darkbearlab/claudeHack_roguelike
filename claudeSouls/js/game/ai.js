@@ -120,15 +120,46 @@ function chooseAttack(game, e, seen) {
     }
 
     const dir = snapDir(p.x - e.x, p.y - e.y);
-    const tiles = attackTiles(e.x, e.y, dir.dx, dir.dy, a.pattern);
+    // Tiles are worked out from where the enemy will be *after* its step, so a
+    // stepping attack threatens further than it looks and one pace back is not
+    // enough. Whatever is computed here is exactly what gets shown and exactly
+    // what gets hit.
+    const from = origin(game.level, e, dir, a, game);
+    const tiles = attackTiles(from.x, from.y, dir.dx, dir.dy, a.pattern);
     if (tiles.some((t) => t.x === p.x && t.y === p.y)) options.push({ attack: a, dir });
   }
 
   if (!options.length) return null;
-  // Prefer the biggest thing it can afford; a brute that always used its cheap
-  // backhand would never show the player its interesting attack.
-  options.sort((x, y) => y.attack.damage - x.attack.damage);
-  return options[0];
+  // Weighted rather than "always the biggest". A brute that only ever led with
+  // its overhead would be one puzzle repeated; mixing in the untelegraphed
+  // backhand is what makes standing next to it uncomfortable.
+  return game.rng.pickWeighted(options, (o) => o.attack.weight ?? 1);
+}
+
+/**
+ * Where an attack resolves from. A stepping attack (the brute's overhead, the
+ * minotaur's charge) moves the attacker first, and only as far as the floor
+ * allows - so a charge into a wall is a short charge, not a teleport.
+ *
+ * It also stops **before anything already standing there**, which is not a
+ * detail. Without that check a brute standing next to you would step onto your
+ * square, resolve its five-tile arc from there, and miss you completely - so
+ * the overhead was never a legal choice at melee range and the brute spent
+ * every fight throwing its cheap backhand. It looked like a balance problem and
+ * was a geometry bug.
+ */
+function origin(lvl, e, dir, a, game) {
+  let x = e.x, y = e.y;
+  for (let i = 0; i < (a.step ?? 0); i++) {
+    const nx = x + dir.dx, ny = y + dir.dy;
+    if (!lvl.passable(nx, ny, e)) break;
+    if (!lvl.diagonalOk(x, y, nx, ny)) break;
+    if (game && nx === game.player.x && ny === game.player.y) break;
+    const other = lvl.enemyAt(nx, ny);
+    if (other && other !== e && other.alive) break;
+    x = nx; y = ny;
+  }
+  return { x, y };
 }
 
 /** Ranged attacks fire along one of the eight lines, so they can be side-stepped. */
@@ -139,13 +170,23 @@ function aligned(e, p) {
 
 function beginWindup(game, e, attack, dir) {
   e.face(dir.dx, dir.dy);
-  e.state = STATE.WINDUP;
-  e.timer = attack.windup;
   e.attack = attack;
   e.attackDir = dir;
+  e.poiseLeft = e.poise;
+
+  const from = attack.kind === 'ranged'
+    ? { x: e.x, y: e.y }
+    : origin(game.level, e, dir, attack, game);
   e.attackTiles = attack.kind === 'ranged'
     ? rayTiles(game.level, e.x, e.y, dir, attack.range)
-    : attackTiles(e.x, e.y, dir.dx, dir.dy, attack.pattern);
+    : attackTiles(from.x, from.y, dir.dx, dir.dy, attack.pattern);
+
+  // windup 0 means no telegraph: it simply happens. Reserved for cheap, fast
+  // attacks, so that standing next to something always costs you.
+  if (attack.windup <= 0) { resolveAttack(game, e); return; }
+
+  e.state = STATE.WINDUP;
+  e.timer = attack.windup;
   if (game.level.isVisible(e.x, e.y)) {
     game.msg(`The ${e.name} readies ${attack.name}.`, 'warn');
   }
@@ -168,6 +209,13 @@ function resolveAttack(game, e) {
   e.state = STATE.RECOVER;
   e.timer = a.recovery;
 
+  // A stepping attack actually moves. The tiles were computed from here when
+  // the wind-up started, so the promise still holds.
+  if (a.step && a.kind !== 'ranged') {
+    const to = origin(game.level, e, e.attackDir, a, game);
+    if (to.x !== e.x || to.y !== e.y) game.level.moveEnemy(e, to.x, to.y);
+  }
+
   if (a.kind === 'ranged') {
     game.level.projectiles.push(makeProjectile({
       x: e.x, y: e.y, dx: e.attackDir.dx, dy: e.attackDir.dy,
@@ -182,7 +230,7 @@ function resolveAttack(game, e) {
     for (const t of tiles) {
       if (t.x === game.player.x && t.y === game.player.y) {
         game.msg(`The ${e.name}'s ${a.name} catches you!`, 'bad');
-        game.hurtPlayer(a.damage, e.name);
+        game.hurtPlayer(a.damage, `${e.name}'s ${a.name}`);
         hitAnything = true;
       }
       const other = game.level.enemyAt(t.x, t.y);
@@ -197,6 +245,20 @@ function resolveAttack(game, e) {
     if (!hitAnything && game.level.isVisible(e.x, e.y)) {
       game.msg(`The ${e.name}'s ${a.name} hits nothing.`);
     }
+  }
+
+  // A combination continues straight into its next part with no gap: the blade
+  // is still moving. The follow-up telegraphs normally, so it is readable - but
+  // it arrives during what would have been the recovery window, which is what
+  // stops "step aside, walk back in, take three free swings".
+  //
+  // Only one telegraph is ever on screen, which is why this needed no change
+  // to the renderer.
+  if (a.next) {
+    const dir = e.attackDir;
+    e.attack = null;
+    beginWindup(game, e, a.next, dir);
+    return;
   }
 
   e.attack = null;

@@ -1,7 +1,7 @@
 // System tests.
 //
 // A deterministic combat system is far more testable than claudeHack's was:
-// with no to-hit rolls and no damage dice, "the brute's overhead lands on turn
+// with no to-hit rolls and no damage dice, "the sentinel's lance lands on turn
 // N and covers these three tiles" is an *assertion*, not a distribution. Most
 // of what follows checks the read-and-react contract directly, because that
 // contract is the game - if it can be broken, everything else is decoration.
@@ -11,7 +11,6 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel } from '../js/map/mapgen.js';
-import { T, isWalkable } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -56,7 +55,7 @@ function freshGame(seed = 't', vow = 'light') {
   return g;
 }
 
-/** Put the player and one enemy on adjacent clear floor, with nothing else. */
+/** Player and one enemy on clear floor, with nothing else in the way. */
 function arena(seed, enemyKey, gap = 1) {
   const g = freshGame(seed);
   g.level.enemies.length = 0;
@@ -70,6 +69,16 @@ function arena(seed, enemyKey, gap = 1) {
   e.aware = true;
   g.afterMove();
   return { g, e, room };
+}
+
+/** Run the world with the player pinned alive, so an enemy can be observed. */
+function observe(g, e, turns, stop) {
+  for (let t = 0; t < turns && e.alive && g.running; t++) {
+    g.player.hp = g.player.hpMax;
+    g.worldTurn();
+    if (stop && stop(t)) return t;
+  }
+  return -1;
 }
 
 // ===========================================================================
@@ -113,19 +122,16 @@ check('every floor generates, is connected, and has stairs and a bonfire', () =>
 check('a floor is the same floor every time it is rebuilt', () => {
   const g = freshGame('stable');
   const before = g.levelAt(3).tiles.join();
-  const enemiesBefore = g.levelAt(3).enemies.map((e) => `${e.key}@${e.x},${e.y}`).join('|');
+  const eBefore = g.levelAt(3).enemies.map((e) => `${e.key}@${e.x},${e.y}`).join('|');
   g.respawnLevel(3);
-  const after = g.levelAt(3).tiles.join();
-  const enemiesAfter = g.levelAt(3).enemies.map((e) => `${e.key}@${e.x},${e.y}`).join('|');
-  assert(before === after, 'terrain changed after respawn');
-  assert(enemiesBefore === enemiesAfter, 'enemy placement changed after respawn');
-  assert(enemiesAfter.length > 0, 'floor 3 has no enemies');
+  assert(before === g.levelAt(3).tiles.join(), 'terrain changed after respawn');
+  assert(eBefore === g.levelAt(3).enemies.map((e) => `${e.key}@${e.x},${e.y}`).join('|'),
+         'enemy placement changed after respawn');
+  assert(eBefore.length > 0, 'floor 3 has no enemies');
   return 'terrain and enemies both stable';
 });
 
 check('every floor has something slow and something fast on it', () => {
-  // Both halves of "can I walk away from this" must exist, or running past
-  // stops being a decision and the walk back from a bonfire is a punishment.
   const misses = [];
   for (let s = 0; s < 8; s++) {
     const g = freshGame(`mix:${s}`);
@@ -140,7 +146,7 @@ check('every floor has something slow and something fast on it', () => {
 });
 
 // ===========================================================================
-console.log('\n--- patterns and facing ---------------------------------------');
+console.log('\n--- shapes and facing -----------------------------------------');
 
 check('attack patterns rotate to facing without collapsing or duplicating', () => {
   for (const name of Object.keys(PATTERNS)) {
@@ -152,12 +158,43 @@ check('attack patterns rotate to facing without collapsing or duplicating', () =
       assert(tiles.length >= 1, `${name} facing ${d.name}: empty`);
     }
   }
-  // 'front' must always be exactly the one tile you are facing.
   for (const d of DIRS) {
     const [t] = attackTiles(5, 5, d.dx, d.dy, 'front');
     assert(t.x === 5 + d.dx && t.y === 5 + d.dy, `front facing ${d.name} is wrong tile`);
   }
   return `${Object.keys(PATTERNS).length} patterns x 8 facings`;
+});
+
+check('one step back is not a universal answer', () => {
+  // The reason the shape library exists at all. Every attack used to be
+  // reach-1, so retreating one tile solved the entire game - and retreating is
+  // free, so the stamina system never engaged.
+  const line = attackTiles(0, 0, 1, 0, 'line3').map((t) => `${t.x},${t.y}`);
+  assert(line.includes('2,0'),
+         'retreating along a line escapes it; lines must punish that');
+
+  // The instinctive dodge out of the first half of a sweep lands in the second.
+  const L = attackTiles(0, 0, 1, 0, 'sweepL').map((t) => `${t.x},${t.y}`);
+  const R = attackTiles(0, 0, 1, 0, 'sweepR').map((t) => `${t.x},${t.y}`);
+  assert(L.includes('1,0'), 'sweepL should threaten the tile in front');
+  assert(!L.includes('1,1'), 'the sidestep should be safe from the first half');
+  assert(R.includes('1,1'), 'the sidestep must be caught by the second half');
+  assert(R.includes('2,0'), 'backing straight off should also be caught');
+
+  // A radial attack needs more movement than one step provides. Checked from
+  // every facing, because a ring that leaks when the boss happens to be looking
+  // south-east is a ring the player cannot trust.
+  for (const f of DIRS) {
+    const ring = attackTiles(0, 0, f.dx, f.dy, 'around2').map((t) => `${t.x},${t.y}`);
+    assert(ring.length === 24, `the boss ring is ${ring.length} tiles facing ${f.name}, not 24`);
+    for (const d of DIRS) {
+      const sx = 1 + d.dx, sy = 0 + d.dy;
+      if (sx === 0 && sy === 0) continue;            // that tile is the boss
+      assert(ring.includes(`${sx},${sy}`),
+             `stepping ${d.name} escapes the boss ring; it should need a roll`);
+    }
+  }
+  return 'lines punish retreat, sweeps punish the sidestep, rings need a roll';
 });
 
 check('snapDir returns one of the eight directions for any vector', () => {
@@ -173,22 +210,19 @@ check('snapDir returns one of the eight directions for any vector', () => {
 console.log('\n--- the core contract -----------------------------------------');
 
 check('rolling costs stamina and does NOT advance the turn', () => {
-  // The single most important rule in the game.
   const { g } = arena('roll', 'husk', 6);
   const t0 = g.turn, s0 = g.player.stamina;
   const spent = g.useSkill('roll', { dx: 0, dy: -1 });
   assert(spent === false, 'roll reported that it advanced the turn');
   assert(g.turn === t0, `turn advanced from ${t0} to ${g.turn}`);
-  assert(g.player.stamina === s0 - g.player.rollCost(),
-         `stamina ${s0} -> ${g.player.stamina}, expected -${g.player.rollCost()}`);
+  assert(g.player.stamina === s0 - g.player.rollCost(), 'wrong stamina cost');
   return `free turn, -${g.player.rollCost()} stamina`;
 });
 
 check('attacking advances the turn and costs stamina', () => {
   const { g } = arena('atk', 'husk', 1);
   const t0 = g.turn, s0 = g.player.stamina;
-  const spent = g.useSkill('strike', { dx: 1, dy: 0 });
-  assert(spent === true, 'strike did not advance the turn');
+  assert(g.useSkill('strike', { dx: 1, dy: 0 }) === true, 'strike did not advance the turn');
   g.worldTurn();
   assert(g.turn === t0 + 1, 'turn did not advance');
   assert(g.player.stamina < s0 + g.player.staminaRegen, 'strike was free');
@@ -203,10 +237,6 @@ check('the two vows are a real trade, not a strictly better option', () => {
   assert(lRolls >= 5, `light gets only ${lRolls} rolls`);
   assert(hRolls >= 2 && hRolls <= 3, `heavy gets ${hRolls} rolls, wanted 2-3`);
   assert(heavy.hpMax > light.hpMax, 'heavy is not tougher');
-
-  // Total ground a full bar can cover. Heavy must give up real mobility, or
-  // its damage reduction makes it dominant - which is what a bot playing both
-  // vows measured before roll distance was halved for heavy.
   const lGround = lRolls * light.rollDistance();
   const hGround = hRolls * heavy.rollDistance();
   assert(hGround * 2 <= lGround,
@@ -215,7 +245,6 @@ check('the two vows are a real trade, not a strictly better option', () => {
 });
 
 check('stamina regen is just under one light roll', () => {
-  // The number the whole rhythm hangs on: you cannot dodge every single turn.
   assert(PLAYER.staminaRegen < SKILL_BY_KEY.roll.stamina,
          `regen ${PLAYER.staminaRegen} >= roll ${SKILL_BY_KEY.roll.stamina} - dodging would be free`);
   assert(PLAYER.staminaRegen * 2 >= SKILL_BY_KEY.roll.stamina,
@@ -223,99 +252,157 @@ check('stamina regen is just under one light roll', () => {
   return `${PLAYER.staminaRegen}/turn vs ${SKILL_BY_KEY.roll.stamina} per roll`;
 });
 
-check('an enemy telegraphs before it strikes, and never strikes early', () => {
+check('telegraphed attacks always telegraph; silent ones stay cheap', () => {
+  // Not everything telegraphs any more - fast, weak enemies simply hit, which
+  // is what stops "back off one tile and poke the slow one" from being free.
+  // But whether an attack telegraphs is a fixed property of that attack, never
+  // a dice roll: an enemy that sometimes warns you cannot be learned, and that
+  // is unfair rather than difficult.
+  let silent = 0, loud = 0;
   for (const spec of ENEMIES) {
     for (const a of spec.attacks) {
-      assert(a.windup >= 1, `${spec.key}/${a.name} has no wind-up`);
       assert(a.recovery >= 1, `${spec.key}/${a.name} has no recovery`);
+      if (a.windup === 0) {
+        silent++;
+        assert(a.damage <= 2,
+               `${spec.key}/${a.name} deals ${a.damage} unannounced - silent damage must stay cheap`);
+      } else {
+        loud++;
+        assert(a.windup >= 1, `${spec.key}/${a.name} has a broken wind-up`);
+      }
     }
-    // Melee only. A ranged attack legitimately damages you turns after the
-    // archer has finished recovering, because the thing that hits you is the
-    // arrow, not the archer - that path is covered by the projectile tests.
-    if (spec.attacks.some((a) => a.kind === 'ranged')) continue;
+  }
+  assert(silent > 0 && loud > 0, 'the roster needs both kinds');
 
+  // A purely telegraphed melee species must never damage from another state.
+  for (const spec of ENEMIES) {
+    if (spec.attacks.some((a) => a.kind === 'ranged' || a.windup === 0)) continue;
     const { g, e } = arena(`tel:${spec.key}`, spec.key, 1);
-    e.stamina = e.staminaMax;
     const hp0 = g.player.hp;
-    for (let t = 0; t < 14; t++) {
+    for (let t = 0; t < 16; t++) {
       const before = e.state;
       g.worldTurn();
       if (g.player.hp < hp0) {
-        assert(before === STATE.WINDUP,
-               `${spec.key} dealt damage from state "${before}" - no telegraph`);
+        assert(before === STATE.WINDUP, `${spec.key} dealt damage from state "${before}"`);
         break;
       }
       if (!e.alive) break;
     }
   }
-  const melee = ENEMIES.filter((s) => !s.attacks.some((a) => a.kind === 'ranged')).length;
-  return `${melee} melee species: damage only ever follows a wind-up`;
+  return `${loud} telegraphed, ${silent} silent (all <= 2 damage)`;
 });
 
 check('the tiles shown during a wind-up are the tiles that get hit', () => {
-  // If these two could disagree the whole read-and-react contract is a lie.
-  const { g, e } = arena('promise', 'brute', 1);
+  const { g, e } = arena('promise', 'sentinel', 2);
   e.stamina = e.staminaMax;
   let promised = null;
-  for (let t = 0; t < 10; t++) {
-    g.worldTurn();
-    if (e.state === STATE.WINDUP && !promised) promised = e.attackTiles.map((q) => `${q.x},${q.y}`).sort().join('|');
-    if (promised && e.state === STATE.RECOVER) break;
-    // The promise must never change once made.
-    if (promised && e.state === STATE.WINDUP) {
+  observe(g, e, 20, () => {
+    if (e.state === STATE.WINDUP) {
       const now = e.attackTiles.map((q) => `${q.x},${q.y}`).sort().join('|');
-      assert(now === promised, 'the telegraph moved after it was shown');
+      if (!promised) promised = now;
+      else assert(now === promised, 'the telegraph moved after it was shown');
     }
-  }
-  assert(promised, 'the brute never wound up');
+    return !!promised && e.state === STATE.RECOVER;
+  });
+  assert(promised, 'the sentinel never wound up');
   return 'telegraph is immutable once shown';
 });
 
-check('hitting an enemy mid-wind-up delays the blow', () => {
-  const { g, e } = arena('stagger', 'brute', 1);
-  e.stamina = e.staminaMax;
-  for (let t = 0; t < 8 && e.state !== STATE.WINDUP; t++) g.worldTurn();
-  assert(e.state === STATE.WINDUP, 'never reached wind-up');
-  const before = e.timer;
-  e.stagger();
-  assert(e.timer === before + 1, `timer ${before} -> ${e.timer}, expected +1`);
-  return 'interrupt pushes the attack back a turn';
+check('poise decides what can be interrupted', () => {
+  // The interrupt on its own let a 4-stamina jab postpone a 7-stamina overhead
+  // for ever, so 1v1 was solved by standing still and swinging.
+  const light = SKILL_BY_KEY.strike.impact;
+
+  const a = arena('poise-mid', 'sentinel', 1);
+  a.e.stamina = a.e.staminaMax;
+  observe(a.g, a.e, 20, () => a.e.state === STATE.WINDUP);
+  assert(a.e.state === STATE.WINDUP, 'the sentinel never wound up');
+  assert(a.e.poise > light, 'sentinel poise too low to test with');
+  const t0 = a.e.timer;
+  a.e.stagger(light);
+  assert(a.e.timer === t0, 'one light hit interrupted a sentinel');
+  a.e.stagger(light);
+  assert(a.e.timer === t0 + 1, 'two light hits failed to interrupt a sentinel');
+
+  // The brute is the other tier. Basic attacks cannot touch its wind-up, and
+  // breaking it at all costs most of the bar - so "interrupt everything" is a
+  // decision with a price rather than the answer to every fight.
+  const brute = ENEMY_BY_KEY.brute;
+  const overhead = brute.attacks.find((x) => x.windup >= 3);
+  assert(overhead, 'the brute lost its heavy attack');
+
+  const basic = SKILL_BY_KEY.strike;
+  assert(basic.cooldown === 0 && basic.impact * overhead.windup < brute.poise,
+         `spamming ${basic.name} breaks poise ${brute.poise} in ${overhead.windup} turns`);
+
+  // Best case for the player: each turn of the wind-up, throw the heaviest
+  // attack that is off cooldown and affordable.
+  const cd = {}, spent = [];
+  let poise = 0, stamina = PLAYER.staminaMax;
+  for (let t = 0; t < overhead.windup; t++) {
+    const best = SKILLS
+      .filter((k) => k.advancesTurn && !(cd[k.key] > 0) && k.stamina <= stamina)
+      .sort((x, y) => (y.impact ?? 0) - (x.impact ?? 0))[0];
+    if (!best) break;
+    for (const k of Object.keys(cd)) cd[k]--;
+    poise += best.impact ?? 0;
+    stamina -= best.stamina;
+    cd[best.key] = best.cooldown;
+    spent.push(best.key);
+  }
+  const cost = PLAYER.staminaMax - stamina;
+  assert(poise >= brute.poise,
+         `nothing the player owns can ever break poise ${brute.poise} (best ${poise})`);
+  assert(cost > PLAYER.staminaMax / 2,
+         `interrupting a brute costs only ${cost} of ${PLAYER.staminaMax} stamina - too cheap`);
+  return `sentinel ${a.e.poise} falls to two strikes; brute ${brute.poise} needs ` +
+         `${spent.join('+')} and ${cost} stamina`;
 });
 
-check('sustained aggression exhausts an enemy', () => {
-  // Enemy stamina has to actually bind on something or it is a dead system.
-  // What it buys is not usually the "winded" state - it is that an enemy which
-  // keeps swinging can no longer *afford its good attack*, and degrades to
-  // cheap pokes. That is the reward for keeping the pressure on.
-  const { g, e } = arena('winded', 'brute', 1);
-  const dearest = Math.max(...e.spec.attacks.map((a) => a.cost));
-  let minStamina = 99, forcedDown = false, usedCheap = false;
-  for (let t = 0; t < 60 && e.alive && g.running; t++) {
+check('a combination continues with no gap', () => {
+  // The follow-up arrives during what would have been the recovery window,
+  // which is what removes the free "step aside, walk back, take three swings".
+  const { g, e } = arena('combo', 'swordsman', 1);
+  e.stamina = e.staminaMax;
+  let chained = false;
+  for (let t = 0; t < 60 && e.alive; t++) {
     g.player.hp = g.player.hpMax;
+    const hadNext = e.state === STATE.WINDUP && !!e.attack?.next;
     g.worldTurn();
-    minStamina = Math.min(minStamina, e.stamina);
-    if (e.stamina < dearest) forcedDown = true;
-    if (e.state === STATE.WINDUP && e.attack && e.attack.cost < dearest) usedCheap = true;
+    if (hadNext && e.state === STATE.WINDUP && e.attack && !e.attack.next) chained = true;
   }
-  assert(minStamina >= 0, `stamina went to ${minStamina}`);
-  assert(forcedDown, 'the brute could always afford its heaviest attack');
-  assert(usedCheap, 'the brute never fell back to a cheaper attack');
+  assert(chained, 'the swordsman never chained its sweep into the backswing');
+  const combo = ENEMY_BY_KEY.swordsman.attacks.find((a) => a.next);
+  assert(combo.next.cost === 0, 'the follow-up should not be paid for twice');
+  return 'stage two telegraphs the instant stage one lands';
+});
 
-  // And an enemy whose cheapest attack costs more than it regenerates does
-  // eventually have to stop entirely.
-  const h = arena('winded2', 'husk', 1);
-  let sawResting = false;
-  for (let t = 0; t < 120 && h.e.alive && h.g.running; t++) {
-    h.g.player.hp = h.g.player.hpMax;
-    h.g.worldTurn();
-    if (h.e.state === STATE.RESTING) { sawResting = true; break; }
+check('a stepping attack moves the attacker but never onto an occupant', () => {
+  // A stepper that walked onto its target resolved its arc from the target's
+  // own square and missed entirely - so the brute could never legally pick its
+  // overhead and threw cheap backhands all fight. It read as a balance problem
+  // and was a geometry bug.
+  for (const [key, gap] of [['brute', 2], ['minotaur', 5]]) {
+    const { g, e } = arena(`step:${key}`, key, gap);
+    e.stamina = e.staminaMax;
+    observe(g, e, 40, () => {
+      assert(!(e.x === g.player.x && e.y === g.player.y), `${key} stepped onto the player`);
+      return false;
+    });
   }
-  assert(sawResting, 'the husk never had to stop and breathe');
-  return 'heavy attacks price themselves out; cheap attackers eventually stall';
+  const brute = arena('step-use', 'brute', 2);
+  brute.e.stamina = brute.e.staminaMax;
+  let usedHeavy = false;
+  observe(brute.g, brute.e, 80, () => {
+    if (brute.e.state === STATE.WINDUP && brute.e.attack?.step) usedHeavy = true;
+    return false;
+  });
+  assert(usedHeavy, 'the brute never used its stepping attack');
+  return 'steppers stop before bodies, and still connect';
 });
 
 check('a kill refunds a turn of every cooldown', () => {
-  const { g, e } = arena('combo', 'hound', 1);
+  const { g, e } = arena('combo-cd', 'hound', 1);
   const slot = g.player.skill('sweep');
   slot.cd = 3;
   e.hp = 1;
@@ -325,39 +412,96 @@ check('a kill refunds a turn of every cooldown', () => {
   return 'kill -> cooldowns tick';
 });
 
+check('sustained aggression exhausts an enemy', () => {
+  const { g, e } = arena('winded', 'brute', 2);
+  const dearest = Math.max(...e.spec.attacks.map((a) => a.cost));
+  let minStamina = 99, forcedDown = false;
+  observe(g, e, 140, () => {
+    minStamina = Math.min(minStamina, e.stamina);
+    if (e.stamina < dearest) forcedDown = true;
+    return false;
+  });
+  assert(minStamina >= 0, `stamina went to ${minStamina}`);
+  assert(forcedDown, 'the brute could always afford its heaviest attack');
+
+  const sen = arena('winded2', 'sentinel', 2);
+  let sawResting = false;
+  observe(sen.g, sen.e, 200, () => {
+    if (sen.e.state === STATE.RESTING) { sawResting = true; return true; }
+    return false;
+  });
+  assert(sawResting, 'the sentinel never had to stop and breathe');
+  return 'expensive attacks price themselves out of the fight';
+});
+
+check('a silent attacker is rate-limited by its own recovery', () => {
+  // The other half of the bargain. A cheap fast attacker is NOT bounded by
+  // stamina - it regenerates faster than it spends - so the only thing holding
+  // its damage down is that it has to recover between blows. That makes this
+  // the load-bearing guarantee for every untelegraphed attack in the game.
+  //
+  // It is also a direct regression test for a scheduler bug: enemies used to
+  // gain energy while winding up and recovering, so a hound banked its entire
+  // idle time and spent it in a burst afterwards - three tiles of movement in
+  // one turn, which made disengaging impossible and its chip damage
+  // unavoidable. It looked exactly like the bestiary being over-tuned.
+  const rows = [];
+  for (const spec of ENEMIES) {
+    const silent = spec.attacks.filter((a) => a.windup === 0 && a.kind !== 'ranged');
+    if (!silent.length) continue;
+    const { g, e } = arena(`rate:${spec.key}`, spec.key, 1);
+    e.stamina = e.staminaMax;
+
+    const TURNS = 200;
+    let blows = 0, hops = 0, prev = e.state;
+    observe(g, e, TURNS, () => {
+      const bx = e.x, by = e.y;
+      if (prev !== STATE.RECOVER && e.state === STATE.RECOVER) blows++;
+      prev = e.state;
+      hops = Math.max(hops, Math.max(Math.abs(e.x - bx), Math.abs(e.y - by)));
+      return false;
+    });
+
+    const best = Math.min(...silent.map((a) => a.recovery));
+    const ceiling = TURNS / (best + 1);
+    assert(blows <= ceiling + 1,
+           `${spec.key} landed ${blows} silent blows in ${TURNS} turns, above its own ` +
+           `recovery ceiling of ${ceiling.toFixed(0)} - it is banking turns somewhere`);
+    const dps = (blows * Math.max(...silent.map((a) => a.damage))) / TURNS;
+    assert(dps <= 1,
+           `${spec.key} chips ${dps.toFixed(2)} damage a turn with no telegraph to read`);
+    rows.push(`${spec.key} ${dps.toFixed(2)}/turn`);
+  }
+  assert(rows.length >= 3, 'expected several silent attackers to check');
+  return rows.join(', ');
+});
+
 // ===========================================================================
 console.log('\n--- projectiles -----------------------------------------------');
 
 check('arrows take turns to arrive, so they can be dodged', () => {
   const { g, e } = arena('arrow', 'archer', 8);
   e.stamina = e.staminaMax;
-  let fired = -1;
-  for (let t = 0; t < 14; t++) {
-    g.worldTurn();
-    if (g.level.projectiles.length) { fired = t; break; }
-  }
-  assert(fired >= 0, 'the archer never fired');
+  observe(g, e, 16, () => g.level.projectiles.length > 0);
+  assert(g.level.projectiles.length, 'the archer never fired');
   const p = g.level.projectiles[0];
-  const distance = Math.max(Math.abs(p.x - g.player.x), Math.abs(p.y - g.player.y));
-  assert(distance / p.speed >= 1, 'the arrow arrives with no turn to react');
-  return `speed ${p.speed}, ${distance} tiles out`;
+  const d = Math.max(Math.abs(p.x - g.player.x), Math.abs(p.y - g.player.y));
+  assert(d / p.speed >= 1, 'the arrow arrives with no turn to react');
+  return `speed ${p.speed}, ${d} tiles out`;
 });
 
 check('an arrow fired this turn does not move until the next one', () => {
-  // Order of resolution: projectiles move BEFORE enemies act, so anything
-  // launched during the enemy phase waits a full turn. Without that a ranged
-  // attack is an ambush rather than a telegraph.
+  // Projectiles step BEFORE enemies act, so anything launched during the enemy
+  // phase waits a full turn. Without that a ranged attack is an ambush.
   const { g, e } = arena('order', 'archer', 8);
   e.stamina = e.staminaMax;
-  for (let t = 0; t < 14; t++) {
-    g.worldTurn();
-    if (g.level.projectiles.length) {
-      const p = g.level.projectiles[0];
-      assert(Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y)) <= 1,
-             'the arrow had already travelled on the turn it was fired');
-      break;
-    }
-  }
+  observe(g, e, 16, () => {
+    if (!g.level.projectiles.length) return false;
+    const p = g.level.projectiles[0];
+    assert(Math.max(Math.abs(p.x - e.x), Math.abs(p.y - e.y)) <= 1,
+           'the arrow had already travelled on the turn it was fired');
+    return true;
+  });
   return 'launched arrows wait one turn';
 });
 
@@ -370,10 +514,9 @@ check('an arrow hits the first body in its path, enemy or not', () => {
   const blocker = new Enemy('husk', g.rng);
   g.level.addEnemy(blocker, room.x + 2, y);
   const hp0 = blocker.hp;
-
   g.level.projectiles.push({
-    id: 1, x: room.x, y, dx: 1, dy: 0, speed: 3, damage: 3,
-    fromPlayer: false, glyph: '→', colour: '#fff', life: 9, trail: [],
+    id: 1, x: room.x, y, dx: 1, dy: 0, speed: 3, damage: 3, impact: 0,
+    fromPlayer: false, glyph: '>', colour: '#fff', life: 9, trail: [],
   });
   stepProjectiles(g);
   assert(blocker.hp < hp0, 'the arrow passed straight through another enemy');
@@ -393,7 +536,6 @@ check('resting heals, refills stamina and brings everything back', () => {
   for (const e of g.level.enemies) e.alive = false;
   g.level.removeDead();
   assert(g.level.livingEnemies().length === 0, 'precondition: floor cleared');
-
   g.rest();
   assert(g.player.hp === g.player.hpMax, 'resting did not heal');
   assert(g.player.stamina === g.player.staminaMax, 'resting did not restore stamina');
@@ -404,12 +546,11 @@ check('resting heals, refills stamina and brings everything back', () => {
 check('death returns you to the bonfire instead of ending the run', () => {
   const g = freshGame('death');
   const start = { ...g.player.bonfire };
-  g.player.x = start.x + 5; g.player.y = start.y;
   g.gotoLevel(2, 'up');
   g.player.hp = 1;
   g.hurtPlayer(99, 'a test');
   assert(g.running, 'the run ended on a single death');
-  assert(g.player.depth === start.depth, `woke on floor ${g.player.depth}, expected ${start.depth}`);
+  assert(g.player.depth === start.depth, `woke on floor ${g.player.depth}`);
   assert(g.player.x === start.x && g.player.y === start.y, 'did not wake at the bonfire');
   assert(g.player.hp === g.player.hpMax, 'did not wake healed');
   assert(g.player.deaths === 1, 'death was not counted');
@@ -418,15 +559,13 @@ check('death returns you to the bonfire instead of ending the run', () => {
 
 check('map memory survives death; enemies do not', () => {
   const g = freshGame('memory');
-  const lvl = g.level;
-  for (let i = 0; i < 200; i++) lvl.seen[i] = 1;
-  const seenBefore = lvl.seen.reduce((a, b) => a + b, 0);
-  for (const e of lvl.enemies) e.alive = false;
-  lvl.removeDead();
+  for (let i = 0; i < 200; i++) g.level.seen[i] = 1;
+  const seenBefore = g.level.seen.reduce((a, b) => a + b, 0);
+  for (const e of g.level.enemies) e.alive = false;
+  g.level.removeDead();
   g.hurtPlayer(999, 'a test');
-  const after = g.level;
-  assert(after.seen.reduce((a, b) => a + b, 0) >= seenBefore, 'the map you had learned was erased');
-  assert(after.livingEnemies().length > 0, 'enemies did not respawn');
+  assert(g.level.seen.reduce((a, b) => a + b, 0) >= seenBefore, 'the map you had learned was erased');
+  assert(g.level.livingEnemies().length > 0, 'enemies did not respawn');
   return 'you keep what you learned';
 });
 
@@ -435,7 +574,7 @@ check('killing the boss wins the run', () => {
   g.gotoLevel(DUNGEON_DEPTH, 'up');
   const boss = g.level.enemies.find((e) => e.spec.boss);
   assert(boss, 'no boss on the bottom floor');
-  g.hurtEnemy(boss, 9999, true);
+  g.hurtEnemy(boss, 9999, true, 0);
   assert(!g.running, 'the run did not end');
   assert(g.gameOver.how === 'won', `ended as ${g.gameOver.how}`);
   return `beat ${boss.name}`;
@@ -463,12 +602,10 @@ check('save and load round-trip a run', () => {
 });
 
 check('claudeSouls does not share a save key with claudeHack', () => {
-  // Both games live on one origin. A shared key would silently eat a run, and
-  // only for players who tried both.
   const g = freshGame('keys');
   saveGame(g);
   assert(store.has('claudesouls.save.v1'), 'wrong key');
-  assert(!store.has('claudehack.save.v1'), 'wrote into claudeHack\'s save slot');
+  assert(!store.has('claudehack.save.v1'), "wrote into claudeHack's save slot");
   return 'claudesouls.save.v1';
 });
 
@@ -478,13 +615,9 @@ console.log('\n--- content ---------------------------------------------------')
 check('every enemy can be built and fought', () => {
   for (const spec of ENEMIES) {
     const { g, e } = arena(`fight:${spec.key}`, spec.key, 2);
-    for (let t = 0; t < 30 && e.alive && g.running; t++) {
-      g.player.hp = g.player.hpMax;      // survive long enough to observe it
-      g.player.stamina = g.player.staminaMax;
-      g.worldTurn();
-    }
+    observe(g, e, 40, () => false);
   }
-  return `${ENEMIES.length} species x30 turns`;
+  return `${ENEMIES.length} species x 40 turns`;
 });
 
 check('every skill can be used in every direction', () => {

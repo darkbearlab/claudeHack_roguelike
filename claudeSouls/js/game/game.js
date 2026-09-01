@@ -191,9 +191,17 @@ export class Game {
       // State first, once per turn; then however many actions its speed buys.
       // Keeping these apart is what stops a fast enemy from out-running its
       // own telegraph.
+      //
+      // Energy is gained ONLY when the enemy is free to use it. Banking it
+      // through a wind-up or a recovery let a fast enemy save up its whole
+      // idle time and then spend it at once: a hound coming out of a bite had
+      // enough stored to cross three tiles a turn, so disengaging from one was
+      // impossible and its chip damage was unavoidable by construction. That
+      // single line accounted for a quarter of all recorded deaths, and it
+      // read as the bestiary being over-tuned rather than as a scheduler bug.
       const busy = tickEnemyState(this, e);
-      e.gainEnergy();
       if (busy) continue;
+      e.gainEnergy();
       let guard = 0;
       while (e.canAct() && guard++ < 3) {
         if (!e.alive || !this.running) break;
@@ -226,10 +234,10 @@ export class Game {
     if (p.hp <= 0) this.die(source);
   }
 
-  hurtEnemy(e, amount, byPlayer) {
+  hurtEnemy(e, amount, byPlayer, impact = 0) {
     if (!e.alive) return;
     e.hp -= amount;
-    if (byPlayer) e.stagger();
+    if (byPlayer && impact > 0) e.stagger(impact);
     if (e.hp <= 0) {
       e.alive = false;
       this.level.markEnemiesDirty();
@@ -370,7 +378,7 @@ export class Game {
     if (def.ranged) {
       this.level.projectiles.push(makeProjectile({
         x: p.x, y: p.y, dx: dir.dx, dy: dir.dy,
-        speed: def.projectile.speed, damage: def.damage,
+        speed: def.projectile.speed, damage: def.damage, impact: def.impact ?? 0,
         glyph: def.projectile.glyph, colour: def.projectile.colour,
         fromPlayer: true, life: def.range + 2,
       }));
@@ -386,9 +394,16 @@ export class Game {
       const e = this.level.enemyAt(t.x, t.y);
       if (e && e.alive) {
         const wasWindup = e.state === STATE.WINDUP;
-        this.hurtEnemy(e, def.damage, true);
+        const poiseBefore = e.poiseLeft;
+        this.hurtEnemy(e, def.damage, true, def.impact ?? 0);
         hit++;
-        if (wasWindup && e.alive) this.msg(`You stagger the ${e.name}; its attack is delayed.`, 'good');
+        if (wasWindup && e.alive) {
+          if (e.poiseLeft === e.poise && poiseBefore !== e.poise) {
+            this.msg(`You stagger the ${e.name}; its attack is delayed.`, 'good');
+          } else {
+            this.msg(`The ${e.name} shrugs it off and keeps winding up.`, 'warn');
+          }
+        }
       }
     }
     this.animateTrail(tiles, '/', '#ffd75f');

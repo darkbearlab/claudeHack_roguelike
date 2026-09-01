@@ -23,6 +23,7 @@ export const SKILLS = [
     hint: 'the free one; also what you do by walking into something',
     pattern: 'front',
     damage: 3,
+    impact: 2,          // poise damage: enough to stagger something small
     stamina: 4,
     cooldown: 0,
     advancesTurn: true,
@@ -33,6 +34,7 @@ export const SKILLS = [
     hint: 'three tiles in front - for when they came in a group',
     pattern: 'arc3',
     damage: 3,
+    impact: 3,
     stamina: 6,
     cooldown: 3,
     advancesTurn: true,
@@ -43,6 +45,7 @@ export const SKILLS = [
     hint: 'close two tiles and hit; how you punish a long wind-up',
     pattern: 'front',
     damage: 4,
+    impact: 4,          // the interrupt tool: breaks a mid-tier wind-up alone
     stamina: 6,
     cooldown: 3,
     advancesTurn: true,
@@ -54,6 +57,7 @@ export const SKILLS = [
     hint: 'a knife, in a straight line; it keeps flying after your turn ends',
     ranged: true,
     damage: 3,
+    impact: 1,
     range: 9,
     projectile: { speed: 3, glyph: '/', colour: '#cfd6dd' },
     stamina: 5,

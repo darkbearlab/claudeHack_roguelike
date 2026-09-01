@@ -358,3 +358,41 @@ place:
    `diagonalOk()` in `js/map/tiles.js`.
 4. Making `Level.passable()` treat the hero like a monster in `js/map/level.js` —
    a closed door is a wall to one and a door to the other.
+
+## Postscript: the scheduler bug came back in the other game
+
+Item 1 in that list — merging `gainEnergy()` and `canAct()` — is there because
+splitting them was what stopped claudeHack's monsters taking four turns each.
+claudeSouls copied the scheduler and then reintroduced the same class of bug
+from the other side.
+
+There, the two calls stayed split, but `gainEnergy()` sat *above* the
+`if (busy) continue;` guard. So an enemy went on banking energy through its
+wind-up and its recovery, with no cap:
+
+```
+turn 7: hound moved 0 tiles, state=ready,   energy=36
+turn 9: hound moved 0 tiles, state=recover, energy=48   <- still climbing
+```
+
+A hound coming out of a bite had enough saved to cross three tiles in one turn,
+which made disengaging from one arithmetically impossible and its chip damage
+unavoidable by construction. It accounted for a quarter of all recorded deaths
+and presented as the bestiary being over-tuned — I nearly rebalanced the roster
+around it.
+
+The general shape, which is the part worth keeping: **an actor that is busy
+must not accrue the resource it will spend on being free.** Whether that shows
+up as double-gaining or as unbounded banking depends on which side of the guard
+the line lands, and both look like a balance problem rather than a scheduler
+one, because the symptom is always "this monster is too strong".
+
+claudeSouls now has a test that pins the consequence rather than the mechanism —
+a silent attacker's damage per turn must stay under its own recovery ceiling —
+because the mechanism has now been got wrong twice in two different ways, and
+the consequence is what actually matters.
+
+The other lesson from that round is in `claudeSouls/docs/DESIGN.md`: the bot is
+the only balance instrument these games have, and when it dies a lot the first
+question is whether it is playing badly, not whether the numbers are wrong.
+Three "balance problems" in a row turned out to be the bot.
