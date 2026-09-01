@@ -10,7 +10,8 @@
 
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
-import { generateLevel } from '../js/map/mapgen.js';
+import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
+import { T } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -120,6 +121,60 @@ check('every floor generates, is connected, and has stairs and a bonfire', () =>
   }
   assert(!problems.length, problems.slice(0, 4).join('; '));
   return `${12 * DUNGEON_DEPTH} floors`;
+});
+
+check('no corridor runs long enough to switch the game off', () => {
+  // A one-tile-wide corridor does not merely make this game lethal, it turns
+  // most of it off: arc3 and arc5 collapse to one effective tile, the only
+  // movement left is forward and back - which is exactly what line3 and line6
+  // punish - and block stops being the "nowhere to go" option and becomes
+  // mandatory. Half the weapon pool degrades to `front`.
+  //
+  // Narrow places are not the problem and are deliberately kept: a corridor is
+  // a real answer to a pack of hounds. LONG narrow places are the problem.
+  const walk = (l, x, y) => {
+    if (!l.inBounds(x, y)) return false;
+    const t = l.at(x, y);
+    return t === T.FLOOR || t === T.CORRIDOR || t === T.DOOR_OPEN || t === T.DOOR_BROKEN;
+  };
+  const strait = (l, x, y) => {
+    if (!walk(l, x, y)) return null;
+    const n = walk(l, x, y - 1), s = walk(l, x, y + 1);
+    const e = walk(l, x + 1, y), w = walk(l, x - 1, y);
+    if (n && s && !e && !w) return 'v';
+    if (e && w && !n && !s) return 'h';
+    return null;
+  };
+
+  let worst = 0, where = '', total = 0, straitTiles = 0;
+  for (let s = 0; s < 8; s++) {
+    for (let d = 1; d <= DUNGEON_DEPTH; d++) {
+      const lvl = generateLevel(d, new RNG(`corr:${s}:${d}`));
+      for (let y = 1; y < lvl.h - 1; y++) {
+        for (let x = 1; x < lvl.w - 1; x++) {
+          if (walk(lvl, x, y)) { total++; if (strait(lvl, x, y)) straitTiles++; }
+        }
+      }
+      for (const axis of ['h', 'v']) {
+        const [ax, ay] = axis === 'h' ? [1, 0] : [0, 1];
+        for (let y = 1; y < lvl.h - 1; y++) {
+          for (let x = 1; x < lvl.w - 1; x++) {
+            if (strait(lvl, x, y) !== axis) continue;
+            if (strait(lvl, x - ax, y - ay) === axis) continue;
+            let run = 0, cx = x, cy = y;
+            while (strait(lvl, cx, cy) === axis) { run++; cx += ax; cy += ay; }
+            if (run > worst) { worst = run; where = `d${d}/s${s} at ${x},${y} (${axis})`; }
+          }
+        }
+      }
+    }
+  }
+  assert(worst <= MAX_STRAIT,
+         `a ${worst}-tile stretch with no sidestep, ${where} - cap is ${MAX_STRAIT}`);
+  // And the narrow places must not have been eliminated either.
+  const pc = (100 * straitTiles) / total;
+  assert(pc > 5, `only ${pc.toFixed(1)}% of tiles are narrow - the chokepoints are gone`);
+  return `longest ${worst} tiles, ${pc.toFixed(1)}% of the floor is narrow`;
 });
 
 check('a floor is the same floor every time it is rebuilt', () => {

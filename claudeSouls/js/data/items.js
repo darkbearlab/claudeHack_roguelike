@@ -172,9 +172,20 @@ export const CONSUMABLES = [
   // only came back at a bonfire, so a run was a slow slide from full to dead
   // with nothing you could do about it mid-floor. Limited, prepared in advance,
   // and it costs you the turn.
+  // Drinking costs stamina, and that is the whole reason it is interesting.
+  //
+  // Costing only the turn made it a binary read - "is anything winding up right
+  // now?" - rather than a decision, because it competed with nothing. On the
+  // stamina bar it competes with rolling and blocking, so the game's central
+  // question just applies to healing too: one more mouthful, or keep enough to
+  // get out? Six is about a roll and a half for a light kit.
+  //
+  // Charge count is deliberately NOT something souls can buy. An extra flask
+  // shifts the whole difficulty curve down a step, and there is no mechanism
+  // that absorbs that - so it stays a constant we tune, not one players raise.
   consumable('flask', {
-    name: 'ember flask', kind: 'item', charges: 3, heal: 5, weight: 1,
-    desc: '喝一口回 5 點生命。三次,在篝火補滿。喝的時候你是不動的。',
+    name: 'ember flask', kind: 'item', charges: 3, heal: 5, weight: 1, stamina: 6,
+    desc: '回 5 點生命,花 6 點精力。三次,在篝火補滿。和翻滾、格擋搶同一條資源。',
   }),
   consumable('whetstone', {
     name: 'whetstone', kind: 'item', charges: 2, weight: 1,

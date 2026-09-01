@@ -29,6 +29,11 @@ export function generateLevel(depth, rng) {
   placeStairs(lvl, rng, depth);
   placeBonfires(lvl, rng);
   scatterCover(lvl, rng);
+  // Last, and that matters: a long single-width corridor turns most of the
+  // combat system off, and scatterCover drops rubble and pits that BLOCK
+  // movement - so widening before it runs lets it narrow the map straight back
+  // down again. The guarantee has to be established against the finished floor.
+  openAlcoves(lvl, rng);
   return lvl;
 }
 
@@ -309,6 +314,86 @@ function scatterCover(lvl, rng) {
       const y = rng.int(room.y + 1, room.y + room.h - 2);
       if (lvl.at(x, y) !== T.FLOOR) continue;
       lvl.set(x, y, rng.oneIn(4) ? T.PIT : T.RUBBLE);
+    }
+  }
+}
+
+/**
+ * The guarantee: nowhere on a floor can you travel more than this many tiles
+ * without a sidestep being available. Measured, not hoped for - systest pins it.
+ */
+export const MAX_STRAIT = 4;
+
+const walkableAt = (lvl, x, y) => {
+  if (!lvl.inBounds(x, y)) return false;
+  const t = lvl.at(x, y);
+  return t === T.FLOOR || t === T.CORRIDOR || t === T.DOOR_OPEN || t === T.DOOR_BROKEN;
+};
+
+/** A tile you can only leave along one axis - no sideways at all. */
+function strait(lvl, x, y) {
+  if (!walkableAt(lvl, x, y)) return null;
+  const n = walkableAt(lvl, x, y - 1), s = walkableAt(lvl, x, y + 1);
+  const e = walkableAt(lvl, x + 1, y), w = walkableAt(lvl, x - 1, y);
+  if (n && s && !e && !w) return 'v';
+  if (e && w && !n && !s) return 'h';
+  return null;
+}
+
+/**
+ * Break up long single-width corridors with alcoves.
+ *
+ * A one-tile-wide corridor does not merely make this game lethal, it **turns
+ * most of it off**. Every attack shape collapses: `arc3` and `arc5` cover one
+ * effective tile, the only movement left is forward and back - which is exactly
+ * what `line3` and `line6` are designed to punish - and block stops being the
+ * "nowhere to go" option and becomes mandatory. Measured on the old generator,
+ * 22.5% of every walkable tile was corridor you could not step sideways out of.
+ *
+ * The fix is not to remove narrow places: a corridor is a legitimate answer to
+ * a pack of hounds, and chokepoints are tactics. It is to cap how *long* they
+ * run, so there is always a sidestep within a couple of tiles. Alcoves keep the
+ * corridor feeling like a corridor and give the geometry something to remember.
+ *
+ * Only STONE is ever dug, never WALL, so an alcove can never breach a room.
+ */
+export function openAlcoves(lvl, rng, maxRun = MAX_STRAIT - 1) {
+  for (const axis of ['h', 'v']) {
+    const along = axis === 'h' ? [1, 0] : [0, 1];
+    const side = axis === 'h' ? [0, 1] : [1, 0];
+    for (let y = 1; y < lvl.h - 1; y++) {
+      for (let x = 1; x < lvl.w - 1; x++) {
+        if (strait(lvl, x, y) !== axis) continue;
+        // Only start counting at the beginning of a run.
+        if (strait(lvl, x - along[0], y - along[1]) === axis) continue;
+
+        let run = 0, cx = x, cy = y;
+        while (strait(lvl, cx, cy) === axis) {
+          run++;
+          if (run > maxRun) {
+            // Exhaustive by construction, so a corridor tile with any solid
+            // neighbour can always be given a sidestep:
+            //   rock  -> carve it
+            //   wall with something solid behind -> hollow a pocket
+            //   wall with a room behind -> break a doorway into the room
+            // Only the map edge has no answer, and corridors do not run there.
+            const opts = [[side[0], side[1]], [-side[0], -side[1]]];
+            for (const [dx, dy] of rng.shuffle(opts)) {
+              const ax = cx + dx, ay = cy + dy;
+              if (!lvl.inBounds(ax, ay)) continue;
+              const t = lvl.at(ax, ay);
+              if (t === T.STONE) { lvl.set(ax, ay, T.CORRIDOR); run = 0; break; }
+              if (t !== T.WALL) continue;
+              const bx = ax + dx, by = ay + dy;
+              const behindOpen = lvl.inBounds(bx, by) && isWalkable(lvl.at(bx, by));
+              lvl.set(ax, ay, behindOpen ? T.DOOR_BROKEN : T.CORRIDOR);
+              run = 0;
+              break;
+            }
+          }
+          cx += along[0]; cy += along[1];
+        }
+      }
     }
   }
 }

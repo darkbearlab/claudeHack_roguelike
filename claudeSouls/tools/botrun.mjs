@@ -322,8 +322,11 @@ function act(game, rng) {
   //     waits for half health rather than topping up after every scratch.
   const flask = p.prepared('item');
   if (flask?.heal && p.chargesOf(flask.key) > 0 && p.hp <= p.hpMax / 2) {
+    // Drinking costs stamina as well as the turn, so it competes with getting
+    // out. Never drink yourself into a bar you cannot dodge on.
+    const afterwards = p.stamina - p.costOf('prep:item');
     const exposed = adj.length > 0 || inDanger(danger, p.x, p.y);
-    if (!exposed) return { kind: 'skill', key: 'prep:item', dir: null };
+    if (!exposed && afterwards >= rollCost) return { kind: 'skill', key: 'prep:item', dir: null };
   }
 
   // 5. Head down. Rest whenever a bonfire is underfoot and we are hurt.
