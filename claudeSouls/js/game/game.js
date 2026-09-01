@@ -288,7 +288,13 @@ export class Game {
         : `You catch it square on the ${shield.name}.`, 'good');
     }
 
-    if (p.armourReduce) dmg = Math.max(dmg > 0 ? 1 : 0, dmg - p.armourReduce);
+    // A fraction, rounded, never below one. Flat reduction was worth half a
+    // two-damage bite and a sixth of a six-damage pyre, which is backwards:
+    // armour should answer the blow you could not avoid, not the chip you
+    // were always going to take.
+    if (p.armourReduce && dmg > 0) {
+      dmg = Math.max(1, Math.round(dmg * (1 - p.armourReduce)));
+    }
     p.hp -= dmg;
     if (p.hp <= 0) this.die(source);
   }

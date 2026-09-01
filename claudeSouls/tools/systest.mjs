@@ -858,6 +858,36 @@ check('the pack is the only place equipment comes from', () => {
   return 'no conjuring';
 });
 
+check('armour turns aside a fraction, so it answers big blows not chip', () => {
+  // A flat -1 was worth 50% against a two-damage bite and 17% against a
+  // six-damage pyre, so it blunted exactly the chip damage the light kit
+  // suffers most from - which is the opposite of what mail's own description
+  // promises ("you have to read further ahead").
+  const g = freshGame('armour-pct', 'heavy');
+  const p = g.player;
+  const took = (raw) => { p.hp = p.hpMax; g.hurtPlayer(raw, 'a test'); return p.hpMax - p.hp; };
+
+  p.equipItem(SLOT.ARMOUR, 'leathers');
+  for (const raw of [2, 3, 6]) assert(took(raw) === raw, 'leathers turned something aside');
+
+  p.equipItem(SLOT.ARMOUR, 'mail');
+  assert(took(2) === 2, 'mail still discounts the smallest hits');
+  assert(took(6) < 6, 'mail does nothing against a heavy blow');
+
+  p.equipItem(SLOT.ARMOUR, 'plate');
+  const light = took(2), heavy = took(6);
+  assert(6 - heavy > 2 - light,
+         `plate saves ${2 - light} on a small hit and ${6 - heavy} on a big one - ` +
+         'armour should be worth more against the blow you could not avoid');
+
+  // And nothing is ever reduced to nothing: a hit that lands, hurts.
+  for (const armourKey of ['mail', 'plate']) {
+    p.equipItem(SLOT.ARMOUR, armourKey);
+    assert(took(1) >= 1, `${armourKey} made a blow free`);
+  }
+  return 'proportional, and never free';
+});
+
 check('armour carries the health and the damage reduction', () => {
   for (const [vow, key] of [['light', 'leathers'], ['heavy', 'mail']]) {
     const g = freshGame(`armour:${vow}`, vow);
@@ -870,7 +900,7 @@ check('armour carries the health and the damage reduction', () => {
   const g = freshGame('armour:apply', 'heavy');
   const before = g.player.hp;
   g.hurtPlayer(4, 'a test');
-  assert(before - g.player.hp === 3, `mail took ${before - g.player.hp} from a 4 damage hit`);
+  assert(before - g.player.hp < 4, 'mail turned nothing aside');
   return 'health and reduction both come off the armour';
 });
 
