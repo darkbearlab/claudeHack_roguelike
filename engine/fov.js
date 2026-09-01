@@ -11,6 +11,11 @@
 // Both are handled here rather than in the renderer, because "what the hero can
 // see" is a rule of the game - monsters use the same predicate to decide
 // whether they can see you.
+//
+// This module is engine, not game: it asks the level whether a square is
+// opaque and nothing else. How far the hero's light reaches is a *game* rule
+// (it depends on lamps, blindness and room lighting), so it lives with the
+// game - see classic/js/game/vision.js.
 
 const OCTANTS = [
   [ 1,  0,  0,  1], [ 0,  1,  1,  0], [ 0, -1,  1,  0], [-1,  0,  0,  1],
@@ -99,15 +104,4 @@ export function hasLOS(level, x0, y0, x1, y1, maxDist = 99) {
     if (e2 < dx)  { err += dx; y += sy; }
   }
   return false;
-}
-
-/** Light radius from the hero's equipment and the ambient level lighting. */
-export function lightRadius(player, level) {
-  if (player.hasStatus('blind')) return 0;
-  let r = 1;                                  // you can always feel your own square
-  if (player.lightSource) r = player.lightSource;
-  const room = level.roomAt(player.x, player.y);
-  if (room && room.lit) r = Math.max(r, 12);
-  else if (level.lit[level.idx(player.x, player.y)]) r = Math.max(r, 8);
-  return r;
 }

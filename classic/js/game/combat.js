@@ -12,7 +12,7 @@
 // mail feels different from a ring of protection even at the same AC.
 
 import { objBase, damageDice, objName, makeObj } from './obj.js';
-import { capitalise } from '../core/util.js';
+import { capitalise } from '../../../engine/util.js';
 
 /**
  * NetHack's AC_VALUE. Armour class at or above 3 is taken at face value;

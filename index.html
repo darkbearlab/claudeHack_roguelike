@@ -1,77 +1,55 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>claudeHack — a roguelike in the NetHack tradition</title>
-<meta name="description" content="claudeHack: a browser roguelike in the NetHack tradition. 26 dungeon levels, permadeath, item identification, no install.">
+<title>claudeHack &amp; claudeSouls</title>
+<meta name="description" content="Two browser roguelikes sharing one engine: claudeHack, a NetHack-like, and claudeSouls, a turn-based Souls-like.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>@</text></svg>">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/chooser.css">
 </head>
 <body>
-<div id="app">
+<main>
 
-  <header id="topbar">
-    <span id="title">claudeHack</span>
-    <span id="topinfo"></span>
-    <span id="topbtns">
-      <button id="btn-mode"  title="Toggle tiles / ASCII (T)">Tiles</button>
-      <button id="btn-zoom"  title="Zoom (+ / -)">Zoom</button>
-      <button id="btn-pad"   title="Show or hide the on-screen controls">Pad</button>
-      <button id="btn-help"  title="Commands (?)">?</button>
-      <button id="btn-save"  title="Save and quit (S)">Save</button>
-    </span>
-  </header>
+  <pre id="logo">
+      _                 _
+  ___| | __ _ _   _  __| | ___
+ / __| |/ _` | | | |/ _` |/ _ \
+| (__| | (_| | |_| | (_| |  __/
+ \___|_|\__,_|\__,_|\__,_|\___|
+</pre>
+  <p class="tag">兩個共用同一套引擎的瀏覽器 Roguelike。不用安裝,沒有 build step,手機可以玩。</p>
 
-  <div id="msgbar"><div id="msglines"></div></div>
+  <div class="cards">
 
-  <main id="viewport">
-    <canvas id="map" tabindex="0"></canvas>
-    <div id="overlay" hidden></div>
-    <div id="tooltip" hidden></div>
-  </main>
+    <a class="card ready" href="classic/">
+      <h2>claudeHack</h2>
+      <p class="sub">NetHack 傳統 &middot; 可以玩</p>
+      <p>26 層地城、63 種怪物、200 種物品,每一局重新洗牌的物品鑑定玩法。
+         往下爬到底層拿到耶德綠寶石護身符,再活著帶回地面。一條命,沒有重來。</p>
+      <p class="meta">鍵盤或純觸控 &middot; 附中文新手指南</p>
+      <span class="go">進入 &rarr;</span>
+    </a>
 
-  <footer id="status">
-    <div id="status1"></div>
-    <div id="status2"></div>
-  </footer>
+    <a class="card wip" href="claudeSouls/">
+      <h2>claudeSouls</h2>
+      <p class="sub">回合制類魂系 &middot; 開發中</p>
+      <p>把魂系的讀招與反應搬進回合制:敵人舉手預告、翻滾消耗精力而且不推進回合、
+         攻擊必中而血量很薄。你不能硬扛傷害,只能靠走位和資源管理活下來。</p>
+      <p class="meta">設計已定案,尚未實作</p>
+      <span class="go">看設計文件 &rarr;</span>
+    </a>
 
-  <nav id="touchpad" hidden>
-    <div class="tp-grid">
-      <button data-cmd="y">↖</button><button data-cmd="k">↑</button><button data-cmd="u">↗</button>
-      <button data-cmd="h">←</button><button data-cmd=".">·</button><button data-cmd="l">→</button>
-      <button data-cmd="b">↙</button><button data-cmd="j">↓</button><button data-cmd="n">↘</button>
-    </div>
-    <div class="tp-acts">
-      <button data-cmd="i">Inv</button>
-      <button data-cmd=",">Pick</button>
-      <button data-cmd="&gt;">&gt;</button>
-      <button data-cmd="&lt;">&lt;</button>
-      <button data-cmd="s">Srch</button>
-      <button data-cmd="q">Quaff</button>
-      <button data-cmd="r">Read</button>
-      <button data-cmd="z">Zap</button>
-      <button data-cmd="f">Fire</button>
-      <button data-cmd="ESC">Esc</button>
-    </div>
+  </div>
+
+  <nav class="links">
+    <a href="classic/docs/GUIDE.zh-TW.md">中文遊戲指南</a>
+    <a href="claudeSouls/docs/DESIGN.md">claudeSouls 設計</a>
+    <a href="docs/DEVLOG.md">開發紀錄</a>
+    <a href="docs/ASSETS.md">美術管線</a>
+    <a href="https://github.com/darkbearlab/claudeHack_roguelike">GitHub</a>
   </nav>
 
-</div>
-
-<div id="splash">
-  <div class="splash-inner">
-    <pre id="splash-logo">
-      _                 _      _   _   _            _
-  ___| | __ _ _   _  __| | ___| | | | | | __ _  ___| | __
- / __| |/ _` | | | |/ _` |/ _ \ |_| |_| |/ _` |/ __| |/ /
-| (__| | (_| | |_| | (_| |  __/  _   _  | (_| | (__|   &lt;
- \___|_|\__,_|\__,_|\__,_|\___|_| |_| |_|\__,_|\___|_|\_\
-</pre>
-    <p class="tagline">A roguelike in the NetHack tradition. It is not fair. It keeps no promises. Deaths are permanent.</p>
-    <div id="splash-body"></div>
-  </div>
-</div>
-
-<script type="module" src="js/main.js"></script>
+</main>
 </body>
 </html>

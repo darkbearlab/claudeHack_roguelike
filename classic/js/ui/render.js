@@ -15,10 +15,12 @@
 // variation from a per-cell hash so they are stable between frames.
 
 import { T, TILE, isDoor, isStairs } from '../map/tiles.js';
-import { hash2, dist } from '../core/util.js';
+import { hash2, dist } from '../../../engine/util.js';
 import { objBase } from '../game/obj.js';
 
-const SPRITE_DIR = 'assets/';
+// The sprite library is shared between the games in this repository, so it
+// sits at the repository root rather than inside classic/.
+const SPRITE_DIR = '../assets/';
 
 export class Renderer {
   constructor(canvas, game) {

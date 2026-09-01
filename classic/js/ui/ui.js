@@ -12,7 +12,7 @@
 // presses (examine). A phone is a supported input device, not a degraded one.
 
 import { Renderer } from './render.js';
-import { DIRS, DIR_BY_KEY, capitalise, signed, fmtDuration } from '../core/util.js';
+import { DIRS, DIR_BY_KEY, capitalise, signed, fmtDuration } from '../../../engine/util.js';
 import { HUNGER, VERSION, groupInventory } from '../game/game.js';
 import { objName } from '../game/obj.js';
 import { T, TILE, tileName } from '../map/tiles.js';

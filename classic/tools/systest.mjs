@@ -11,7 +11,7 @@
 // failed. Nothing here is random-seeded by wall clock; a failure is reproducible.
 
 import { Game } from '../js/game/game.js';
-import { RNG } from '../js/core/rng.js';
+import { RNG } from '../../engine/rng.js';
 import { OBJECTS, objType, buildIdentityMap } from '../js/data/items.js';
 import { MONSTERS, MONSTER_BY_KEY, pickMonsterSpec } from '../js/data/monsters.js';
 import { ROLES } from '../js/data/roles.js';
@@ -23,7 +23,7 @@ import { monsterTurn } from '../js/game/ai.js';
 import { quaffPotion, readScroll, zapWand, castSpell, SPELLS, TRAP_TYPES,
          triggerTrap, eatObject } from '../js/game/effects.js';
 import { saveGame, loadGame } from '../js/game/save.js';
-import { DIRS } from '../js/core/util.js';
+import { DIRS } from '../../engine/util.js';
 
 const store = new Map();
 globalThis.localStorage = {

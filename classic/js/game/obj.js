@@ -6,7 +6,7 @@
 // are the same object; which one you see is the identification game.
 
 import { OBJECTS, objType, NEEDS_ID, randomObjectKey } from '../data/items.js';
-import { withArticle, signed, capitalise } from '../core/util.js';
+import { withArticle, signed, capitalise } from '../../../engine/util.js';
 
 let nextId = 1;
 export function resetObjIds(n = 1) { nextId = n; }

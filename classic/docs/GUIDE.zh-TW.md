@@ -1,8 +1,8 @@
 # claudeHack 中文遊戲指南
 
-<!-- 這個檔案是產生出來的,不要直接編輯。內容的來源是 js/ui/guide-zh.js,改完之後執行 node tools/build_guide.mjs。 -->
+<!-- 這個檔案是產生出來的,不要直接編輯。內容的來源是 classic/js/ui/guide-zh.js,改完之後在 classic/ 底下執行 node tools/build_guide.mjs。 -->
 
-<!-- Generated from js/ui/guide-zh.js by tools/build_guide.mjs. Do not edit by hand. -->
+<!-- Generated from classic/js/ui/guide-zh.js by classic/tools/build_guide.mjs. Do not edit by hand. -->
 
 這份指南假設你**沒有玩過 NetHack**。從頭讀完大約十分鐘,但你其實只要讀完第 2 節就可以開始玩了 —— 剩下的可以死幾次之後再回來看。
 
@@ -413,4 +413,4 @@ claudeHack 是一款 **Roguelike**(地城探索遊戲),血統直接來自 1987 �
 
 ---
 
-這份指南和遊戲內的說明面板是同一份來源(`js/ui/guide-zh.js`),由 `tools/build_guide.mjs` 產生,所以兩邊永遠一致。
+這份指南和遊戲內的說明面板是同一份來源(`classic/js/ui/guide-zh.js`),由 `classic/tools/build_guide.mjs` 產生,所以兩邊永遠一致。

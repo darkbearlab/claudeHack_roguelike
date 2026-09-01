@@ -12,7 +12,7 @@
 // 1680 bytes becomes 2.2 KB of base64 instead of about 6 KB of digits and
 // commas, and localStorage is a 5 MB budget shared with everything else.
 
-import { RNG } from '../core/rng.js';
+import { RNG } from '../../../engine/rng.js';
 import { Level } from '../map/level.js';
 import { Player, Monster, resetMonUids } from './actors.js';
 import { MONSTER_BY_KEY } from '../data/monsters.js';

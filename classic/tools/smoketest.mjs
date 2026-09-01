@@ -12,7 +12,7 @@
 // not "is this fun". Exit code 1 means at least one seed threw.
 
 import { Game } from '../js/game/game.js';
-import { RNG } from '../js/core/rng.js';
+import { RNG } from '../../engine/rng.js';
 import { ROLES } from '../js/data/roles.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 

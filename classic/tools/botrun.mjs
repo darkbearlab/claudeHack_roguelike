@@ -13,12 +13,12 @@
 // sometimes, which is all that is needed to prove the whole game runs.
 
 import { Game } from '../js/game/game.js';
-import { RNG } from '../js/core/rng.js';
+import { RNG } from '../../engine/rng.js';
 import { ROLES } from '../js/data/roles.js';
-import { flowField, stepAlong, astar } from '../js/sys/path.js';
+import { flowField, stepAlong, astar } from '../../engine/path.js';
 import { T, isDown, isUp, isWalkable } from '../js/map/tiles.js';
 import { objBase } from '../js/game/obj.js';
-import { DIRS, dist } from '../js/core/util.js';
+import { DIRS, dist } from '../../engine/util.js';
 
 const store = new Map();
 globalThis.localStorage = {

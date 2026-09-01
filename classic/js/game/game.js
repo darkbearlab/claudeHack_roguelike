@@ -15,14 +15,15 @@
 // than a callback-driven state machine, which is what this was before and it
 // leaked half-finished commands on every escape key.
 
-import { RNG, makeSeedPhrase } from '../core/rng.js';
-import { DIRS, DIR_BY_KEY, dist, capitalise, listJoin, signed, clamp } from '../core/util.js';
+import { RNG, makeSeedPhrase } from '../../../engine/rng.js';
+import { DIRS, DIR_BY_KEY, dist, capitalise, listJoin, signed, clamp } from '../../../engine/util.js';
 import { Level, MAP_W, MAP_H } from '../map/level.js';
 import { T, TILE, isDoor, isWalkable, isStairs, isDown, isUp, tileName, isDiggable,
          diagonalOk } from '../map/tiles.js';
 import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
-import { computeFOV, lightRadius, hasLOS } from '../sys/fov.js';
-import { astar, flowField, stepAlong } from '../sys/path.js';
+import { computeFOV, hasLOS } from '../../../engine/fov.js';
+import { lightRadius } from './vision.js';
+import { astar, flowField, stepAlong } from '../../../engine/path.js';
 import { Player, Monster, NORMAL_SPEED, resetMonUids } from './actors.js';
 import { makeObj, makeGold, randomObj, objName, objBase, objWeight, objValue,
          shopPriceOf, damageDice, armorClassOf, resetObjIds } from './obj.js';

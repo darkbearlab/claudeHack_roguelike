@@ -18,25 +18,36 @@ jobs:
 
       # The game core has no DOM dependency, so the whole suite runs headless.
       # No install step: there are no dependencies.
+      # Each game owns its tests and runs them from its own directory. That is
+      # the practical payoff of the split: work on claudeSouls can never turn
+      # claudeHack's CI red, and vice versa.
+      #
       # docs/GUIDE.zh-TW.md is generated from js/ui/guide-zh.js. If someone
       # edits the guide and forgets to regenerate, the in-game manual and the
       # repository document silently disagree - which is exactly the failure
       # mode keeping one source was meant to prevent.
-      - name: Chinese guide is in sync
+      - name: classic - Chinese guide is in sync
+        working-directory: classic
         run: node tools/build_guide.mjs --check
 
-      - name: System tests
+      - name: classic - system tests
+        working-directory: classic
         run: node tools/systest.mjs
 
-      - name: Crash fuzzing
+      - name: classic - crash fuzzing
+        working-directory: classic
         run: node tools/smoketest.mjs 60 3000
 
-      - name: Bot playthroughs
+      - name: classic - bot playthroughs
+        working-directory: classic
         run: node tools/botrun.mjs 12 30000
 
       # Kept small on purpose. systest already generates all 26 depths across 12
       # seeds and drives the win path end to end; this is only here to prove the
       # bot's own deep-dungeon path still runs, and a longer run was by far the
       # slowest thing in the workflow for no extra coverage.
-      - name: Deep-dungeon bot
+      - name: classic - deep-dungeon bot
+        working-directory: classic
         run: node tools/botrun.mjs --god 1 6000
+
+      # claudeSouls has no code yet. Its test steps go here when it does.

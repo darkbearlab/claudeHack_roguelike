@@ -12,7 +12,8 @@
 // looking - at which point your memory is wrong, and it *should* be. Nothing
 // re-syncs memObj except seeing the cell again.
 
-import { T, TILE, isWalkable, isOpaque, isDoor, isSecret } from './tiles.js';
+import { T, TILE, isWalkable, isOpaque, isDoor, isSecret,
+         diagonalOk as tilesDiagonalOk, blocksDiagonal } from './tiles.js';
 
 export const MAP_W = 80;
 export const MAP_H = 21;
@@ -85,6 +86,12 @@ export class Level {
     const t = this.at(x, y);
     return t === T.LAVA || t === T.WATER;
   }
+
+  // The pathfinder in engine/ asks the level these two questions rather than
+  // importing claudeHack's tile table, because "you cannot cut the corner of a
+  // doorway" is a rule of this game, not a property of grids.
+  diagonalOk(fx, fy, tx, ty) { return tilesDiagonalOk(this, fx, fy, tx, ty); }
+  isDoorway(x, y) { return blocksDiagonal(this.at(x, y)); }
 
   isVisible(x, y) { return this.inBounds(x, y) && !!this.visible[this.idx(x, y)]; }
   isSeen(x, y)    { return this.inBounds(x, y) && !!this.seen[this.idx(x, y)]; }

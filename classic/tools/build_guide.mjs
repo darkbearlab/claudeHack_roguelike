@@ -50,11 +50,12 @@ function render() {
   const out = [];
   out.push(`# ${GUIDE_ZH_TITLE}\n`);
   out.push(
-    '<!-- 這個檔案是產生出來的,不要直接編輯。' +
-    '內容的來源是 js/ui/guide-zh.js,改完之後執行 node tools/build_guide.mjs。 -->\n'
+    '<!-- 這個檔案是產生出來的,不要直接編輯。內容的來源是 classic/js/ui/guide-zh.js,' +
+    '改完之後在 classic/ 底下執行 node tools/build_guide.mjs。 -->\n'
   );
   out.push(
-    '<!-- Generated from js/ui/guide-zh.js by tools/build_guide.mjs. Do not edit by hand. -->\n'
+    '<!-- Generated from classic/js/ui/guide-zh.js by classic/tools/build_guide.mjs. ' +
+    'Do not edit by hand. -->\n'
   );
   out.push(`${GUIDE_ZH_INTRO}\n`);
   out.push('遊戲中隨時按 `?` 也可以叫出同一份說明。\n');
@@ -69,8 +70,8 @@ function render() {
 
   out.push('---\n');
   out.push(
-    '這份指南和遊戲內的說明面板是同一份來源(`js/ui/guide-zh.js`),' +
-    '由 `tools/build_guide.mjs` 產生,所以兩邊永遠一致。\n'
+    '這份指南和遊戲內的說明面板是同一份來源(`classic/js/ui/guide-zh.js`),' +
+    '由 `classic/tools/build_guide.mjs` 產生,所以兩邊永遠一致。\n'
   );
   return out.join('\n');
 }

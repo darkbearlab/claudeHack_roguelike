@@ -3,7 +3,7 @@
 import { Game, VERSION } from './game/game.js';
 import { UI } from './ui/ui.js';
 import { ROLES } from './data/roles.js';
-import { RNG, makeSeedPhrase } from './core/rng.js';
+import { RNG, makeSeedPhrase } from '../../engine/rng.js';
 import { hasSave, loadGame, saveSummary, clearSave, saveGame } from './game/save.js';
 import { MONSTERS } from './data/monsters.js';
 import { OBJECTS } from './data/items.js';

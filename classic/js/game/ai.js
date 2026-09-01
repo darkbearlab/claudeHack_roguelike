@@ -11,13 +11,13 @@
 // field is the difference between "monsters cheat" and "monsters hunt", and it
 // is what makes breaking line of sight a real tactic.
 
-import { DIRS, dist, sgn } from '../core/util.js';
+import { DIRS, dist, sgn } from '../../../engine/util.js';
 import { T, isDoor } from '../map/tiles.js';
-import { astar, flowField, stepAlong } from '../sys/path.js';
-import { hasLOS } from '../sys/fov.js';
+import { astar, flowField, stepAlong } from '../../../engine/path.js';
+import { hasLOS } from '../../../engine/fov.js';
 import { monsterAttack, damagePlayer, hurtMonster, killMonster } from './combat.js';
 import { objBase } from './obj.js';
-import { capitalise } from '../core/util.js';
+import { capitalise } from '../../../engine/util.js';
 import { castMonsterSpell, breatheAt } from './effects.js';
 
 export function monsterTurn(game, mon) {

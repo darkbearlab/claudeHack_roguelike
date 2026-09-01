@@ -18,7 +18,7 @@
 
 import { Level, MAP_W, MAP_H } from './level.js';
 import { T, isWalkable } from './tiles.js';
-import { clamp } from '../core/util.js';
+import { clamp } from '../../../engine/util.js';
 
 const GRID_COLS = 5;
 const GRID_ROWS = 3;

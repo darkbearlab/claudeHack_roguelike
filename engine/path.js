@@ -9,9 +9,16 @@
 //                monsters that flee (walk *up* the gradient) and for the
 //                autoexplore heuristic, where recomputing A* per candidate
 //                would be quadratic.
+//
+// This module is engine: it knows about grids and costs, not about doors or
+// monsters. Whether a particular diagonal step is legal is a *game* rule -
+// NetHack forbids cutting the corner of a doorway, another game might not - so
+// the level answers it through level.diagonalOk(). A level with no opinion
+// allows every diagonal. That indirection replaced a direct import of
+// claudeHack's tile table, which was the one thing keeping this file from
+// being shareable.
 
-import { DIRS } from '../core/util.js';
-import { diagonalOk, blocksDiagonal } from '../map/tiles.js';
+import { DIRS } from './util.js';
 
 /** A* over the level for a single mover. Returns [{x,y}...] excluding the start. */
 export function astar(level, sx, sy, tx, ty, opts = {}) {
@@ -39,9 +46,7 @@ export function astar(level, sx, sy, tx, ty, opts = {}) {
       const ni = ny * W + nx;
       if (ni !== goal && !stepOk(level, nx, ny, mover, ignoreMonsters, doorsOk)) continue;
       if (avoidHazards && ni !== goal && level.hazard(nx, ny)) continue;
-      // No cutting a diagonal through a doorway; NetHack forbids it and it
-      // stops monsters slipping past you in a corridor mouth.
-      if (!diagonalOk(level, cx, cy, nx, ny)) continue;
+      if (!diagOk(level, cx, cy, nx, ny)) continue;
 
       const ng = (g.get(cur.i) ?? Infinity) + 1;
       if (ng < (g.get(ni) ?? Infinity)) {
@@ -56,9 +61,14 @@ export function astar(level, sx, sy, tx, ty, opts = {}) {
 
 function heur(x, y, tx, ty) { return Math.max(Math.abs(x - tx), Math.abs(y - ty)); }
 
+/** Ask the level whether this diagonal is legal; allow it if the level has no opinion. */
+function diagOk(level, fx, fy, tx, ty) {
+  return level.diagonalOk ? level.diagonalOk(fx, fy, tx, ty) : true;
+}
+
 function stepOk(level, x, y, mover, ignoreMonsters, doorsOk) {
   if (!level.passable(x, y, mover)) return false;
-  if (!doorsOk && blocksDiagonal(level.at(x, y))) return false;
+  if (!doorsOk && level.isDoorway?.(x, y)) return false;
   if (!ignoreMonsters && level.monsterAt(x, y)) return false;
   return true;
 }
@@ -109,7 +119,7 @@ export function flowField(level, goals, opts = {}) {
       if (!level.passable(nx, ny, mover)) continue;
       if (avoidHazards && level.hazard(nx, ny)) continue;
       if (!ignoreMonsters && level.monsterAt(nx, ny)) continue;
-      if (!diagonalOk(level, x, y, nx, ny)) continue;
+      if (!diagOk(level, x, y, nx, ny)) continue;
       dist[ni] = d + 1;
       queue.push(ni);
     }
@@ -131,7 +141,7 @@ export function stepAlong(level, field, x, y, away = false) {
   for (const d of DIRS) {
     const nx = x + d.dx, ny = y + d.dy;
     if (!level.inBounds(nx, ny)) continue;
-    if (!diagonalOk(level, x, y, nx, ny)) continue;
+    if (!diagOk(level, x, y, nx, ny)) continue;
     const v = field[ny * W + nx];
     if (v < 0) continue;
     if (away ? v > bestVal : v < bestVal) { bestVal = v; best = { x: nx, y: ny }; }

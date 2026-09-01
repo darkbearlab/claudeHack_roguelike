@@ -13,7 +13,7 @@
 //   2. Nothing here ends the turn. The command layer owns the turn.
 
 import { T, isDoor, isDiggable } from '../map/tiles.js';
-import { DIRS, dist, capitalise, listJoin, line } from '../core/util.js';
+import { DIRS, dist, capitalise, listJoin, line } from '../../../engine/util.js';
 import { objName, objBase, makeObj, makeGold, randomObj } from './obj.js';
 import { damagePlayer, hurtMonster, killMonster } from './combat.js';
 import { Monster } from './actors.js';
