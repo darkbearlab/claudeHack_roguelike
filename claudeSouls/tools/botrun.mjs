@@ -20,6 +20,9 @@
 //   node tools/botrun.mjs --light       one vow only; a mixed run averages the
 //   node tools/botrun.mjs --heavy       trade away just as you try to measure it
 //   WHY=1 node tools/botrun.mjs ...     print stamina / adjacency / escape routes
+//   STAM=1 node tools/botrun.mjs ...    the stamina economy: how often the bar
+//                                       is actually the thing stopping you.
+//                                       Costs are only costs if this is nonzero.
 //                                       at each death. This is what showed the
 //                                       bot dying at full stamina with six ways
 //                                       out, which is a policy bug wearing a
@@ -429,6 +432,11 @@ async function run(seed, maxTurns, vow) {
   }
 
   const mix = {};
+  // STAM: the stamina economy has never been observable. WHY prints the bar at
+  // the moment of death, ACTMIX prints what the bot did - neither can answer
+  // "was stamina ever the thing stopping you?", which is the only question that
+  // matters when deciding whether a cost is a cost at all.
+  const stam = { turns: 0, broke: 0, floor: 0, sum: 0, min: 99, walkedBroke: 0, waited: 0, waitedBroke: 0, waitCd: 0, waitRich: 0 };
   const floorDeaths = new Map();
   const killers = new Map();
   let steps = 0, stall = 0, lastTurn = -1, lastAction = null;
@@ -456,6 +464,42 @@ async function run(seed, maxTurns, vow) {
     const a = act(game, rng);
     lastAction = a;
     if (process.env.ACTMIX) mix[a.kind] = (mix[a.kind] ?? 0) + 1;
+    if (process.env.STAM && game.inCombat()) {
+      const p = game.player;
+      // The bar is only a constraint if it is ever below what you want to do.
+      // Two thresholds: the cheapest attack you own (could you have hit at all)
+      // and a roll (could you have got out of the way).
+      let cheapest = 99;
+      for (const sk of p.skills) {
+        const d = SKILL_BY_KEY[sk.key];
+        if (!d || d.move || d.defend) continue;
+        cheapest = Math.min(cheapest, p.costOf(sk.key));
+      }
+      stam.turns++;
+      stam.sum += p.stamina;
+      stam.min = Math.min(stam.min, p.stamina);
+      if (p.stamina < cheapest) stam.broke++;
+      if (p.stamina < p.rollCost()) stam.floor++;
+      if (p.stamina < p.rollCost() && a.kind === 'move') stam.walkedBroke++;
+      // The one that decides whether waiting is a stamina problem at all. If the
+      // bot waits just as often with a full bar, the waiting is its own policy
+      // and no amount of tuning the economy will touch it.
+      if (a.kind === 'wait') {
+        stam.waited++;
+        if (p.stamina < p.rollCost()) stam.waitedBroke++;
+        // Three reasons to stand still, and they need completely different
+        // fixes: no stamina (economy), everything on cooldown (cooldowns), or
+        // able to act and choosing not to (position - not a cost problem at all).
+        let anyReady = false, anyOffCd = false;
+        for (const sk of p.skills) {
+          const d = SKILL_BY_KEY[sk.key];
+          if (!d || d.move || d.defend) continue;
+          if (sk.cd === 0) { anyOffCd = true; if (p.canAfford(p.costOf(sk.key))) anyReady = true; }
+        }
+        if (!anyOffCd) stam.waitCd++;
+        else if (anyReady) stam.waitRich++;
+      }
+    }
 
     switch (a.kind) {
       case 'skill': {
@@ -495,7 +539,7 @@ async function run(seed, maxTurns, vow) {
   return {
     seed, vow, steps, turn: game.turn,
     depth: game.player.depth, maxDepth: game.player.maxDepth,
-    deaths: game.player.deaths, kills: game.stats.kills, killers, mix,
+    deaths: game.player.deaths, kills: game.stats.kills, killers, mix, stam,
     how: game.gameOver?.how ?? 'timeout',
     floorDeaths: [...floorDeaths.entries()].sort((a, b) => a[0] - b[0]),
   };
@@ -517,6 +561,7 @@ let failures = 0, wins = 0, deepest = 0;
 const perFloor = new Map();
 const perKiller = new Map();
 const vowDeaths = new Map(), vowRuns = new Map(), vowDepth = new Map(), vowMix = new Map();
+const vowStam = new Map();
 const t0 = Date.now();
 
 for (let i = 0; i < runs; i++) {
@@ -528,6 +573,12 @@ for (let i = 0; i < runs; i++) {
     for (const [f, n] of r.floorDeaths) perFloor.set(f, (perFloor.get(f) ?? 0) + n);
     for (const [k, n] of r.killers) perKiller.set(k, (perKiller.get(k) ?? 0) + n);
     { const m = vowMix.get(r.vow) ?? {}; for (const [k,n] of Object.entries(r.mix ?? {})) m[k]=(m[k]??0)+n; vowMix.set(r.vow,m); }
+    if (r.stam) { const t = vowStam.get(r.vow) ?? { turns:0,broke:0,floor:0,sum:0,min:99,walkedBroke:0,waited:0,waitedBroke:0,waitCd:0,waitRich:0 };
+      t.turns+=r.stam.turns; t.broke+=r.stam.broke; t.floor+=r.stam.floor;
+      t.sum+=r.stam.sum; t.walkedBroke+=r.stam.walkedBroke; t.min=Math.min(t.min,r.stam.min);
+      t.waited+=r.stam.waited; t.waitedBroke+=r.stam.waitedBroke;
+      t.waitCd+=r.stam.waitCd; t.waitRich+=r.stam.waitRich;
+      vowStam.set(r.vow,t); }
     vowDeaths.set(r.vow, (vowDeaths.get(r.vow) ?? 0) + r.deaths);
     vowRuns.set(r.vow, (vowRuns.get(r.vow) ?? 0) + 1);
     vowDepth.set(r.vow, (vowDepth.get(r.vow) ?? 0) + r.maxDepth);
@@ -557,6 +608,26 @@ if (process.env.ACTMIX) {
     const tot = Object.values(m).reduce((a,b)=>a+b,0) || 1;
     console.log('  ' + v.padEnd(6) + Object.entries(m).sort((a,b)=>b[1]-a[1])
       .map(([k,n]) => `${k} ${((100*n)/tot).toFixed(0)}%`).join('  '));
+  }
+}
+if (process.env.STAM) {
+  console.log('the stamina economy, measured in combat only:');
+  for (const v of ['light','heavy']) {
+    const t = vowStam.get(v); if (!t?.turns) continue;
+    const pct = (n) => `${((100*n)/t.turns).toFixed(1)}%`;
+    console.log(`  ${v.padEnd(6)} avg bar ${(t.sum/t.turns).toFixed(1)}/20  low-water ${t.min}` +
+      `   too poor to ATTACK ${pct(t.broke)}   too poor to ROLL ${pct(t.floor)}` +
+      `   walked while too poor to roll ${pct(t.walkedBroke)}`);
+    console.log(`         waited ${pct(t.waited)} of combat turns, and ` +
+      `${t.waited ? ((100*t.waitedBroke)/t.waited).toFixed(0) : 0}% of THOSE waits were with too little to roll` +
+      `  <- if this is low, the waiting is policy, not economy`);
+    const w = t.waited || 1;
+    // NOT mutually exclusive: "could not roll" is measured against rollCost and
+    // "could have attacked" against the cheapest attack, and heavy's roll is
+    // dearer than its strike - so a turn can be both. Read them separately.
+    console.log(`         of those waits:  could not afford a ROLL ${((100*t.waitedBroke)/w).toFixed(0)}%` +
+      `   everything on cooldown ${((100*t.waitCd)/w).toFixed(0)}%` +
+      `   could have ATTACKED anyway ${((100*t.waitRich)/w).toFixed(0)}%  <- bot policy, not economy`);
   }
 }
 if (report && vowRuns.size) {
