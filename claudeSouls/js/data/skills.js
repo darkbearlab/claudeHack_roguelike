@@ -49,7 +49,8 @@ export const SKILLS = [
     name: 'Block',
     hint: 'raise the shield the way you drag; it holds until your next turn',
     // Cheap on purpose. The price of a block is not paid here - it is paid
-    // every turn you carry the shield at all (see Player.actionSurcharge),
+    // every turn you carry the shield at all, through its weight and therefore
+    // your recovery rate (see Player.regenRate),
     // because enemies telegraph and so a defensive reaction is always correctly
     // timed. Charging for the use could never make it a decision; charging for
     // owning the option can.
@@ -133,7 +134,7 @@ export const SKILLS = [
     damage: 3,
     impact: 3,
     stamina: 7,
-    cooldown: 3,
+    cooldown: 0, recovery: 1,
     advancesTurn: true,
   },
 
@@ -157,7 +158,7 @@ export const SKILLS = [
     damage: 4,
     impact: 7,
     stamina: 8,
-    cooldown: 4,
+    cooldown: 0, recovery: 1,
     advancesTurn: true,
   },
 
@@ -170,7 +171,7 @@ export const SKILLS = [
     damage: 5,
     impact: 4,
     stamina: 7,
-    cooldown: 0,
+    cooldown: 0, recovery: 1,
     advancesTurn: true,
   },
   {
@@ -181,7 +182,7 @@ export const SKILLS = [
     damage: 6,
     impact: 6,
     stamina: 9,
-    cooldown: 4,
+    cooldown: 0, recovery: 2,
     advancesTurn: true,
   },
 
@@ -219,11 +220,11 @@ export const SKILLS = [
   // button order, and it costs you two turns like it costs them.
   {
     key: 'hew', name: 'Hew', hint: 'the left half of a sweep',
-    pattern: 'sweepL', damage: 4, impact: 4, stamina: 6, cooldown: 0, advancesTurn: true,
+    pattern: 'sweepL', damage: 4, impact: 4, stamina: 6, cooldown: 0, recovery: 1, advancesTurn: true,
   },
   {
     key: 'backsweep', name: 'Backsweep', hint: 'the other half; follow a Hew with it',
-    pattern: 'sweepR', damage: 4, impact: 4, stamina: 5, cooldown: 2, advancesTurn: true,
+    pattern: 'sweepR', damage: 4, impact: 4, stamina: 5, cooldown: 0, recovery: 1, advancesTurn: true,
   },
 
   // ---- warhammer: the answer to being surrounded, and a gamble ------------
@@ -236,18 +237,18 @@ export const SKILLS = [
     // Recovery, not a long cooldown, and deliberately not both. Being expensive
     // only makes you use it less; being helpless afterwards makes it a gamble -
     // you clear the ring and then stand in the middle of what is left of it.
-    pattern: 'around', damage: 4, impact: 5, stamina: 9, cooldown: 1, recovery: 2,
+    pattern: 'around', damage: 4, impact: 5, stamina: 9, cooldown: 0, recovery: 2,
     advancesTurn: true,
   },
 
   // ---- pike: reach past everything ---------------------------------------
   {
     key: 'brace', name: 'Brace', hint: 'three tiles of lane',
-    pattern: 'line3', damage: 3, impact: 3, stamina: 6, cooldown: 0, advancesTurn: true,
+    pattern: 'line3', damage: 3, impact: 3, stamina: 6, cooldown: 0, recovery: 1, advancesTurn: true,
   },
   {
     key: 'impale', name: 'Impale', hint: 'six tiles of lane, and a long recovery',
-    pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 1, recovery: 1,
+    pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 0, recovery: 2,
     advancesTurn: true,
   },
 

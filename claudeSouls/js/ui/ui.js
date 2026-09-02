@@ -169,7 +169,14 @@ export class UI {
         b.title = def.hint ?? '';
         b.innerHTML = `<span class="num">${i + 1}</span>${skillIcon(def, p?.shield?.block?.arc ?? 1)}` +
                       `<span class="nm">${escapeHtml(def.name)}</span>` +
-                      `<span class="cost"></span><span class="cd"></span>`;
+                      `<span class="cost"></span><span class="cd"></span>` +
+                      // Commitment has to be on the button. Nine of the twenty-six
+                      // skills now leave you unable to act - including some
+                      // *primaries*, which is what you use by walking into
+                      // something - and a cost you only discover by paying it is
+                      // not a decision, it is a trap.
+                      (def.recovery ? `<span class="rec" title="收招 ${def.recovery} 回合:` +
+                        `期間不能行動、不能翻滾、不回精力">${'●'.repeat(def.recovery)}</span>` : '');
         b.addEventListener('pointerdown', (ev) => {
           ev.preventDefault();
           this.startGesture(ev, cell.key, b);

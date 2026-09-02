@@ -412,11 +412,18 @@ check('weight is the trade, and it never takes rolling away', () => {
   assert(light.rollDistance() === 2 && heavy.rollDistance() === 2,
          'a roll that cannot clear an attack shape is not a roll');
 
-  const lRolls = Math.floor(light.staminaMax / light.rollCost());
-  const hRolls = Math.floor(heavy.staminaMax / heavy.rollCost());
-  assert(lRolls >= 4, `light gets only ${lRolls} rolls`);
+  // Measured over time, not out of a full bar. A roll now costs what a roll
+  // costs - the same number in rags or mail - so from a standing start both
+  // kits get the same count. What weight buys is the *rate*, so the gap has to
+  // be measured the way it is now expressed: how many rolls a long fight
+  // affords you. Pinning the full-bar count would have pinned the old design.
+  const rollsOver = (p, turns) =>
+    Math.floor((p.staminaMax + p.regenRate(true) * turns) / p.rollCost());
+  const lRolls = rollsOver(light, 20);
+  const hRolls = rollsOver(heavy, 20);
   assert(hRolls >= 2, `heavy gets only ${hRolls} rolls - that is not a trade, it is a wall`);
-  assert(lRolls >= hRolls * 2, `light ${lRolls} rolls vs heavy ${hRolls} - not enough of a gap`);
+  assert(lRolls > hRolls, `light ${lRolls} rolls vs heavy ${hRolls} over 20 turns - weight buys nothing`);
+  assert(light.rollCost() === heavy.rollCost(), 'a roll should cost a roll, whatever you wear');
   assert(heavy.hpMax > light.hpMax, 'heavy is not tougher');
   assert(heavy.regenRate(true) < light.regenRate(true),
          'weight does not slow recovery, so the two kits regenerate identically');
@@ -433,18 +440,98 @@ check('a shield taxes every action, not just blocking', () => {
   const p = g.player;
   const bare = p.costOf('strike');
 
-  // Scaled by the shield's weight, not flat. A flat point made the buckler a
-  // straight loss - you gave up the off-hand weapon's skill AND paid the tax
-  // for one direction of cover, and the bot duly died more with it than
-  // without. A buckler now costs only its weight; the tower shield pays.
+  // The consequence that survived the rewrite: a tower shield is not free to
+  // carry. What changed is *where* you pay. It used to add to the price of
+  // every swing, which meant the same button showed a different number
+  // depending on your off hand; now it is weight like anything else, and
+  // weight reaches you through the recovery rate.
   p.equipItem(SLOT.OFF, 'buckler');
-  assert(p.actionSurcharge === 0, 'a buckler taxes every swing, which makes it a trap');
-
+  const buckRegen = p.regenRate(true);
   p.equipItem(SLOT.OFF, 'tower');
-  assert(p.actionSurcharge >= 1, 'a tower shield is free to carry');
-  assert(p.costOf('strike') > bare, 'the surcharge is not applied to attacks');
-  assert(p.costOf('roll') > SKILL_BY_KEY.roll.stamina, 'a tower shield does not make rolling dearer');
-  return `strike ${bare} bare, ${p.costOf('strike')} behind a tower shield`;
+  assert(p.costOf('strike') === bare, 'a tower shield still taxes the swing itself');
+  assert(p.regenRate(true) < buckRegen, 'a tower shield is free to carry');
+  return `strike ${bare} either way; regen ${buckRegen} -> ${p.regenRate(true)}`;
+});
+
+check('commitment is priced by the rule, not by feel', () => {
+  // The cooldowns this replaced correlated with how big an attack was at
+  // r = 0.21 - they were filled in by hand and priced nothing. `hew` swept
+  // four tiles on no cooldown while `gut` hit one tile and sat for three.
+  //
+  // So the band is computed here from the shape itself, and the table has to
+  // agree. Adding a skill without a recovery now fails with the number it
+  // should have had, which is the only way a rule like this survives contact
+  // with the next twenty skills.
+  //
+  // Melee only, deliberately: recovery is a cost you pay by being reachable,
+  // so at range 9 it is free. Ranged attacks stay priced by cooldown.
+  const band = (sk) => {
+    if (sk.ranged || !sk.pattern) return null;
+    const t = attackTiles(0, 0, 1, 0, sk.pattern);
+    const reach = Math.max(...t.map((q) => Math.max(Math.abs(q.x), Math.abs(q.y))));
+    const v = (t.length - 1) * 1.0 + (reach - 1) * 1.2 + (sk.damage ?? 0) * 0.9;
+    return v >= 9.5 ? 2 : v >= 5.5 ? 1 : 0;
+  };
+  const wrong = [];
+  for (const sk of SKILLS) {
+    if (sk.move || sk.defend) continue;
+    const want = band(sk);
+    if (want === null) continue;
+    const got = sk.recovery ?? 0;
+    if (got !== want) wrong.push(`${sk.key}: recovery ${got}, rule says ${want}`);
+    // No stacking: recovery replaces the cooldown, it does not sit on top of
+    // it. Stamina AND cooldown AND recovery is three taxes for one swing.
+    if (want > 0 && (sk.cooldown ?? 0) > 0) wrong.push(`${sk.key}: recovery ${want} AND cooldown ${sk.cooldown}`);
+  }
+  assert(wrong.length === 0, wrong.join('; '));
+  const n = SKILLS.filter((k) => (k.recovery ?? 0) > 0).length;
+  return `${n} of ${SKILLS.length} skills commit you`;
+});
+
+check('every weapon that commits on both attacks does so deliberately', () => {
+  // Walking into something uses your primary, so a weapon whose primary has
+  // recovery commits you on the casual action too. That is allowed - it is
+  // what makes a pike a pike - but it must be a short, named list rather than
+  // something that quietly grows every time a skill is retuned.
+  const ALL_IN = ['greataxe', 'halberd', 'pike'];
+  const found = [];
+  for (const it of ITEMS.filter((i) => i.kind === 'weapon')) {
+    const ks = [it.primary, it.secondary].filter(Boolean).map((k) => SKILL_BY_KEY[k]);
+    if (ks.length && ks.every((k) => (k.recovery ?? 0) > 0)) found.push(it.key);
+  }
+  assert(found.length === ALL_IN.length && ALL_IN.every((k) => found.includes(k)),
+         `all-commitment weapons are now [${found}], expected [${ALL_IN}]`);
+  return `${found.join(', ')} - every swing is a commitment`;
+});
+
+check('an action costs what the action costs, however you are loaded', () => {
+  // The rule the two deleted surcharges broke. A swing is the same swing in
+  // rags or in mail; what your kit buys is a slower bar, not a dearer one.
+  // Overload is the single deliberate exception, and it is a state you enter,
+  // not a slope - so it is checked separately, below.
+  const light = freshGame('cost-l', 'light').player;
+  const heavy = freshGame('cost-h', 'heavy').player;
+  assert(!light.encumbered && !heavy.encumbered, 'a standard kit should not be overloaded');
+  const differ = [];
+  for (const sk of light.skills) {
+    const a = light.costOf(sk.key);
+    const b = heavy.costOf(sk.key);
+    if (a !== b) differ.push(`${sk.key} ${a}/${b}`);
+  }
+  assert(differ.length === 0, `same action, different price by load: ${differ.join(', ')}`);
+  assert(light.rollCost() === heavy.rollCost(), 'rolling is dearer in armour');
+  return `${light.skills.length} actions priced identically in leathers and mail`;
+});
+
+check('overload is a state you can enter, and it costs', () => {
+  const p = freshGame('enc', 'heavy').player;
+  const before = p.costOf('strike');
+  p.equipItem(SLOT.ARMOUR, 'plate');
+  p.equipItem(SLOT.MAIN, 'warhammer');
+  p.equipItem(SLOT.OFF, 'kite');
+  assert(p.encumbered, `plate + warhammer + kite shield (weight ${p.weight}) is not overloaded`);
+  assert(p.costOf('strike') > before, 'overload does not cost anything');
+  return `weight ${p.weight}: every action +${p.costOf('strike') - before}`;
 });
 
 check('walking is always free, however loaded you are', () => {
@@ -1199,20 +1286,31 @@ check('a heavy swing leaves you standing there, and you cannot roll out of it', 
   return `${heavy.recovery} turns helpless, and no stamina in them`;
 });
 
-check('only secondary skills ever have a recovery', () => {
-  // Otherwise it is not a choice you made, it is a tax on holding the weapon.
-  for (const it of ITEMS) {
-    if (it.kind !== 'weapon') continue;
-    const first = SKILL_BY_KEY[it.primary];
-    assert(!first.recovery, `${it.key}'s primary (${it.primary}) has a recovery`);
-  }
+check('you are never left with only committed options', () => {
+  // SUPERSEDES 'only secondary skills ever have a recovery'. That rule said
+  // commitment must be opt-in, so a primary could never carry it - which meant
+  // a greataxe's basic swing was mechanically a dagger's, and the whole point
+  // of choosing a weapon was carried by damage alone. A primary may commit
+  // now; a pike is *supposed* to be a pike.
+  //
+  // What has to hold instead is that you always have an uncommitted way to
+  // act, or a bad matchup becomes unplayable rather than hard. The roll is
+  // always available, always free of recovery, and does not even end your
+  // turn - that is the guarantee, and it belongs to the player rather than to
+  // any weapon.
+  const roll = SKILL_BY_KEY.roll;
+  assert(!roll.recovery && roll.always && !roll.advancesTurn,
+         'the roll is the escape hatch from an all-commitment weapon; it must stay free');
+  const block = SKILL_BY_KEY.block;
+  assert(!block.recovery, 'block must not commit you; it is the answer to nowhere to go');
+
   // And nothing pays all three of stamina, cooldown and recovery.
   for (const s of SKILLS) {
     if (!s.recovery) continue;
-    assert((s.cooldown ?? 0) <= 1,
+    assert((s.cooldown ?? 0) === 0,
            `${s.key} pays stamina AND cooldown ${s.cooldown} AND recovery - three taxes`);
   }
-  return 'commitment is opt-in';
+  return 'roll and block never commit you, whatever you are holding';
 });
 
 check('knockback moves things, and stops at whatever is behind them', () => {
@@ -1663,7 +1761,10 @@ check('souls buy only what no item owns, and only at a fire', () => {
   heavy.player.x = hb.x; heavy.player.y = hb.y;
   const hr0 = heavy.player.rollCost(), hg0 = heavy.player.regenRate(true);
   for (let i = 0; i < 3; i++) heavy.buyRank('bearing');
-  assert(heavy.player.rollCost() < hr0, 'bearing did not make rolling cheaper');
+  // Bearing used to buy a cheaper roll. Now that a roll costs a fixed price it
+  // buys the thing weight actually controls: how fast the bar comes back, and
+  // how much you can carry before overloading. Same promise, current mechanism.
+  assert(heavy.player.regenRate(true) > hg0, 'bearing did not make recovery faster');
   assert(heavy.player.regenRate(true) > hg0, 'bearing did not speed recovery');
 
   // And nothing on sale touches what equipment owns.

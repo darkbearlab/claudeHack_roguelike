@@ -184,6 +184,17 @@ body { overflow: hidden; }
   touch-action: none;           /* the drag belongs to us, not the browser */
   display: flex; flex-direction: row; align-items: center; gap: 4px;
 }
+/* Commitment marker: one dot per turn you will be unable to act. Deliberately
+   not a number - it sits beside a stamina cost and a cooldown, both numbers,
+   and a third digit would read as another quantity to add up rather than as
+   "this one takes the next turn away from you". */
+.skill .rec {
+  position: absolute; top: 2px; right: 4px;
+  display: flex; gap: 2px;
+  font-size: 7px; line-height: 1;
+  color: var(--blood, #c0424a);
+  letter-spacing: 1px;
+}
 .skill .num  { position: absolute; top: 2px; left: 5px; font-size: 9px; color: var(--dim); }
 .skill .nm   { font-size: 12px; padding-left: 9px; flex: 1 1 auto;
                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

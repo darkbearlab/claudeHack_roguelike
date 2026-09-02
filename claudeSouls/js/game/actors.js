@@ -279,10 +279,28 @@ export class Player {
   /** How much weight is free before it starts costing you. Souls widen it. */
   get allowance() { return 4 + (this.ranks.bearing ?? 0) * 2; }
 
-  get rollExtra() { return Math.floor(Math.max(0, this.weight - this.allowance) / 4); }
+  /**
+   * Are you carrying more than you can carry?
+   *
+   * The one place load is allowed to touch a price. Everywhere else the rule
+   * is that **an action costs what the action costs** - a swing is the same
+   * swing in rags or in plate - and what your kit buys you is a slower bar,
+   * not a dearer one. That single sentence replaced two separate load-scaled
+   * costs (`rollExtra` and a shield surcharge), which between them meant the
+   * same button showed a different number depending on what was in your other
+   * hand, and taught nobody anything.
+   *
+   * Overloading is the deliberate exception, because it should be a state you
+   * can *feel* you have entered rather than a slope you slid down. The line
+   * sits above the top quartile of realistic kits: plate plus a big weapon
+   * plus a shield is over it, plate alone is not.
+   */
+  get encumbered() { return this.weight > this.allowance + 26; }
+
+  get loadSurcharge() { return this.encumbered ? 2 : 0; }
 
   rollCost() {
-    return SKILL_BY_KEY.roll.stamina + this.rollExtra;
+    return SKILL_BY_KEY.roll.stamina + this.loadSurcharge;
   }
 
   /**
@@ -314,7 +332,10 @@ export class Player {
    * only its weight, which is the promise its description makes - you can still
    * roll. The tower shield keeps the tax.
    */
-  get actionSurcharge() { return Math.floor((this.shield?.weight ?? 0) / 6); }
+  // Kept as a name so nothing silently reads zero: a shield is no longer taxed
+  // per swing, it is taxed by its weight like everything else you carry, which
+  // reaches you through `regenRate`. See `encumbered`.
+  get actionSurcharge() { return 0; }
 
   /** What a skill actually costs, with everything you are carrying. */
   costOf(key) {
@@ -324,7 +345,7 @@ export class Player {
     if (key === 'roll') return this.rollCost();
     const def = SKILL_BY_KEY[key];
     if (!def) return 0;
-    return Math.max(1, def.stamina + this.mods(key).stamina) + this.actionSurcharge;
+    return Math.max(1, def.stamina + this.mods(key).stamina) + this.loadSurcharge;
   }
 
   /**
@@ -343,8 +364,17 @@ export class Player {
     // exactly one point past a step - so the one-weight dagger in its off hand
     // halved its recovery, and the bot spent a quarter of every run standing
     // still waiting for stamina. That is not "reads further ahead", it is idle.
-    const base = Math.max(1, PLAYER.staminaRegen + armour
-                             - Math.floor(Math.max(0, this.weight - this.allowance - 4) / 9));
+    // Steps of 5 above your allowance, not 9. They used to be wide because two
+    // other costs (a roll surcharge and a per-swing shield tax) were also
+    // pricing load; with those gone this curve is the *only* thing that knows
+    // what you are carrying, and at 9-wide it could not tell a buckler from a
+    // tower shield - seven points of steel changed nothing at all. Resolution
+    // is not a nicety here, it is the whole mechanism.
+    //
+    // Measured against the realistic range (kits run 1 to 42): leathers 4,
+    // buckler 3, tower shield 2, mail 2, plate 1.
+    const base = Math.max(1, PLAYER.staminaRegen + 2 + armour
+                             - Math.floor(Math.max(0, this.weight - this.allowance) / 5));
     return inCombat ? base : base * 4;
   }
 
