@@ -307,6 +307,23 @@ export class Renderer {
 
   drawTelegraphs(ctx, v) {
     const lvl = this.game.level;
+
+    // Your own declared blow, drawn in the same language as theirs but cool
+    // rather than hot. It has to be on screen for the same reason every enemy
+    // wind-up is: an attack that resolves next turn and cannot be seen is not
+    // a commitment, it is a surprise you inflicted on yourself.
+    const c = this.game.player.charging;
+    if (c?.tiles) {
+      for (const t of c.tiles) {
+        const rx = t.x - v.ox, ry = t.y - v.oy;
+        if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
+        ctx.fillStyle = 'rgba(120,180,235,.26)';
+        ctx.fillRect(rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, v.cell);
+        ctx.strokeStyle = 'rgba(160,210,255,.7)';
+        ctx.lineWidth = Math.max(1, v.cell * 0.05);
+        ctx.strokeRect(rx * v.cell + v.offX + 1, ry * v.cell + v.offY + 1, v.cell - 2, v.cell - 2);
+      }
+    }
     for (const e of lvl.enemies) {
       if (!e.alive || e.state !== STATE.WINDUP || !e.attackTiles) continue;
       if (!lvl.isVisible(e.x, e.y)) continue;

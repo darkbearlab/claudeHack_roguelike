@@ -50,6 +50,10 @@ export class Player {
     this.prep = { item: null, magic: null };
     this.edge = 0;                    // a whetstone's bonus, spent on the next hit
     this.recover = 0;                 // turns you are still swinging
+    // A blow you have declared but not yet landed. Set by a skill with a
+    // wind-up, resolved on your next turn, and lost entirely if something
+    // hits you first - the same deal every enemy in the game is offered.
+    this.charging = null;             // { key, dx, dy, tiles }
     this.warded = 0;                  // blows a ward will still absorb
     this.souls = 0;                   // unbanked; dropped where you die
     this.ranks = {};                  // track key -> rank bought
@@ -199,6 +203,9 @@ export class Player {
    *     four to ten damage against a twelve to eighteen point pool.
    */
   get recovering() { return this.recover > 0; }
+
+  /** Committed either way: mid-swing, or still standing there after one. */
+  get committed() { return this.recover > 0 || !!this.charging; }
 
   /** The shield in your off hand, if that is what is in it. */
   get shield() {
@@ -388,7 +395,12 @@ export class Player {
     // live under, and the reason a heavy swing is a commitment rather than a
     // price.
     if (this.recover > 0) this.recover--;
-    else this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
+    else if (!this.charging) {
+      // Nor while a blow is still in the air. Wind-up and recovery are the two
+      // halves of the same commitment; if the bar refilled through one of them
+      // the long attacks would pay for their own next swing.
+      this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
+    }
     for (const s of this.skills) if (s.cd > 0) s.cd--;
   }
 

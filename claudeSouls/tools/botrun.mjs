@@ -44,7 +44,7 @@ import { DIRS, dist } from '../../engine/util.js';
 import { astar } from '../../engine/path.js';
 import { STATE } from '../js/game/actors.js';
 import { SKILL_BY_KEY } from '../js/data/skills.js';
-import { ITEM_BY_KEY } from '../js/data/items.js';
+import { ITEM_BY_KEY, SLOT } from '../js/data/items.js';
 import { T, isBonfire, isChest, isCorpse } from '../js/map/tiles.js';
 
 const store = new Map();
@@ -118,7 +118,7 @@ function losingTheTrade(game, adj) {
   let incoming = 0, work = 0;
   for (const { e } of adj) {
     incoming += pressure(e);
-    work += Math.ceil(e.hp / SKILL_BY_KEY.strike.damage);
+    work += Math.ceil(e.hp / (arms(p).prim.damage || 1));
   }
   if (incoming <= 0) return false;
   return incoming * work >= p.hp;
@@ -196,10 +196,43 @@ function escapeRoutes(game, danger) {
  */
 function canInterrupt(player, e) {
   if (e.state !== STATE.WINDUP) return false;
-  const per = SKILL_BY_KEY.strike.impact ?? 0;
+  const per = arms(player).prim.impact ?? 0;
   const turns = Math.max(1, e.timer);
-  const affordable = Math.floor(player.stamina / SKILL_BY_KEY.strike.stamina);
+  const affordable = Math.floor(player.stamina / player.costOf(arms(player).prim.key));
   return per * Math.min(turns, affordable) >= e.poiseLeft;
+}
+
+/**
+ * The two attacks the bot is actually holding.
+ *
+ * This used to be the literals `strike` and `sweep` in nine places - the
+ * longsword's skills - so the bot could only play a longsword, and every
+ * measurement it produced was a measurement of one weapon. That is the same
+ * mistake as `step()` hardcoding 'strike', recorded in DESIGN.md, arriving a
+ * second time in a different file. The fix is the same: ask what is in your
+ * hand.
+ */
+/**
+ * Can you actually attack by walking into it?
+ *
+ * Walking into something uses your *primary*, and two weapons have a primary
+ * with a cooldown (dagger's lunge, hatchet's bury). While it is ticking the
+ * bump is refused and **no turn passes** - so a bot that keeps choosing it
+ * spins forever, and every run with those two weapons died at floor 2. It
+ * stayed invisible because the bot only ever carried a longsword, whose
+ * primary is free.
+ */
+function canBump(p) {
+  const { prim } = arms(p);
+  const slot = p.skill(prim.key);
+  return !!slot && slot.cd === 0 && p.hasSkill(prim.key) && p.canAfford(p.costOf(prim.key));
+}
+
+function arms(p) {
+  const main = p.item(SLOT.MAIN);
+  const prim = SKILL_BY_KEY[main?.primary] ?? SKILL_BY_KEY.strike;
+  const sec = SKILL_BY_KEY[main?.secondary] ?? null;
+  return { prim, sec };
 }
 
 function adjacentEnemies(game) {
@@ -254,11 +287,11 @@ function act(game, rng) {
     // on damage instead of on a stagger that will not happen.
     const winding = adjacentEnemies(game).filter((a) => a.e.state === STATE.WINDUP);
     const stoppable = winding.find((a) => canInterrupt(p, a.e));
-    if (stoppable && p.stamina >= SKILL_BY_KEY.strike.stamina) {
-      return { kind: 'move', dir: stoppable.d };
+    if (stoppable && p.stamina >= p.costOf(arms(p).prim.key)) {
+      if (canBump(p)) return { kind: 'move', dir: stoppable.d };
     }
-    if (winding.length && p.stamina >= SKILL_BY_KEY.strike.stamina) {
-      return { kind: 'move', dir: winding[0].d };
+    if (winding.length && p.stamina >= p.costOf(arms(p).prim.key)) {
+      if (canBump(p)) return { kind: 'move', dir: winding[0].d };
     }
   }
 
@@ -267,19 +300,21 @@ function act(game, rng) {
   // 2. Punish recovery. This is the entire game.
   const open = adj.find((a) => a.e.state === STATE.RECOVER || a.e.state === STATE.RESTING);
   if (open) {
-    const sweep = p.skill('sweep');
-    if (adj.length >= 2 && sweep.cd === 0 && p.stamina >= SKILL_BY_KEY.sweep.stamina + reserve) {
-      return { kind: 'skill', key: 'sweep', dir: open.d };
+    const { sec } = arms(p);
+    const slot = sec && p.skill(sec.key);
+    if (adj.length >= 2 && slot && slot.cd === 0 && p.hasSkill(sec.key)
+        && p.stamina >= p.costOf(sec.key) + reserve) {
+      return { kind: 'skill', key: sec.key, dir: open.d };
     }
-    if (p.stamina >= SKILL_BY_KEY.strike.stamina + reserve) return { kind: 'move', dir: open.d };
+    if (canBump(p) && p.stamina >= p.costOf(arms(p).prim.key) + reserve) return { kind: 'move', dir: open.d };
   }
 
   // 3. Stagger a wind-up - but only when it will actually land, and only with
   //    stamina spare to leave afterwards. Standing next to something whose
   //    poise you cannot break is just choosing to be hit.
   const winding = adj.find((a) => a.e.state === STATE.WINDUP && canInterrupt(p, a.e));
-  if (winding && p.stamina >= SKILL_BY_KEY.strike.stamina + reserve) {
-    return { kind: 'move', dir: winding.d };
+  if (winding && p.stamina >= p.costOf(arms(p).prim.key) + reserve) {
+    if (canBump(p)) return { kind: 'move', dir: winding.d };
   }
 
   // 3b. Losing the trade. There is no telegraph to read against a silent
@@ -310,7 +345,7 @@ function act(game, rng) {
   }
 
   // 4. Breathe. Never enter a fight without enough for one dodge.
-  if (p.stamina < reserve + SKILL_BY_KEY.strike.stamina) {
+  if (p.stamina < reserve + p.costOf(arms(p).prim.key)) {
     const threat = lvl.livingEnemies().some((e) => dist(e.x, e.y, p.x, p.y) <= 2);
     if (!threat) return { kind: 'wait' };
     const safe = safeSteps(game, danger);
@@ -384,7 +419,7 @@ function act(game, rng) {
       const step = path[0];
       const d = DIRS.find((q) => q.dx === step.x - p.x && q.dy === step.y - p.y);
       const blocker = lvl.enemyAt(step.x, step.y);
-      if (blocker) return { kind: 'move', dir: d };     // walk into it = attack
+      if (blocker && canBump(p)) return { kind: 'move', dir: d };   // walk into it = attack
       // A tile that is threatened two or more turns out is fine to walk
       // through - you will be gone before it resolves. Refusing every
       // threatened tile made the bot sit still for 20,000 turns whenever an
@@ -426,6 +461,19 @@ async function run(seed, maxTurns, vow) {
   const game = new Game(null);
   game.ui = new BotUI();
   game.newGame({ seed, name: 'Bot', vow });
+  // WEAPON=pike. The bot has always carried the starting sword, and that has
+  // already hidden one whole class of bug (step() hardcoding 'strike' meant
+  // mace-and-shield could not attack with the direction keys, and nothing
+  // noticed because nothing ever held a mace). Anything that changes how a
+  // weapon behaves - wind-up, recovery, two-handedness - is invisible to a
+  // run that never picks one up.
+  if (process.env.WEAPON) {
+    const w = ITEM_BY_KEY[process.env.WEAPON];
+    if (w) {
+      game.player.equipItem(SLOT.MAIN, w.key);
+      if (w.hands === 2) game.player.equipItem(SLOT.OFF, null);
+    }
+  }
   if (useShield) {
     const sh = game.player.pack.find((k) => ITEM_BY_KEY[k]?.kind === 'shield');
     if (sh) game.equipFromPack('off', sh);
@@ -524,6 +572,18 @@ async function run(seed, maxTurns, vow) {
 
     steps++;
     if (game.turn === lastTurn) {
+      // An action the rules refused does not advance the clock, and choosing it
+      // again will be refused identically - that is a loop, not a stall. The
+      // commonest cause is walking into something you cannot currently hit
+      // (dagger and hatchet have a primary with a cooldown), which is legal
+      // for the rules to refuse and legal for a player to shrug off, but a
+      // bot will retry it until the heat death of the universe.
+      //
+      // Waiting is deliberately the fallback rather than a re-plan: it always
+      // advances the clock, so the situation changes and the next decision is
+      // made against a different board. The stall detector below is left
+      // exactly as it was, so a bot that genuinely cannot act still fails.
+      if (stall === 3) { await game.command('.'); }
       if (++stall > 300) {
         const p = game.player;
         const info = process.env.WHYSTALL

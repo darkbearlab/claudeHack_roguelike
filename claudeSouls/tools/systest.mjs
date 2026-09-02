@@ -56,6 +56,12 @@ class QuietUI {
   showGameOver() {} showSaved() {}
 }
 
+function await0(g) {
+  // command() is async only because the UI animates between turns; the rules
+  // it drives are synchronous, and the charge resolves before the first await.
+  g.command('h');
+}
+
 function freshGame(seed = 't', vow = 'light') {
   const g = new Game(null);
   g.ui = new QuietUI();
@@ -453,6 +459,83 @@ check('a shield taxes every action, not just blocking', () => {
   return `strike ${bare} either way; regen ${buckRegen} -> ${p.regenRate(true)}`;
 });
 
+check('a committed turn passes however you spend it', () => {
+  // Every way of asking to act has to consume the turn you already committed
+  // to. When the skill path returned "nothing happened" instead, the turn
+  // never advanced: the bot span forever, and a player would have found the
+  // buttons dead with no indication that only the direction keys still moved
+  // the clock. Same failure the refused bonfire rest caused, one file over.
+  const { g } = arena('rec-turn', 'husk', 3);
+  g.player.equip.main = 'warhammer';
+  g.useSkill('sunder', { dx: 1, dy: 0 });
+  assert(g.player.recovering, 'sunder did not commit');
+  const t0 = g.turn;
+  const spent = g.useSkill('pound', { dx: 1, dy: 0 });
+  assert(spent, 'a skill pressed during recovery did not consume the turn');
+  g.worldTurn();
+  assert(g.turn > t0, 'the clock did not move');
+  return `recovery burns the turn from the skill path too`;
+});
+
+check('a wind-up lands on the next turn, not this one', () => {
+  const { g, e } = arena('wind1', 'husk', 2);
+  g.player.equip.main = 'pike';                 // brace / impale
+  const hp0 = e.hp;
+  const spent = g.useSkill('impale', { dx: 1, dy: 0 });
+  assert(spent, 'declaring a wind-up should cost the turn');
+  assert(g.player.charging, 'nothing was declared');
+  assert(e.hp === hp0, 'the blow landed on the turn it was declared');
+  g.worldTurn();
+  g.useSkill('impale', { dx: 1, dy: 0 });       // any input resolves it
+  assert(!g.player.charging, 'the charge never resolved');
+  assert(e.hp < hp0, `the declared blow never landed (${hp0} -> ${e.hp})`);
+  return `declared, then landed for ${hp0 - e.hp}`;
+});
+
+check('a wind-up is knocked out of you, and the stamina stays spent', () => {
+  // The whole gamble. Recovery cannot be taken away from you because the
+  // damage is already banked; a wind-up can, and that is the entire
+  // difference between the two halves of the same commitment budget.
+  const { g } = arena('wind2', 'husk', 2);
+  g.player.equip.main = 'pike';
+  const st0 = g.player.stamina;
+  g.useSkill('impale', { dx: 1, dy: 0 });
+  assert(g.player.charging, 'nothing was declared');
+  const st1 = g.player.stamina;
+  assert(st1 < st0, 'declaring cost nothing');
+  g.hurtPlayer(2, 'a test');
+  assert(!g.player.charging, 'a hit did not interrupt the wind-up');
+  assert(g.player.stamina === st1, 'the interrupted swing refunded its stamina');
+  return `paid ${st0 - st1}, lost the swing, kept nothing back`;
+});
+
+check('you cannot walk out of your own swing', () => {
+  const { g, e } = arena('wind3', 'husk', 2);
+  g.player.equip.main = 'pike';
+  const hp0 = e.hp;
+  g.useSkill('impale', { dx: 1, dy: 0 });
+  const { x, y } = g.player;
+  g.worldTurn();
+  await0(g);
+  assert(e.hp < hp0 || !g.player.charging,
+         'walking away cancelled the declared blow for free');
+  assert(g.player.x === x && g.player.y === y,
+         'the move went through as well as the swing');
+  return 'the blow lands instead of the step';
+});
+
+check('no stamina comes back while a blow is in the air', () => {
+  const { g } = arena('wind4', 'husk', 3);
+  g.player.equip.main = 'pike';
+  g.player.stamina = 10;
+  g.useSkill('impale', { dx: 1, dy: 0 });
+  const held = g.player.stamina;
+  g.player.tick(true);
+  assert(g.player.stamina === held,
+         'the wind-up paid for its own next swing');
+  return `held at ${held} through the declaration`;
+});
+
 check('commitment is priced by the rule, not by feel', () => {
   // The cooldowns this replaced correlated with how big an attack was at
   // r = 0.21 - they were filled in by hand and priced nothing. `hew` swept
@@ -477,8 +560,12 @@ check('commitment is priced by the rule, not by feel', () => {
     if (sk.move || sk.defend) continue;
     const want = band(sk);
     if (want === null) continue;
-    const got = sk.recovery ?? 0;
-    if (got !== want) wrong.push(`${sk.key}: recovery ${got}, rule says ${want}`);
+    // The band says HOW MUCH commitment; wind-up and recovery say how it is
+    // split around the blow. impale and rend spend one of their two turns
+    // before the hit rather than after, which is a different gamble at the
+    // same price - the declared half can be taken away from you.
+    const got = (sk.windup ?? 0) + (sk.recovery ?? 0);
+    if (got !== want) wrong.push(`${sk.key}: windup+recovery ${got}, rule says ${want}`);
     // No stacking: recovery replaces the cooldown, it does not sit on top of
     // it. Stamina AND cooldown AND recovery is three taxes for one swing.
     if (want > 0 && (sk.cooldown ?? 0) > 0) wrong.push(`${sk.key}: recovery ${want} AND cooldown ${sk.cooldown}`);
@@ -1274,9 +1361,16 @@ check('a heavy swing leaves you standing there, and you cannot roll out of it', 
   g.worldTurn();
   assert(p.recovering, 'no recovery after the heaviest attack in the game');
 
+  // Checked by effect, not by return value. The call now reports "the turn was
+  // consumed" - because a recovery turn is consumed however you spend it - so
+  // the thing to assert is that you did not actually move and did not actually
+  // hit anything, which is the rule this test is really about.
   const st = p.stamina;
-  assert(!g.useSkill('roll', { dx: -1, dy: 0 }), 'rolled out of a recovery');
-  assert(!g.useSkill('pound', { dx: 1, dy: 0 }), 'attacked during a recovery');
+  const px = p.x, py = p.y, ehp = e.hp;
+  g.useSkill('roll', { dx: -1, dy: 0 });
+  assert(p.x === px && p.y === py, 'rolled out of a recovery');
+  g.useSkill('pound', { dx: 1, dy: 0 });
+  assert(e.hp === ehp, 'attacked during a recovery');
   g.worldTurn();
   assert(p.stamina === st, 'stamina came back during a recovery');
 

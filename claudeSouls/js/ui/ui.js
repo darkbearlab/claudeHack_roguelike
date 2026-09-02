@@ -175,8 +175,14 @@ export class UI {
                       // *primaries*, which is what you use by walking into
                       // something - and a cost you only discover by paying it is
                       // not a decision, it is a trap.
-                      (def.recovery ? `<span class="rec" title="收招 ${def.recovery} 回合:` +
-                        `期間不能行動、不能翻滾、不回精力">${'●'.repeat(def.recovery)}</span>` : '');
+                      ((def.windup || def.recovery)
+                        ? `<span class="rec" title="${def.windup ? `前搖 ${def.windup} 回合(下回合才命中,期間被打中會被打斷) ` : ''}` +
+                          `${def.recovery ? `收招 ${def.recovery} 回合` : ''}:期間不能行動、不能翻滾、不回精力">` +
+                          // Hollow before the blow, solid after. Same budget,
+                          // different gamble - and the hollow half is the one
+                          // that can be taken away from you.
+                          `${'○'.repeat(def.windup ?? 0)}${'●'.repeat(def.recovery ?? 0)}</span>`
+                        : '');
         b.addEventListener('pointerdown', (ev) => {
           ev.preventDefault();
           this.startGesture(ev, cell.key, b);

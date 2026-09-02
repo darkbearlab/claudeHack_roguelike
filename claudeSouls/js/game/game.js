@@ -188,6 +188,13 @@ export class Game {
         this.worldTurn();
         return;
       }
+      // A declared blow lands on your next turn whatever you tried to do with
+      // it. Walking away from your own swing would make the wind-up free.
+      if (this.player.charging) {
+        this.resolveCharge();
+        this.worldTurn();
+        return;
+      }
       const spent = await this.doCommand(key);
       if (spent && this.running) this.worldTurn();
     } catch (err) {
@@ -266,9 +273,34 @@ export class Game {
    *   projectile  the reverse of its own velocity - the archer may be dead by
    *               the time the arrow lands, and you are blocking the arrow.
    */
+  /**
+   * Land the blow declared last turn.
+   *
+   * Deliberately re-enters useSkill rather than duplicating the resolution:
+   * every shape, affix, knockback and kill-refund rule lives in there once,
+   * and a second copy of it would be wrong within a fortnight.
+   */
+  resolveCharge() {
+    const p = this.player;
+    const c = p.charging;
+    if (!c) return false;
+    p.charging = null;
+    return this.useSkill(c.key, { dx: c.dx, dy: c.dy }, { resolving: true });
+  }
+
   hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
+
+    // A declared blow is lost if something lands on you first. No poise check:
+    // the player is one person, not a troll, and a wind-up you can carry
+    // through a hit would make the long attacks strictly better than the short
+    // ones instead of a gamble against them. The stamina stays spent.
+    if (p.charging && dmg > 0) {
+      const name = SKILL_BY_KEY[p.charging.key]?.name ?? 'your swing';
+      p.charging = null;
+      this.msg(`${name} is knocked out of you.`, 'warn');
+    }
 
     if (p.warded > 0) {
       p.warded--;
@@ -775,7 +807,20 @@ export class Game {
   useSkill(key, dir, opts = {}) {
     // The two prepared slots ride the same path as a skill so that the button,
     // the drag gesture, the keyboard and the bot all have one way in.
-    if (this.player.recovering) { this.msg('You are still recovering.', 'warn'); return false; }
+    // Recovery burns the turn whatever you pressed, exactly as it does on the
+    // movement path. Returning false here meant the skill buttons were simply
+    // dead during a recovery - no turn passed, nothing happened - so the only
+    // way to spend the turns you had already committed to was to discover that
+    // the direction keys still worked. The bot found it as an infinite loop;
+    // a player would have found it as an interface that had stopped
+    // responding, which is worse.
+    if (this.player.recovering) {
+      this.msg(`You are still recovering. (${this.player.recover})`, 'warn');
+      return true;
+    }
+    // Whatever you pressed, the swing you already committed to is what happens.
+    // You cannot cancel it any more than a brute can cancel its overhead.
+    if (this.player.charging && !opts.resolving) return this.resolveCharge();
     if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir);
     const p = this.player;
     const def = SKILL_BY_KEY[key];
@@ -785,10 +830,13 @@ export class Game {
     // the UI, because the keyboard, the bot and a stale save all reach this
     // function without going past a button.
     if (!p.hasSkill(key)) { this.msg(`You are not holding anything that does that.`, 'warn'); return false; }
-    if (slot.cd > 0) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
+    if (slot.cd > 0 && !opts.resolving) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
 
+    // Paid on the turn it was declared, so it is not re-priced on the turn it
+    // lands. Charging this twice would refuse the blow *because* you had
+    // already bought it, and the bar is usually below the price by then.
     const cost = p.costOf(key);
-    if (!p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+    if (!opts.resolving && !p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
 
     if (def.defend) {
       const shield = p.shield;
@@ -815,8 +863,23 @@ export class Game {
       return false;                    // <- does not advance the turn
     }
 
+    // ---- wind-up: declare now, land next turn ----------------------------
+    // The player has read every enemy's wind-up all game; this is the same
+    // contract pointed the other way. Note what it costs that a recovery does
+    // not: the blow has not happened yet, so it can be taken away from you -
+    // by a hit, or simply by the target walking out of the lane.
+    if (def.windup && !opts.resolving) {
+      p.spend(cost);
+      p.charging = {
+        key, dx: dir.dx, dy: dir.dy,
+        tiles: def.pattern ? attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern) : null,
+      };
+      this.msg(`You draw back for ${def.name}.`, 'warn');
+      return true;                     // the declaration costs you the turn
+    }
+
     const m = p.mods(key);
-    p.spend(cost);
+    if (!opts.resolving) p.spend(cost);
     if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
     // Recovery is set AFTER the blow lands, and counts down in tick() - so the
     // turn you swung is yours and the turns after it are not.

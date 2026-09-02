@@ -179,14 +179,22 @@ export const SKILLS = [
     name: 'Rend',
     hint: 'a five-tile wall of your own',
     pattern: 'arc5',
+    windup: 1,
     damage: 6,
     impact: 6,
     stamina: 9,
-    cooldown: 0, recovery: 2,
+    cooldown: 0, recovery: 1,
     advancesTurn: true,
   },
 
   // ---- bow ----------------------------------------------------------------
+  // The bow is where wind-up earns its place. Recovery is a cost you pay by
+  // being reachable, so at range 11 it is worth nothing - which is why ranged
+  // attacks are exempt from the recovery rule and priced by cooldown instead.
+  // A wind-up is the opposite: it costs you *exactly* at range, because in the
+  // turn between the draw and the loose the target walks somewhere, and a lane
+  // you aimed at a moving thing is a lane it has left. Pierce trades half its
+  // cooldown for that, and becomes a shot you have to lead.
   {
     key: 'hurl',
     name: 'Loose',
@@ -203,14 +211,14 @@ export const SKILLS = [
   {
     key: 'pierce',
     name: 'Pierce',
-    hint: 'drawn all the way back',
+    hint: 'drawn all the way back - it lands next turn, so lead the target',
     ranged: true,
     damage: 5,
     impact: 2,
     range: 11,
     projectile: { speed: 4, glyph: '/', colour: '#e8dcb8' },
     stamina: 8,
-    cooldown: 4,
+    cooldown: 2, windup: 1,
     advancesTurn: true,
   },
 
@@ -248,7 +256,7 @@ export const SKILLS = [
   },
   {
     key: 'impale', name: 'Impale', hint: 'six tiles of lane, and a long recovery',
-    pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 0, recovery: 2,
+    pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 0, windup: 1, recovery: 1,
     advancesTurn: true,
   },
 
