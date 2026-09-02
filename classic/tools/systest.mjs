@@ -444,6 +444,47 @@ check('the save fits in a localStorage budget', () => {
 // ===========================================================================
 console.log('\n--- the run itself ---------------------------------------------');
 
+check('you can actually walk to the Amulet from the stairs you arrive on', () => {
+  // The other Amulet tests check the vault's geometry and that picking the
+  // thing up wins - but that one teleports the player onto it. Nothing ever
+  // checked the step in between: that a player who arrives on the bottom floor
+  // can *reach* the vault door.
+  //
+  // Worth pinning because a god bot - which cannot die and had 60,000 steps -
+  // has never once come back with the Amulet across two full sweeps. That
+  // turned out to be the bot never trying rather than the floor being sealed,
+  // but "the game is winnable" is the single most important property here and
+  // it was resting on a test that skipped the walking.
+  let viaDoor = 0;
+  for (let s = 0; s < 20; s++) {
+    const lvl = generateLevel(DUNGEON_DEPTH, new RNG(`reach:${s}`));
+    let up = null;
+    for (let y = 0; y < lvl.h && !up; y++)
+      for (let x = 0; x < lvl.w && !up; x++) if (isUp(lvl.at(x, y))) up = { x, y };
+    assert(up, `seed ${s}: nowhere to arrive on the bottom floor`);
+
+    // Flood fill through open floor and through the vault's own locked door,
+    // which the player can kick. Anything else would be a wall to walk round.
+    const seen = new Set([`${up.x},${up.y}`]);
+    const q = [up];
+    while (q.length) {
+      const c = q.pop();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = c.x + dx, y = c.y + dy, k = `${x},${y}`;
+        if (seen.has(k)) continue;
+        const t = lvl.at(x, y);
+        if (!(isWalkable(t) || t === T.DOOR_LOCKED)) continue;
+        seen.add(k); q.push({ x, y });
+      }
+    }
+    const a = lvl.amuletSpot;
+    assert(seen.has(`${a.x},${a.y}`),
+           `seed ${s}: the Amulet cannot be reached from the up stairs at all`);
+    viaDoor++;
+  }
+  return `${viaDoor} bottom floors, the vault reachable on every one`;
+});
+
 await checkAsync('the Amulet can be taken and carried out to win', async () => {
   const g = freshGame('win', 'valkyrie');
   g.gotoLevel(DUNGEON_DEPTH, 'up');
