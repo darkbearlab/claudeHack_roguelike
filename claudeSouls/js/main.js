@@ -4,6 +4,7 @@ import { Game, VERSION, DUNGEON_DEPTH } from './game/game.js';
 import { UI } from './ui/ui.js';
 import { RNG, makeSeedPhrase } from '../../engine/rng.js';
 import { ENEMIES } from './data/enemies.js';
+import { ITEMS, CONSUMABLES } from './data/items.js';
 import { SKILLS } from './data/skills.js';
 import { saveSummary, loadGame, clearSave, saveGame } from './game/save.js';
 
@@ -80,11 +81,45 @@ function render() {
   }
 }
 
+/**
+ * Testing switch: start holding one of everything.
+ *
+ * Deliberately here, in the thing that starts an *interactive* run, and NOT in
+ * `newGame()`. The bot and the test suite both call newGame, and if they
+ * inherited this then every balance number in DESIGN.md would quietly become a
+ * measurement of a different game - the bot would be choosing from twelve
+ * weapons instead of playing the kit its numbers were gathered with.
+ *
+ * On by default because it was asked for; `?gear=kit` gives the real start
+ * back without editing anything, and flipping the constant turns it off for
+ * good. Nothing else in the codebase can reach it.
+ */
+const TEST_ALL_GEAR = true;
+
+function stockEverything(game) {
+  const p = game.player;
+  const worn = new Set([p.equip.main, p.equip.off, p.equip.armour]);
+  for (const it of ITEMS) {
+    if (!worn.has(it.key) && !p.pack.includes(it.key)) p.pack.push(it.key);
+  }
+  for (const c of CONSUMABLES) {
+    if (!p.pack.includes(c.key)) p.pack.push(c.key);
+    // Stocked full, and a bonfire refills them like anything else.
+    if (p.charges[c.key] === undefined) p.charges[c.key] = c.charges;
+  }
+  game.msg(`測試模式:全部 ${ITEMS.length} 件裝備、${CONSUMABLES.length} 個消耗品都給你了(?gear=kit 可以拿掉)。`, 'good');
+}
+
 function start() {
   const name = body.querySelector('#name').value.trim() || randomName();
   const seed = body.querySelector('#seed').value.trim() ||
                makeSeedPhrase(new RNG(Date.now() ^ Math.floor(performance.now() * 1000)));
-  launch((game) => game.newGame({ seed, name, vow }));
+  launch((game) => {
+    game.newGame({ seed, name, vow });
+    const params = new URLSearchParams(location.search);
+    if (TEST_ALL_GEAR && params.get('gear') !== 'kit') stockEverything(game);
+    return true;
+  });
 }
 
 function resume() {
