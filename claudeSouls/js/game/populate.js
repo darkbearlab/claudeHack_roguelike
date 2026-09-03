@@ -34,7 +34,8 @@ export function populate(game, lvl, rng) {
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
 
   const place = (key) => {
-    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 7 });
+    const spot = lvl.randomFreeSpot(rng, {
+      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7, avoidBonfires: true });
     if (!spot) return 0;
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
@@ -85,6 +86,7 @@ function nearbyFree(lvl, x, y, r, rng) {
       if (lvl.enemyAt(nx, ny)) continue;
       const t = lvl.at(nx, ny);
       if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE) continue;
+      if (lvl.isSanctuary(nx, ny)) continue;      // group members too
       out.push({ x: nx, y: ny });
     }
   }
@@ -170,7 +172,9 @@ export function placeGuards(game, lvl, rng) {
   // Deeper floors get a second one, so a storeroom stays a fight rather than a
   // toll booth once you outgrow the first guard.
   if (placed && lvl.depth >= 5) {
-    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true });
+    // avoidBonfires here too: the box below is "roughly the storeroom" rather
+    // than the storeroom, so it reaches into whatever is next door.
+    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, avoidBonfires: true });
     if (spot && Math.abs(spot.x - store.x) <= room.w && Math.abs(spot.y - store.y) <= room.h) {
       const e = new Enemy(key, rng);
       e.aware = true; e.guarding = true;
@@ -243,7 +247,7 @@ const PACKS = [
  */
 function placePack(game, lvl, rng, pack) {
   const anchor = lvl.randomFreeSpot(rng, {
-    roomsOnly: true, awayFrom: lvl.upStair, minDist: 9,
+    roomsOnly: true, awayFrom: lvl.upStair, minDist: 9, avoidBonfires: true,
   });
   if (!anchor) return 0;
 
@@ -254,7 +258,8 @@ function placePack(game, lvl, rng, pack) {
 
   for (const key of pack.members) {
     const spot = spots.find((s) =>
-      lvl.inBounds(s.x, s.y) && lvl.at(s.x, s.y) === T.FLOOR && !lvl.enemyAt(s.x, s.y));
+      lvl.inBounds(s.x, s.y) && lvl.at(s.x, s.y) === T.FLOOR && !lvl.enemyAt(s.x, s.y) &&
+      !lvl.isSanctuary(s.x, s.y));
     if (!spot) break;
     placed += spawn(game, lvl, key, spot.x, spot.y, rng);
     spots.splice(spots.indexOf(spot), 1);
@@ -324,7 +329,8 @@ const pickFrom = (table, depth, rng) => {
 export function placeElite(game, lvl, rng, depth) {
   if (depth < 3 || depth >= DUNGEON_DEPTH) return 0;
 
-  const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 10 });
+  const spot = lvl.randomFreeSpot(rng, {
+    roomsOnly: true, awayFrom: lvl.upStair, minDist: 10, avoidBonfires: true });
   if (!spot) return 0;
 
   const key = pickFrom(ELITES, depth, rng);

@@ -2084,6 +2084,63 @@ check('every skill can be used in every direction', () => {
   return `${SKILLS.length} skills x 8 directions`;
 });
 
+check('nothing spawns in the room with the fire in it', () => {
+  // You respawn at a bonfire, and resting is refused while anything is hunting
+  // you - so a pack spawned around the fire means the first thing a death buys
+  // you is a fight you did not pick, at the exact moment the game promised a
+  // breath. Keeping enemies off the fire's own tile never helped: they stood
+  // next to it.
+  //
+  // Checked as a consequence over real floors rather than by asserting that
+  // each placement function was passed the right flag - there are five ways an
+  // enemy can be placed and the last one found was a *second* chest guard,
+  // positioned by a loose box around the storeroom that reached next door.
+  let floors = 0, inside = 0, adjacent = 0, enemies = 0, fewest = 99;
+  for (let s = 0; s < 12; s++) {
+    const g = freshGame(`fire-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      floors++;
+      const live = lvl.livingEnemies();
+      enemies += live.length;
+      fewest = Math.min(fewest, live.length);
+      for (const e of live) {
+        if (lvl.isSanctuary(e.x, e.y)) inside++;
+        for (const b of lvl.bonfires) {
+          if (Math.max(Math.abs(e.x - b.x), Math.abs(e.y - b.y)) <= 1) adjacent++;
+        }
+      }
+    }
+  }
+  assert(inside === 0, `${inside} enemies spawned in a bonfire room`);
+  assert(adjacent === 0, `${adjacent} enemies spawned next to a bonfire`);
+  // And the floors did not go quiet to achieve it.
+  assert(fewest >= 3, `a floor came out with only ${fewest} enemies`);
+  return `${floors} floors, ${(enemies / floors).toFixed(1)} enemies each, none at a fire`;
+});
+
+check('a chest still has something standing over it', () => {
+  // The other half. Keeping enemies away from fires must not quietly remove
+  // the guard a storeroom is promised - the easy way to satisfy the rule above
+  // is to stop placing things, and that would look identical from the outside.
+  let stores = 0, guarded = 0;
+  for (let s = 0; s < 12; s++) {
+    const g = freshGame(`guard-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      if (!lvl.store) continue;
+      const r = lvl.rooms.find((q) => q.id === lvl.store.room);
+      if (!r) continue;
+      stores++;
+      if (lvl.livingEnemies().some((e) =>
+            e.x >= r.x && e.x < r.x + r.w && e.y >= r.y && e.y < r.y + r.h)) guarded++;
+    }
+  }
+  assert(stores > 0, 'no storerooms generated at all');
+  assert(guarded === stores, `${stores - guarded} of ${stores} chest rooms lost their guard`);
+  return `${stores} chest rooms, all guarded`;
+});
+
 check('the boss is only on the bottom floor', () => {
   for (let s = 0; s < 6; s++) {
     const g = freshGame(`nb:${s}`);

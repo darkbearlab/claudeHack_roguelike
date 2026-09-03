@@ -461,11 +461,22 @@ export function placeStoreroom(lvl, rng, depth) {
 
   // Never the room you arrive in, and never the one with the fire in it.
   const taken = new Set();
-  for (const b of lvl.bonfires) taken.add(roomAt(lvl, b.x, b.y)?.id);
   if (lvl.upStair) taken.add(roomAt(lvl, lvl.upStair.x, lvl.upStair.y)?.id);
   if (lvl.downStair) taken.add(roomAt(lvl, lvl.downStair.x, lvl.downStair.y)?.id);
 
-  const options = lvl.rooms.filter((r) => !taken.has(r.id) && r.w >= 4 && r.h >= 3);
+  // Asked of the level rather than computed here, so that this and the enemy
+  // placement cannot drift apart. They already had: this used to exclude a
+  // room *containing* a fire, which says nothing about a fire out in the
+  // corridor - so a chest room could sit right beside one, and the guard the
+  // chest is promised would spawn two tiles from the bonfire you respawn at.
+  const nearFire = (r) => {
+    for (let y = r.y; y < r.y + r.h; y++) {
+      for (let x = r.x; x < r.x + r.w; x++) if (lvl.isSanctuary(x, y)) return true;
+    }
+    return false;
+  };
+
+  const options = lvl.rooms.filter((r) => !taken.has(r.id) && !nearFire(r) && r.w >= 4 && r.h >= 3);
   if (!options.length) return;
   const room = rng.pick(options);
   room.type = 'store';

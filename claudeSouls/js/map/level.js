@@ -155,8 +155,37 @@ export class Level {
   }
 
   /** A free walkable square with nothing standing on it. */
+  /**
+   * Ground a bonfire makes safe to spawn on.
+   *
+   * `avoidFeatures` already kept enemies off the fire's own tile, which stopped
+   * nothing: you wake at the fire and a pack is standing round it, and because
+   * resting is refused while anything is hunting you, the bonfire you just
+   * respawned at is unusable. The walk back from a death turns into a fight you
+   * did not choose, at the exact moment the game had promised you a breath.
+   *
+   * The room, then, not the tile. The store-room chooser in mapgen has always
+   * done exactly this - "never the one with the fire in it" - and this is the
+   * same rule finally applied to the things that can kill you.
+   *
+   * A bonfire in a corridor has no room to protect, so it gets a radius wide
+   * enough to cover a pack's two-tile spread instead.
+   */
+  isSanctuary(x, y) {
+    for (const b of this.bonfires) {
+      const room = this.roomAt(b.x, b.y);
+      if (room) {
+        if (x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h) return true;
+      } else if (Math.max(Math.abs(x - b.x), Math.abs(y - b.y)) <= 3) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   randomFreeSpot(rng, opts = {}) {
-    const { roomsOnly = false, awayFrom = null, minDist = 0, avoidFeatures = true } = opts;
+    const { roomsOnly = false, awayFrom = null, minDist = 0, avoidFeatures = true,
+            avoidBonfires = false } = opts;
     const taken = new Set();
     for (const e of this.enemies) if (e.alive) taken.add(this.idx(e.x, e.y));
 
@@ -168,6 +197,7 @@ export class Level {
         if (!isWalkable(t)) continue;
         if (taken.has(i)) continue;
         if (avoidFeatures && (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE)) continue;
+        if (avoidBonfires && this.isSanctuary(x, y)) continue;
         if (roomsOnly && !this.roomAt(x, y)) continue;
         if (awayFrom && Math.max(Math.abs(x - awayFrom.x), Math.abs(y - awayFrom.y)) < minDist) continue;
         spots.push({ x, y });
