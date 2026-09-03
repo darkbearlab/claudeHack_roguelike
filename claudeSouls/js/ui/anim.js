@@ -168,6 +168,35 @@ export class Animator {
   }
 
   /**
+   * The part of an actor's offset that the CAMERA is allowed to follow.
+   *
+   * Movement only. When you walk, the camera has to travel with the sprite or
+   * it arrives at the new tile a frame after you press the key and the little
+   * figure is left visibly running to catch up with its own viewport - the
+   * world jumps, then you slide into it.
+   *
+   * A lunge and a flinch are the opposite case: they are the sprite leaving
+   * its tile on purpose, and a camera that chased them would swing the whole
+   * world every time anything swung at you. So the split is not "player vs
+   * enemy", it is **displacement that means you went somewhere** versus
+   * **displacement that means something happened to you**.
+   */
+  moveOffsetFor(uid) {
+    if (!this.raf) return null;
+    const t = this.now();
+    let dx = 0, dy = 0;
+    for (const e of this.events) {
+      if (e.uid !== uid || (e.kind !== 'move' && e.kind !== 'knock')) continue;
+      const p = clamp01((t - e.at) / this.durationOf(e));
+      if (p <= 0 || p >= 1) continue;
+      const ease = 1 - (1 - p) * (1 - p);
+      dx += lerp(e.from.x - e.to.x, 0, ease);
+      dy += lerp(e.from.y - e.to.y, 0, ease);
+    }
+    return (dx || dy) ? { dx, dy } : null;
+  }
+
+  /**
    * Where to draw an actor right now, relative to its own tile, in tiles.
    *
    * Sprite-local on purpose. The camera is locked to the player's tile centre,

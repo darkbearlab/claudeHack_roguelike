@@ -114,13 +114,23 @@ export class Renderer {
    * on the map adds this offset, so the player's tile centre is the canvas
    * centre exactly.
    */
-  viewport() {
+  viewport(animated = false) {
     const p = this.game.player;
     const { cell, cols, rows, W, H } = this.metrics();
     const ox = p.x - Math.floor(cols / 2);
     const oy = p.y - Math.floor(rows / 2);
-    const offX = Math.round(W / 2 - ((p.x - ox) * cell + cell / 2));
-    const offY = Math.round(H / 2 - ((p.y - oy) * cell + cell / 2));
+    let offX = Math.round(W / 2 - ((p.x - ox) * cell + cell / 2));
+    let offY = Math.round(H / 2 - ((p.y - oy) * cell + cell / 2));
+
+    // Travel with the sprite while it is walking. The player's own move offset
+    // is subtracted from the origin, which shifts the whole map by exactly the
+    // amount the sprite is displaced - so the two cancel, the figure stays
+    // pinned to the centre of the screen, and it is the world that slides.
+    // Only movement: see Animator.moveOffsetFor.
+    if (animated) {
+      const m = this.anim?.moveOffsetFor(0);
+      if (m) { offX -= Math.round(m.dx * cell); offY -= Math.round(m.dy * cell); }
+    }
     return { cell, cols, rows, ox, oy, offX, offY, W, H };
   }
 
@@ -149,7 +159,10 @@ export class Renderer {
     const ctx = this.ctx;
     const lvl = this.game.level;
     const p = this.game.player;
-    const v = this.viewport();
+    // Drawing uses the travelling camera; hit-testing (cellAt / cellCentre)
+    // deliberately does not, so which tile a tap lands on never depends on
+    // how far through a walk animation the screen happens to be.
+    const v = this.viewport(true);
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, v.W, v.H);

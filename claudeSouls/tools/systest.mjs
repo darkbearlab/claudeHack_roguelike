@@ -21,7 +21,7 @@ import { TRACKS, soulsFor, priceOf } from '../js/data/souls.js';
 import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
-import { planCycle } from '../js/ui/anim.js';
+import { planCycle, Animator } from '../js/ui/anim.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -2083,6 +2083,53 @@ check('every skill can be used in every direction', () => {
     }
   }
   return `${SKILLS.length} skills x 8 directions`;
+});
+
+check('the camera walks with you but does not flinch with you', () => {
+  // Two failures, one on each side of the same line.
+  //
+  // Let the camera follow everything and a lunge swings the entire world -
+  // that is the jitter that locking the camera to the player was introduced to
+  // fix, and it must not come back through the animator.
+  //
+  // Let it follow nothing and walking is worse: the view arrives at the new
+  // tile immediately while the sprite is still sliding in from the old one, so
+  // the world jumps and the little figure visibly runs to catch up with its
+  // own viewport.
+  //
+  // So the split is not player-versus-enemy, it is "displacement that means
+  // you went somewhere" against "displacement that means something happened
+  // to you".
+  const a = new Animator(() => {});
+  const lay = (evs) => {
+    const plan = planCycle(evs);
+    a.events = plan.events;
+    a.span = plan.span;
+    a.raf = 1;                       // pretend a frame loop is running
+  };
+  // Freeze the clock: the two accessors each read the time themselves, and
+  // sampling them microseconds apart makes an exact comparison fail on the
+  // far decimals of the easing curve.
+  const at = (ms) => { a.now = () => ms; };
+
+  lay([{ kind: 'move', uid: 0, round: 0, from: { x: 4, y: 7 }, to: { x: 5, y: 7 } }]);
+  at(60);
+  const walkAll = a.offsetFor(0);
+  const walkCam = a.moveOffsetFor(0);
+  assert(walkAll && walkCam, 'a walk produced no offset at all');
+  assert(Math.abs(walkCam.dx - walkAll.dx) < 1e-9,
+         'the camera does not follow the whole of a walk, so the sprite would lag it');
+
+  lay([{ kind: 'attack', uid: 0, round: 0, dx: 1, dy: 0 },
+       { kind: 'hit', uid: 0, round: 0 }]);
+  at(70);
+  const swing = a.offsetFor(0);
+  assert(swing && swing.dx !== 0, 'a lunge moved the sprite nowhere');
+  assert(a.moveOffsetFor(0) === null,
+         'the camera follows a lunge, which swings the whole world on every swing');
+
+  a.raf = 0;
+  return 'camera carries movement, ignores lunges and flinches';
 });
 
 check('the show costs the same whether one thing acted or thirty', () => {
