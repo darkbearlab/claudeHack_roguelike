@@ -2085,6 +2085,41 @@ check('every skill can be used in every direction', () => {
   return `${SKILLS.length} skills x 8 directions`;
 });
 
+check('changing floor is not travelling across one', () => {
+  // Movement is derived by diffing positions, and a diff cannot tell "walked
+  // one tile" from "was picked up and put somewhere else". A staircase is the
+  // second kind: measured, it moves you about thirty tiles onto a map where
+  // the old coordinates mean nothing. Played as movement, the camera slides
+  // that whole distance every time you descend.
+  const g = freshGame('stairs-fx');
+  g.fx.enabled = true;
+  const d = g.level.downStair;
+  g.player.x = d.x; g.player.y = d.y;
+
+  g.fx.clear(); g.fx.begin(0, g);
+  g.descend();
+  g.fx.end(g);
+  const evs = g.fx.take();
+  assert(g.player.depth === 2, 'the test did not actually descend');
+  assert(!evs.some((e) => e.kind === 'move' || e.kind === 'knock'),
+         'a staircase was logged as movement, so the camera slides across the floor');
+  assert(evs.some((e) => e.kind === 'level'), 'a floor change drew no curtain');
+  // And the curtain must not hold up the next thing you do - it is covering a
+  // cut that already happened, not delaying one.
+  assert(planCycle(evs).gateEnd === 0, 'the floor-change curtain gates input');
+
+  // An ordinary step is still a step.
+  g.fx.clear(); g.fx.begin(0, g);
+  g.step(1, 0);
+  g.fx.end(g);
+  const step = g.fx.take().filter((e) => e.kind === 'move');
+  assert(step.length === 1 &&
+         Math.max(Math.abs(step[0].from.x - step[0].to.x),
+                  Math.abs(step[0].from.y - step[0].to.y)) === 1,
+         'an ordinary step stopped being logged as movement');
+  return 'stairs draw a curtain and snap; a step still slides one tile';
+});
+
 check('the camera walks with you but does not flinch with you', () => {
   // Two failures, one on each side of the same line.
   //

@@ -32,6 +32,7 @@ export class FxLog {
   begin(round, game) {
     if (!this.enabled) return;
     this.round = round;
+    this.depth = game.player.depth;
     this.before.clear();
     const p = game.player;
     this.before.set(PLAYER_UID, { x: p.x, y: p.y });
@@ -62,6 +63,23 @@ export class FxLog {
    */
   end(game) {
     if (!this.enabled) return;
+
+    // Changing floor is not travelling across one.
+    //
+    // The diff below cannot tell "walked one tile" from "was relocated", and a
+    // staircase moves you about thirty tiles - measured, seed 'stairs' goes
+    // 7,3 -> 36,5 - onto a map where the old coordinates mean nothing at all.
+    // Played as movement the camera slides that whole distance, which is the
+    // lurch you see on every descent. Same family as your own death, which
+    // rebuilds every floor and is already excluded for the same reason.
+    //
+    // A curtain instead: the cut is honest, and the fade covers the tiles and
+    // the fog arriving underneath it.
+    if (game.player.depth !== this.depth) {
+      this.before.clear();
+      this.add({ kind: 'level' });
+      return;
+    }
     const hit = new Set(this.events.filter((e) => e.round === this.round && e.kind === 'hit')
                                    .map((e) => e.uid));
     const now = (uid) => (uid === PLAYER_UID

@@ -219,6 +219,15 @@ export class Renderer {
 
     // --- death, above everything: it is the one thing you must not miss
     this.drawParticles(ctx, v);
+
+    // --- the curtain over a floor change, above even that
+    const curtain = this.anim?.curtain ?? 0;
+    if (curtain > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${curtain})`;
+      ctx.fillRect(0, 0, v.W, v.H);
+      ctx.restore();
+    }
   }
 
   // --------------------------------------------------------------- terrain

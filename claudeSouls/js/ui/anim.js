@@ -27,6 +27,7 @@ const MOVE_MS = 130;
 const ATTACK_MS = 150;
 const HIT_MS = 190;
 const DIE_MS = 340;
+const LEVEL_MS = 260;      // the curtain over a floor change
 
 /** How far into its own animation each stage begins, once it has content. */
 const AFTER_MOVE = 105;    // the slide is nearly home before a swing starts
@@ -56,6 +57,9 @@ export function planRound(events, t0) {
   if (has('hit', 'knock')) { at.hit = t; t += AFTER_HIT; }
   // Deaths hang off the hit that caused them, or off t0 if nothing hit.
   if (has('die')) at.die = at.hit ?? at.attack ?? t0;
+  // A floor change plays at once and gates nothing: it is covering a cut that
+  // has already happened, not delaying one.
+  if (has('level')) at.level = t0;
 
   for (const e of events) {
     e.at = at[e.kind === 'knock' ? 'hit' : e.kind] ?? t0;
@@ -76,7 +80,8 @@ export function planCycle(events) {
   const r1 = evs.filter((e) => e.round !== 0);
   const end0 = planRound(r0, 0);
   const end1 = planRound(r1, end0);
-  const dur = (e) => ({ move: MOVE_MS, knock: MOVE_MS, attack: ATTACK_MS, hit: HIT_MS, die: DIE_MS }[e.kind] ?? 0);
+  const dur = (e) => ({ move: MOVE_MS, knock: MOVE_MS, attack: ATTACK_MS,
+                        hit: HIT_MS, die: DIE_MS, level: LEVEL_MS }[e.kind] ?? 0);
   const span = evs.length ? Math.max(end1, ...evs.map((e) => e.at + dur(e))) : 0;
   return { events: evs, span, gateEnd: end1, roundBoundary: end0 };
 }
@@ -90,6 +95,7 @@ export class Animator {
     this.span = 0;
     this.raf = 0;
     this.flash = 0;              // full-screen wash, for your own death
+    this.curtain = 0;            // black over the map, for a floor change
   }
 
   get running() { return this.raf !== 0; }
@@ -125,12 +131,19 @@ export class Animator {
       case 'attack': return ATTACK_MS;
       case 'hit': return HIT_MS;
       case 'die': return DIE_MS;
+      case 'level': return LEVEL_MS;
       default: return 0;
     }
   }
 
   tick = () => {
     const t = this.now();
+    this.curtain = 0;
+    for (const e of this.events) {
+      if (e.kind !== 'level') continue;
+      const p = clamp01((t - e.at) / LEVEL_MS);
+      if (p < 1) this.curtain = Math.max(this.curtain, 1 - p);
+    }
     this.spawnDue(t);
     this.stepParticles();
     this.onFrame();
@@ -237,6 +250,7 @@ export class Animator {
     this.stop();
     this.particles = [];
     this.flash = 0;
+    this.curtain = 0;
     this.onFrame();
   }
 
