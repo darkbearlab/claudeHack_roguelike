@@ -36,6 +36,7 @@ import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
 import { populate, spawnBoss } from './populate.js';
+import { FxLog } from './fx.js';
 import { saveGame, clearSave } from './save.js';
 
 export const VERSION = '0.1.0';
@@ -45,6 +46,7 @@ export class Game {
     this.ui = ui;
     this.running = false;
     this.busy = false;
+    this.fx = new FxLog();
   }
 
   // =========================================================================
@@ -195,7 +197,10 @@ export class Game {
         this.worldTurn();
         return;
       }
+      this.fx.clear();
+      this.fx.begin(0, this);
       const spent = await this.doCommand(key);
+      this.fx.end(this);
       if (spent && this.running) this.worldTurn();
     } catch (err) {
       console.error(err);
@@ -207,12 +212,13 @@ export class Game {
   }
 
   worldTurn() {
+    this.fx.begin(1, this);
     this.turn++;
     this.player.turns++;
     this.player.tick(this.inCombat());
 
     stepProjectiles(this);
-    if (!this.running) return;
+    if (!this.running) { this.fx.end(this); return; }
 
     for (const e of [...this.level.enemies]) {
       if (!e.alive) continue;
@@ -246,6 +252,8 @@ export class Game {
 
     this.level.removeDead();
     this.afterMove();
+    this.fx.end(this);
+
   }
 
   afterMove() {
@@ -291,6 +299,7 @@ export class Game {
   hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
+    this.fx.add({ kind: 'hit', uid: 0, x: p.x, y: p.y });
 
     // A declared blow is lost if something lands on you first. No poise check:
     // the player is one person, not a troll, and a wind-up you can carry
@@ -333,8 +342,12 @@ export class Game {
     let dmg = amount;
     if (byPlayer && this.player.edge) { dmg += this.player.edge; this.player.edge = 0; }
     e.hp -= dmg;
+    this.fx.add({ kind: 'hit', uid: e.uid, x: e.x, y: e.y });
     if (byPlayer && impact > 0) e.stagger(impact);
     if (e.hp <= 0) {
+      // Recorded here, while it still has a position. A moment later it is off
+      // the enemy list and there is nothing left to draw a death for.
+      this.fx.add({ kind: 'die', uid: e.uid, x: e.x, y: e.y });
       e.alive = false;
       this.level.markEnemiesDirty();
       this.stats.kills++;
@@ -878,6 +891,10 @@ export class Game {
       return true;                     // the declaration costs you the turn
     }
 
+    if (!def.move && !def.defend) {
+      this.fx.add({ kind: 'attack', uid: 0, x: p.x, y: p.y, dx: dir.dx, dy: dir.dy });
+    }
+
     const m = p.mods(key);
     if (!opts.resolving) p.spend(cost);
     if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
@@ -1032,6 +1049,14 @@ export class Game {
    */
   die(source) {
     const p = this.player;
+    // Recorded before anything else, because everything else destroys the
+    // scene: dropUnbanked, then respawnLevel rebuilds every floor, then the
+    // player is teleported to a bonfire that may be on a different depth.
+    // Particles drawn from the post-state would land on the wrong map at
+    // coordinates that no longer mean anything - so this event carries a
+    // `final` flag and the animator plays it as a screen effect rather than
+    // as something happening on a tile.
+    this.fx.add({ kind: 'die', uid: 0, x: p.x, y: p.y, final: true });
     p.deaths++;
     this.stats.deaths++;
     this.msg(`You are killed by ${source}.`, 'bad');

@@ -177,7 +177,10 @@ export class Renderer {
       const rx = e.x - v.ox, ry = e.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       if (!lvl.isVisible(e.x, e.y)) continue;
-      this.drawEnemy(ctx, e, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
+      const off = this.anim?.offsetFor(e.uid);
+      this.drawEnemy(ctx, e,
+        rx * v.cell + v.offX + (off?.dx ?? 0) * v.cell,
+        ry * v.cell + v.offY + (off?.dy ?? 0) * v.cell, v.cell, off?.flash ?? 0);
     }
 
     // --- projectiles, above actors: they are the most urgent thing on screen
@@ -188,13 +191,21 @@ export class Renderer {
       this.drawProjectile(ctx, pr, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
-    // --- the player
-    this.drawPlayer(ctx, p, (p.x - v.ox) * v.cell + v.offX, (p.y - v.oy) * v.cell + v.offY, v.cell);
+    // --- the player. The offset is added HERE, to the sprite, and never to
+    // the view origin - the camera is locked to the player's tile centre, and
+    // an offset that reached it would lurch the whole world on every swing.
+    const poff = this.anim?.offsetFor(0);
+    this.drawPlayer(ctx, p,
+      (p.x - v.ox) * v.cell + v.offX + (poff?.dx ?? 0) * v.cell,
+      (p.y - v.oy) * v.cell + v.offY + (poff?.dy ?? 0) * v.cell, v.cell, poff?.flash ?? 0);
 
     // --- threats the bigger tiles pushed off the edge
     this.drawOffscreenThreats(ctx, v);
 
     if (this.overlayTrail) this.drawTrail(ctx, v);
+
+    // --- death, above everything: it is the one thing you must not miss
+    this.drawParticles(ctx, v);
   }
 
   // --------------------------------------------------------------- terrain
@@ -439,7 +450,7 @@ export class Renderer {
 
   // --------------------------------------------------------------- actors
 
-  drawEnemy(ctx, e, px, py, cell) {
+  drawEnemy(ctx, e, px, py, cell, hurt = 0) {
     const winding = e.state === STATE.WINDUP;
     const spent = e.state === STATE.RECOVER || e.state === STATE.RESTING;
 
@@ -455,6 +466,8 @@ export class Renderer {
     // An elite is a normal species with more of it, so it needs to be readable
     // as one at a glance - the sprite is the same and the name only shows in
     // the log.
+    if (hurt > 0) this.hurtWash(ctx, px, py, cell, hurt);
+
     if (e.elite) this.glow(ctx, px, py, cell, 232, 150, 60);
 
     // State badge. The player should never have to click to learn this.
@@ -483,7 +496,7 @@ export class Renderer {
     }
   }
 
-  drawPlayer(ctx, p, px, py, cell) {
+  drawPlayer(ctx, p, px, py, cell, hurt = 0) {
     // A warm pool of light under the player, drawn first.
     //
     // Not decoration: the generated hero sprites are dark-clothed figures on a
@@ -501,6 +514,42 @@ export class Renderer {
       if (img) this.blit(ctx, img, px, py, cell, 1, 1, spriteRotation(p.facing.dx, p.facing.dy, p.sprite));
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
+    if (hurt > 0) this.hurtWash(ctx, px, py, cell, hurt);
+  }
+
+  /**
+   * The red that says "that one landed".
+   *
+   * Inset rather than filling the cell: a full tile of red reads as something
+   * happening to the *floor*, and this is the one moment the player needs to
+   * attribute to a creature. Kept as a wash rather than a tint of the sprite
+   * because tinting means an offscreen canvas per sprite per frame, and this
+   * has to run on a phone at fourteen enemies.
+   */
+  hurtWash(ctx, px, py, cell, a) {
+    const pad = cell * 0.11;
+    ctx.save();
+    ctx.fillStyle = `rgba(226,46,40,${0.62 * a})`;
+    ctx.fillRect(px + pad, py + pad, cell - pad * 2, cell - pad * 2);
+    ctx.strokeStyle = `rgba(255,150,130,${0.8 * a})`;
+    ctx.lineWidth = Math.max(1, cell * 0.04);
+    ctx.strokeRect(px + pad, py + pad, cell - pad * 2, cell - pad * 2);
+    ctx.restore();
+  }
+
+  drawParticles(ctx, v) {
+    const ps = this.anim?.particles;
+    if (!ps?.length) return;
+    ctx.save();
+    for (const q of ps) {
+      const rx = q.x - v.ox, ry = q.y - v.oy;
+      if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
+      const s = Math.max(1.5, v.cell * 0.11) * (0.4 + q.life * 0.6);
+      ctx.globalAlpha = Math.max(0, Math.min(1, q.life));
+      ctx.fillStyle = q.life > 0.55 ? '#ff5a4a' : '#8e1f1c';
+      ctx.fillRect(rx * v.cell + v.offX - s / 2, ry * v.cell + v.offY - s / 2, s, s);
+    }
+    ctx.restore();
   }
 
   /**

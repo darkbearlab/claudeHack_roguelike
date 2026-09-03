@@ -21,6 +21,7 @@ import { TRACKS, soulsFor, priceOf } from '../js/data/souls.js';
 import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.js';
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
+import { planCycle } from '../js/ui/anim.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -2082,6 +2083,104 @@ check('every skill can be used in every direction', () => {
     }
   }
   return `${SKILLS.length} skills x 8 directions`;
+});
+
+check('the show costs the same whether one thing acted or thirty', () => {
+  // Measured before this was built: a turn contains 10 visible events at the
+  // median (5040 turns sampled), and playing them one after another at 120ms
+  // is 1.2 seconds - per turn, typically, not in the worst case. Staging by
+  // kind of event instead of by actor is what makes the cost flat, and flat is
+  // the whole reason the design is shaped this way.
+  const hits = (n) => Array.from({ length: n }, (_, i) => ({ kind: 'hit', uid: i + 1, round: 0 }));
+  const spans = [1, 3, 8, 14, 30].map((n) =>
+    planCycle([{ kind: 'attack', uid: 0, round: 0, dx: 1, dy: 0 }, ...hits(n)]).span);
+  assert(new Set(spans).size === 1,
+         `span grows with the crowd: ${spans.join(', ')}ms for 1/3/8/14/30 targets`);
+  return `${spans[0]}ms for anything from 1 to 30 targets`;
+});
+
+check('a stage with nothing in it takes no time', () => {
+  // This game is mostly walking. If every stage claimed its slot, a step down
+  // an empty corridor would cost most of a second and exploring would feel
+  // like wading.
+  const walk = planCycle([{ kind: 'move', uid: 0, round: 0,
+                            from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }]).span;
+  const fight = planCycle([{ kind: 'attack', uid: 0, round: 0, dx: 1, dy: 0 },
+                           { kind: 'hit', uid: 1, round: 0 }]).span;
+  assert(planCycle([]).span === 0, 'an empty turn still costs time');
+  assert(walk < fight, `walking (${walk}ms) is not cheaper than fighting (${fight}ms)`);
+  return `walk ${walk}ms, fight ${fight}ms, idle 0ms`;
+});
+
+check('a corpse is never seen to swing', () => {
+  // Everything in a turn resolves simultaneously, but what you did and what
+  // they did back are separate rounds, and they must stay separate on the
+  // clock. Merged into one set of stages, an enemy you killed would play its
+  // attack alongside the survivors' - it had none, because it was already dead
+  // when they acted, and the show would be inventing one.
+  const plan = planCycle([
+    { kind: 'attack', uid: 0, round: 0, dx: 1, dy: 0 },
+    { kind: 'hit', uid: 1, round: 0 },
+    { kind: 'die', uid: 1, round: 0, x: 3, y: 3 },
+    { kind: 'attack', uid: 2, round: 1, dx: -1, dy: 0 },
+    { kind: 'hit', uid: 0, round: 1 },
+  ]);
+  const yours = plan.events.filter((e) => e.round === 0);
+  const theirs = plan.events.filter((e) => e.round === 1);
+  const lastYours = Math.max(...yours.map((e) => e.at));
+  assert(theirs.every((e) => e.at >= lastYours),
+         'their round starts before yours has finished');
+  return `yours ends ${Math.round(plan.roundBoundary)}ms, theirs starts after`;
+});
+
+check('the log records what the finished state can no longer tell you', () => {
+  // worldTurn resolves everything before anything can be drawn, so the show
+  // cannot read the result - the dead are off the enemy list and the shoved
+  // are already at their destination. Two things have to survive that.
+  const { g, e } = arena('fxlog', 'husk', 1);
+  g.fx.enabled = true;
+  const p = g.player;
+  p.equipItem(SLOT.MAIN, 'falchion');          // chop knocks things back
+  p.stamina = p.staminaMax;
+
+  // 1. knockback is movement CAUSED BY a hit, so it must not be filed as
+  //    ordinary movement - played in the movement stage it would show the
+  //    target flying backwards before the blow that pushed it.
+  const dir = { dx: Math.sign(e.x - p.x), dy: Math.sign(e.y - p.y) };
+  g.fx.clear(); g.fx.begin(0, g);
+  g.useSkill('shove', dir);
+  g.fx.end(g);
+  const evs = g.fx.take();
+  assert(evs.some((v) => v.kind === 'knock' && v.uid === e.uid),
+         `a shove was logged as ${evs.map((v) => v.kind).join('/')}, not a knock`);
+  assert(!evs.some((v) => v.kind === 'move' && v.uid === e.uid),
+         'knockback was filed as ordinary movement');
+
+  // 2. a death carries its own coordinates, because a moment later there is
+  //    nothing left on the level to ask.
+  g.fx.clear(); g.fx.begin(0, g);
+  const where = { x: e.x, y: e.y };
+  g.hurtEnemy(e, 999, true);
+  g.level.removeDead();
+  g.fx.end(g);
+  const died = g.fx.take().find((v) => v.kind === 'die');
+  assert(died, 'a death produced no event');
+  assert(died.x === where.x && died.y === where.y,
+         'the death event does not know where it happened');
+  assert(!g.level.enemies.includes(e), 'the test did not actually remove the body');
+  return 'knockback stays with the hit; deaths carry their own position';
+});
+
+check('the log is off unless something is going to draw it', () => {
+  // The bot runs sixty thousand steps a sweep and must not build a list nobody
+  // reads. Only the real UI turns this on.
+  const g = freshGame('fxoff');
+  assert(g.fx.enabled === false, 'the event log is on by default');
+  g.fx.begin(0, g);
+  g.fx.add({ kind: 'hit', uid: 1 });
+  g.fx.end(g);
+  assert(g.fx.take().length === 0, 'a disabled log still recorded events');
+  return 'disabled by default, records nothing';
 });
 
 check('nothing spawns in the room with the fire in it', () => {

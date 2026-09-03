@@ -25,6 +25,7 @@
 //     line where nothing is on top of them.
 
 import { Renderer } from './render.js';
+import { Animator } from './anim.js';
 import { DIRS, DIR_BY_KEY, capitalise, fmtDuration } from '../../../engine/util.js';
 import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
@@ -60,6 +61,12 @@ export class UI {
     };
 
     this.renderer = new Renderer(this.el.canvas, game);
+
+    // The show. It only ever redraws - it cannot change the game, which has
+    // already finished resolving by the time it starts.
+    this.anim = new Animator(() => this.renderer.draw());
+    this.renderer.anim = this.anim;
+    game.fx.enabled = true;          // the bot and the tests leave this off
     this.settings = loadSettings();
     this.renderer.mode = this.settings.mode ?? 'tiles';
     this.renderer.zoom = this.settings.zoom ?? 1;
@@ -100,7 +107,24 @@ export class UI {
   feed(key) {
     if (this.pending) { this.pending.onKey(key); return; }
     if (!this.game.running) return;
-    this.game.command(key);
+    // Any input snaps the previous turn's show to its end and is served
+    // immediately. The animation must never cost you a turn of reaction time -
+    // people hold a direction down in this game, and 300ms of swallowed input
+    // per step would be worse than having no animation at all.
+    this.anim.skip();
+    this.game.command(key).then(() => this.afterTurn());
+  }
+
+  /**
+   * Hand the turn's events to the animator.
+   *
+   * Called after the rules have completely finished. `take()` empties the log,
+   * so nothing can be played twice and nothing accumulates.
+   */
+  afterTurn() {
+    const events = this.game.fx.take();
+    this.render();
+    if (events.length) this.anim.play(events);
   }
 
   // =========================================================================
@@ -532,11 +556,17 @@ export class UI {
 
   commit(skillKey, dir, steps = this.aimDist ?? 99) {
     if (!this.game.running || this.game.busy) return;
+    this.anim.skip();
     this.game.busy = true;
+    this.game.fx.clear();
+    this.game.fx.begin(0, this.game);
     Promise.resolve(this.game.useSkill(skillKey, dir, { steps }))
-      .then((spent) => { if (spent && this.game.running) this.game.worldTurn(); })
+      .then((spent) => {
+        this.game.fx.end(this.game);
+        if (spent && this.game.running) this.game.worldTurn();
+      })
       .catch((e) => { console.error(e); this.game.msg(`(error: ${e.message})`, 'bad'); })
-      .finally(() => { this.game.busy = false; this.render(); });
+      .finally(() => { this.game.busy = false; this.afterTurn(); });
   }
 
   abortAim(why) {

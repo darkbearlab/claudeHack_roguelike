@@ -238,6 +238,10 @@ function rayTiles(lvl, x, y, dir, range) {
 
 function resolveAttack(game, e) {
   const a = e.attack;
+  // Before the stepping move below, so the lunge is drawn from where the
+  // wind-up was telegraphed rather than from where it ended up.
+  game.fx?.add({ kind: 'attack', uid: e.uid, x: e.x, y: e.y,
+                 dx: e.attackDir?.dx ?? 0, dy: e.attackDir?.dy ?? 0 });
   e.stamina = Math.max(0, e.stamina - a.cost);
   e.state = STATE.RECOVER;
   e.timer = a.recovery;
