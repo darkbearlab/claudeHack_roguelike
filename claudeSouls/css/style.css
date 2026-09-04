@@ -319,7 +319,11 @@ body { overflow: hidden; }
 .dlg-face {
   flex: 0 0 auto; width: 84px; height: 112px;
   image-rendering: pixelated;
-  align-self: center;
+  /* Pinned to the top, not centred. Centring made her drift down the box as
+     the speech got longer, so she sat at a different height in every exchange
+     - and a face that moves when the words change reads as the face reacting
+     to them. She is the fixed thing; the text is what scrolls past her. */
+  align-self: flex-start;
   filter: drop-shadow(0 0 10px rgba(255, 190, 120, .18));
 }
 .dlg-body { flex: 1 1 auto; min-width: 0; }

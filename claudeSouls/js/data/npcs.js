@@ -7,12 +7,18 @@
 // is a much stronger guarantee than `invulnerable: true`, which is only as good
 // as everybody remembering to check it.
 //
-// What they are *for* is docs/META.md: the plan is that some seeds have someone
-// at the fire who tells you a piece of a broken story and hands you something
-// to carry out. None of that exists yet. The Fire Keeper below says the run's
+// What they are *for* is docs/META.md. The Fire Keeper below says the run's
 // statistics, which is a placeholder holding the seat - the point of building
 // her now is the conversation system underneath, so the story has somewhere to
 // grow into later.
+//
+// **Every seed has someone at the fire.** That is decided, and it is why this
+// is a list rather than a single hard-coded person: the variation between
+// seeds will be *which* of these turns up and what they say, never whether
+// anybody does. An empty fire is just a room with nothing in it; a stranger
+// sitting at it is a lead. It also means no player can miss the thread by
+// being unlucky with seeds, which is the failure mode a story told through
+// random encounters usually dies of.
 
 export const NPCS = [
   {
