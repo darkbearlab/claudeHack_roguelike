@@ -140,31 +140,68 @@ function carveRoom(lvl, room) {
   }
 }
 
+/**
+ * Corridors are two tiles wide, and so are the doors at each end.
+ *
+ * The generator inherited one-wide passages from claudeHack, and a one-wide
+ * passage is measurably hostile to this game rather than merely tight: every
+ * attack shape collapses to a single effective tile, the only movement left is
+ * forward and back - which is exactly what `line3` and `line6` are built to
+ * punish - and block stops being the "nowhere to go" option and becomes
+ * mandatory. `openAlcoves` was the previous answer, capping how LONG a strait
+ * could run. This removes most of them instead.
+ *
+ * The path itself is unchanged: the centre line is dug exactly as before,
+ * including its licence to break through a wall it happens to run into. The
+ * widening runs beside it and may only eat STONE - never WALL - because a
+ * two-wide brush that could open walls would punch second holes in every room
+ * it passed.
+ *
+ * **Not all of them.** Roughly a quarter stay one wide, and that is a
+ * deliberate reversal of a first attempt that widened everything: it took the
+ * share of narrow ground from 22% to 4%, which is not "chokepoints are no
+ * longer the default", it is "chokepoints are gone". A corridor is a real
+ * answer to a pack of hounds, and a floor with no tight ground on it has taken
+ * that answer away. The test that guards this caught it.
+ */
 function corridorBetween(lvl, a, b, rng) {
+  const wide = !rng.oneIn(4);
   const horiz = a.gy === b.gy;
   if (horiz) {
     const left = a.x < b.x ? a : b, right = a.x < b.x ? b : a;
-    const ax = left.x + left.w, ay = rng.int(left.y, left.y + left.h - 1);
-    const bx = right.x - 1,     by = rng.int(right.y, right.y + right.h - 1);
-    makeDoor(lvl, ax, ay, rng); makeDoor(lvl, bx, by, rng);
+    const ax = left.x + left.w, ay = rng.int(left.y, Math.max(left.y, left.y + left.h - 2));
+    const bx = right.x - 1,     by = rng.int(right.y, Math.max(right.y, right.y + right.h - 2));
+    doorway(lvl, ax, ay, 0, wide ? 1 : 0, rng);
+    doorway(lvl, bx, by, 0, wide ? 1 : 0, rng);
     const m = ax + 1 >= bx ? ax + 1 : rng.int(ax + 1, Math.max(ax + 1, bx - 1));
-    for (let x = ax + 1; x <= m; x++) dig(lvl, x, ay);
+    for (let x = ax + 1; x <= m; x++) run(lvl, x, ay, 0, wide ? 1 : 0);
     const step = ay < by ? 1 : -1;
-    for (let y = ay; y !== by; y += step) dig(lvl, m, y);
-    dig(lvl, m, by);
-    for (let x = m; x < bx; x++) dig(lvl, x, by);
+    for (let y = ay; y !== by; y += step) run(lvl, m, y, wide ? 1 : 0, 0);
+    run(lvl, m, by, wide ? 1 : 0, 0);
+    for (let x = m; x < bx; x++) run(lvl, x, by, 0, wide ? 1 : 0);
+    // The bend needs its own corner or the two runs meet at a single tile and
+    // the passage pinches back to one wide exactly where you turn.
+    if (wide) { bore(lvl, m + 1, ay); bore(lvl, m + 1, by); }
   } else {
     const top = a.y < b.y ? a : b, bot = a.y < b.y ? b : a;
-    const ax = rng.int(top.x, top.x + top.w - 1), ay = top.y + top.h;
-    const bx = rng.int(bot.x, bot.x + bot.w - 1), by = bot.y - 1;
-    makeDoor(lvl, ax, ay, rng); makeDoor(lvl, bx, by, rng);
+    const ax = rng.int(top.x, Math.max(top.x, top.x + top.w - 2)), ay = top.y + top.h;
+    const bx = rng.int(bot.x, Math.max(bot.x, bot.x + bot.w - 2)), by = bot.y - 1;
+    doorway(lvl, ax, ay, wide ? 1 : 0, 0, rng);
+    doorway(lvl, bx, by, wide ? 1 : 0, 0, rng);
     const m = ay + 1 >= by ? ay + 1 : rng.int(ay + 1, Math.max(ay + 1, by - 1));
-    for (let y = ay + 1; y <= m; y++) dig(lvl, ax, y);
+    for (let y = ay + 1; y <= m; y++) run(lvl, ax, y, wide ? 1 : 0, 0);
     const step = ax < bx ? 1 : -1;
-    for (let x = ax; x !== bx; x += step) dig(lvl, x, m);
-    dig(lvl, bx, m);
-    for (let y = m; y < by; y++) dig(lvl, bx, y);
+    for (let x = ax; x !== bx; x += step) run(lvl, x, m, 0, wide ? 1 : 0);
+    run(lvl, bx, m, 0, wide ? 1 : 0);
+    for (let y = m; y < by; y++) run(lvl, bx, y, wide ? 1 : 0, 0);
+    if (wide) { bore(lvl, ax, m + 1); bore(lvl, bx, m + 1); }
   }
+}
+
+/** The centre line, plus one tile beside it. */
+function run(lvl, x, y, wx, wy) {
+  dig(lvl, x, y);
+  bore(lvl, x + wx, y + wy);
 }
 
 function dig(lvl, x, y) {
@@ -174,12 +211,27 @@ function dig(lvl, x, y) {
   else if (t === T.WALL) lvl.set(x, y, T.DOOR_BROKEN);
 }
 
-function makeDoor(lvl, x, y, rng) {
-  if (!lvl.inBounds(x, y) || lvl.at(x, y) !== T.WALL) return;
+/** Widening. Rock only - it must never open a room's wall. */
+function bore(lvl, x, y) {
+  if (!lvl.inBounds(x, y)) return;
+  if (lvl.at(x, y) === T.STONE) lvl.set(x, y, T.CORRIDOR);
+}
+
+/**
+ * A doorway two tiles wide, both leaves the same kind.
+ *
+ * Same kind on purpose: half an open door and half a closed one is a doorway
+ * you can walk through, which makes the closed half decoration.
+ */
+function doorway(lvl, x, y, wx, wy, rng) {
   // No locked doors and no secret doors. Both are exploration friction, and
   // this game's friction budget is spent entirely on combat.
   const r = rng.rn2(100);
-  lvl.set(x, y, r < 35 ? T.DOOR_BROKEN : r < 75 ? T.DOOR_OPEN : T.DOOR_CLOSED);
+  const kind = r < 35 ? T.DOOR_BROKEN : r < 75 ? T.DOOR_OPEN : T.DOOR_CLOSED;
+  for (const [dx, dy] of [[0, 0], [wx, wy]]) {
+    const tx = x + dx, ty = y + dy;
+    if (lvl.inBounds(tx, ty) && lvl.at(tx, ty) === T.WALL) lvl.set(tx, ty, kind);
+  }
 }
 
 // ===========================================================================

@@ -2869,7 +2869,7 @@ check('a big body does not set fire to itself', () => {
   return 'never hits itself, by identity';
 });
 
-check('a big body cannot be shoved, and cannot squeeze into a corridor', () => {
+check('a big body cannot be shoved, and can always be broken away from', () => {
   const { g } = arena('big-move', 'husk', 6);
   const lvl = g.level;
   lvl.enemies.length = 0; lvl.markEnemiesDirty();
@@ -2881,26 +2881,34 @@ check('a big body cannot be shoved, and cannot squeeze into a corridor', () => {
   assert(g.knockBack(d, { dx: 1, dy: 0 }, 3) === 0, 'a dragon was shoved');
   assert(d.x === where.x && d.y === where.y, 'a dragon moved when pushed');
 
-  // And the geometric consequence: measured over 300 floors a 2x2 fits 1.9% of
-  // corridor tiles, so it is room-bound by construction and an encounter you
-  // can always walk away from.
-  let corridorFits = 0, corridorTiles = 0;
-  for (let s = 0; s < 3; s++) {
-    const gg = freshGame(`corr-${s}`);
+  // The geometric guarantee, and it changed when corridors did.
+  //
+  // A 2x2 used to fit 1.9% of corridor, so a big creature was room-bound and
+  // could never follow you out. Two-wide corridors take that to 39% - the
+  // horned one hunts you through the halls again, which is better than it
+  // being stuck in a room, and was the point of widening them.
+  //
+  // What must survive is not "it cannot leave its room" but the thing that was
+  // actually valuable about it: **there is always ground it cannot follow you
+  // onto**. Breaking away from something enormous has to stay possible.
+  let floors = 0, withRefuge = 0;
+  for (let s = 0; s < 4; s++) {
+    const gg = freshGame(`refuge-${s}`);
     for (let dep = 1; dep < DUNGEON_DEPTH; dep++) {
       const l = gg.levelAt(dep);
-      for (let y = 0; y < l.h; y++) {
-        for (let x = 0; x < l.w; x++) {
-          if (!isWalkable(l.at(x, y)) || l.roomAt(x, y)) continue;
-          corridorTiles++;
-          if (l.bodyFits(x, y, 2)) corridorFits++;
+      floors++;
+      let refuge = 0;
+      for (let y = 0; y < l.h && refuge < 9; y++) {
+        for (let x = 0; x < l.w && refuge < 9; x++) {
+          if (isWalkable(l.at(x, y)) && !l.bodyFits(x, y, 2)) refuge++;
         }
       }
+      if (refuge >= 9) withRefuge++;
     }
   }
-  const pc = (100 * corridorFits) / Math.max(1, corridorTiles);
-  assert(pc < 15, `a 2x2 fits ${pc.toFixed(1)}% of corridor - it is not room-bound`);
-  return `immovable; fits ${pc.toFixed(1)}% of corridor tiles`;
+  assert(withRefuge === floors,
+         `${floors - withRefuge} of ${floors} floors have nowhere a big creature cannot follow`);
+  return `immovable; every one of ${floors} floors has ground it cannot reach`;
 });
 
 check('the bottom floor always has a boss that fits on it', () => {
