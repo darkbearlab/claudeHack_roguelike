@@ -83,7 +83,7 @@ function nearbyFree(lvl, x, y, r, rng) {
     for (let dx = -r; dx <= r; dx++) {
       const nx = x + dx, ny = y + dy;
       if (!lvl.walkable(nx, ny)) continue;
-      if (lvl.enemyAt(nx, ny)) continue;
+      if (lvl.occupant(nx, ny)) continue;
       const t = lvl.at(nx, ny);
       if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE) continue;
       if (lvl.isSanctuary(nx, ny)) continue;      // group members too
@@ -161,7 +161,7 @@ export function placeGuards(game, lvl, rng) {
   for (const s of spots) {
     if (placed) break;
     if (!lvl.inBounds(s.x, s.y) || lvl.at(s.x, s.y) !== T.FLOOR) continue;
-    if (lvl.enemyAt(s.x, s.y)) continue;
+    if (lvl.occupant(s.x, s.y)) continue;
     const e = new Enemy(key, rng);
     e.aware = true;                       // it already knows you are coming
     e.guarding = true;
@@ -258,7 +258,7 @@ function placePack(game, lvl, rng, pack) {
 
   for (const key of pack.members) {
     const spot = spots.find((s) =>
-      lvl.inBounds(s.x, s.y) && lvl.at(s.x, s.y) === T.FLOOR && !lvl.enemyAt(s.x, s.y) &&
+      lvl.inBounds(s.x, s.y) && lvl.at(s.x, s.y) === T.FLOOR && !lvl.occupant(s.x, s.y) &&
       !lvl.isSanctuary(s.x, s.y));
     if (!spot) break;
     placed += spawn(game, lvl, key, spot.x, spot.y, rng);

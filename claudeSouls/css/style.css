@@ -310,6 +310,26 @@ body { overflow: hidden; }
 }
 #overlay[hidden] { display: none; }
 #overlay h2 { margin: 0 0 8px; font-size: 16px; color: var(--ember); }
+
+/* ---------------------------------------------------------------- dialogue
+   A face, what they said, and what you can say back. The choices are a
+   separate block below the box rather than inside it, so a long speech
+   scrolls without pushing the replies off the bottom. */
+.dlg { display: flex; gap: 12px; align-items: flex-start; }
+.dlg-face {
+  flex: 0 0 auto; width: 84px; height: 112px;
+  image-rendering: pixelated;
+  align-self: center;
+  filter: drop-shadow(0 0 10px rgba(255, 190, 120, .18));
+}
+.dlg-body { flex: 1 1 auto; min-width: 0; }
+.dlg .say { margin: 6px 0; line-height: 1.55; }
+.dlg-choices {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--edge, #3a3a42);
+}
+.dlg-choice { text-align: left; padding: 9px 11px; }
 #overlay h3 { margin: 15px 0 5px; font-size: 13.5px; color: var(--ember); }
 #overlay p  { margin: 6px 0; }
 #overlay ul { margin: 6px 0; padding-left: 22px; }

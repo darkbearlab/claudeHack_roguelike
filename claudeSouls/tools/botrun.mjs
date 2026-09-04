@@ -130,7 +130,11 @@ function safeSteps(game, danger) {
   for (const d of DIRS) {
     const nx = p.x + d.dx, ny = p.y + d.dy;
     if (!game.level.passable(nx, ny)) continue;
-    if (game.level.enemyAt(nx, ny)) continue;
+    // occupant, not enemyAt: a person blocks a tile without being a threat,
+    // and walking into one is a conversation that does not advance the turn -
+    // so a bot that keeps choosing it burns its whole step budget standing
+    // next to the Fire Keeper. Measured: depth 7.4 -> 6.3 before this line.
+    if (game.level.occupant(nx, ny)) continue;
     if (!game.level.diagonalOk(p.x, p.y, nx, ny, true)) continue;
     if (inDanger(danger, nx, ny)) continue;
     out.push(d);
@@ -153,7 +157,7 @@ function rollLanding(game, d) {
   for (let i = 0; i < p.rollDistance(); i++) {
     const nx = x + d.dx, ny = y + d.dy;
     if (!lvl.passable(nx, ny)) break;
-    if (lvl.enemyAt(nx, ny)) break;
+    if (lvl.occupant(nx, ny)) break;
     if (!lvl.diagonalOk(x, y, nx, ny)) break;
     x = nx; y = ny; moved++;
   }
@@ -331,7 +335,7 @@ function act(game, rng) {
       const path = astar(lvl, p.x, p.y, home.x, home.y, { maxNodes: 3000 });
       if (path && path.length) {
         const d = DIRS.find((q) => q.dx === path[0].x - p.x && q.dy === path[0].y - p.y);
-        if (d && !lvl.enemyAt(path[0].x, path[0].y) &&
+        if (d && !lvl.occupant(path[0].x, path[0].y) &&
             lvl.diagonalOk(p.x, p.y, path[0].x, path[0].y, true)) {
           return { kind: 'move', dir: d };
         }
@@ -403,7 +407,7 @@ function act(game, rng) {
       const step = path[0];
       const d = DIRS.find((q) => q.dx === step.x - p.x && q.dy === step.y - p.y);
       const when = danger.get(`${step.x},${step.y}`);
-      if (d && !lvl.enemyAt(step.x, step.y) &&
+      if (d && !lvl.occupant(step.x, step.y) &&
           lvl.diagonalOk(p.x, p.y, step.x, step.y, true) &&
           (when === undefined || when >= 2)) {
         return { kind: 'move', dir: d };

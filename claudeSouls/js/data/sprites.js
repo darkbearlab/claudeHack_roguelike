@@ -32,6 +32,9 @@ export const ART_FACING = {
   hero_fighter: 'S',
   // The five armour states. Checked on the contact sheet the same way as the
   // rest: each one shows a face and a chest, so each one is a front view.
+  // She is drawn seated and is never rotated (NPCS[].still), so this value is
+  // recorded for completeness rather than used.
+  npc_firekeeper: 'S',
   hero_rags: 'S',
   hero_leathers: 'S',
   hero_brigandine: 'S',

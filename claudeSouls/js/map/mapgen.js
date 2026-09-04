@@ -28,6 +28,7 @@ export function generateLevel(depth, rng) {
   ensureConnected(lvl, rng);
   placeStairs(lvl, rng, depth);
   placeBonfires(lvl, rng);
+  placeKeeper(lvl);
   scatterCover(lvl, rng);
   placeStoreroom(lvl, rng, depth);
   // Last, and that matters: a long single-width corridor turns most of the
@@ -285,6 +286,75 @@ function placeBonfires(lvl, rng) {
     const s = lvl.randomFreeSpot(rng);
     if (s) put(s.x, s.y);
   }
+}
+
+/**
+ * Someone at the first fire.
+ *
+ * Placed beside the bonfire you arrive next to, because that is the one you
+ * respawn at - so she is the thing that is there every time you come back,
+ * which is the whole reason a Fire Keeper is a Fire Keeper.
+ *
+ * She goes down in mapgen rather than in populate so that she exists before
+ * anything is spawned: every placement routine asks the level what is standing
+ * on a tile, and she has to already be standing there to be counted.
+ */
+function placeKeeper(lvl) {
+  if (globalThis.process?.env?.NONPC) return;   // measurement switch only
+  const fire = lvl.bonfires[0];
+  if (!fire) return;
+
+  // The most OPEN tile beside the fire, and that direction was not obvious.
+  //
+  // She is a wall - a person cannot be killed or pushed - and she stands beside
+  // the fire you respawn at on every floor, so where she stands is a real
+  // question. Tucking her into the most cornered nook sounded right and was
+  // measurably wrong: the tiles with fewest exits ARE the chokepoints, so she
+  // became a plug in a doorway and the bot lost two and a half floors of
+  // progress. Blocking open ground costs nothing, because open ground has
+  // alternatives; blocking a narrow tile cuts the map in half.
+  const walkableNeighbours = (x, y) => {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        if (lvl.walkable(x + dx, y + dy)) n++;
+      }
+    }
+    return n;
+  };
+  // Two tiles out, not one. The ring immediately around the fire is the ground
+  // you back into when something followed you home, and she cannot be killed
+  // or pushed off it - measured, standing in it cost the light kit 36% more
+  // deaths. At range two she still reads as sitting at the fire (the glow
+  // carries it) without taking a square you might need.
+  const ring = (r) => {
+    const out = [];
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = fire.x + dx, y = fire.y + dy;
+        if (lvl.at(x, y) !== T.FLOOR) continue;
+        out.push({ x, y, open: walkableNeighbours(x, y) });
+      }
+    }
+    return out;
+  };
+  const cands = ring(2).length ? ring(2) : ring(1);
+  if (!cands.length) return;
+  // Chosen without touching the rng, and that is not tidiness.
+  //
+  // Drawing a random number here consumes one from the stream every other
+  // generation decision on the floor is reading from, so adding her SHIFTED
+  // EVERY MAP. The A/B that was supposed to measure "how much does she get in
+  // the way" was in fact comparing two different dungeons, and the numbers
+  // moved by more than a floor in both directions for that reason alone.
+  // Deterministic tie-break, so the level is the same level with or without
+  // her and the comparison means what it says.
+  const most = Math.max(...cands.map((c) => c.open));
+  const spot = cands.filter((c) => c.open === most)
+                    .sort((a, b) => (a.y - b.y) || (a.x - b.x))[0];
+  lvl.npcs.push({ key: 'firekeeper', x: spot.x, y: spot.y });
 }
 
 function adjacentFloor(lvl, x, y, rng) {

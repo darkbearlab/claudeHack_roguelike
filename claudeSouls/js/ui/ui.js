@@ -949,6 +949,96 @@ export class UI {
     this.renderMessages();
   }
 
+  /**
+   * Someone talking to you.
+   *
+   * Deliberately a different shape from showText: a conversation is a loop of
+   * "they say something, you pick a reply", and building it as one screen with
+   * a Close button would have meant every future NPC re-implementing the loop.
+   * Resolves with the id of the choice taken, so the caller does the looping
+   * and this only ever renders one exchange.
+   *
+   * Choices are wired BY NAME (`data-choice`), never by position - the overlay
+   * close button was bound with `querySelector('button')` once and silently
+   * stopped working the day a screen grew a second button. See showText.
+   */
+  showDialogue({ name, sprite, lines, choices }) {
+    return new Promise((resolve) => {
+      const ov = this.el.overlay;
+      ov.hidden = false;
+      const said = (Array.isArray(lines) ? lines : [lines])
+        .map((l) => `<p class="say">${escapeHtml(l)}</p>`).join('');
+      const opts = choices.map((c) =>
+        `<button class="btn dlg-choice" data-choice="${escapeHtml(c.id)}">` +
+        `${escapeHtml(c.label)}</button>`).join('');
+      ov.innerHTML =
+        `<div class="dlg">` +
+        (sprite ? `<img class="dlg-face" src="../assets/${escapeHtml(sprite)}.png" alt="">` : '') +
+        `<div class="dlg-body"><h2>${escapeHtml(name)}</h2>${said}</div></div>` +
+        `<div class="dlg-choices">${opts}</div>`;
+
+      const pick = (id) => { this.closeOverlay(); resolve(id); };
+      for (const b of ov.querySelectorAll('[data-choice]')) {
+        b.addEventListener('click', () => pick(b.dataset.choice));
+      }
+      ov.scrollTop = 0;
+      // Esc always means the last choice, which every caller makes the one
+      // that ends the conversation.
+      this.pending = { onKey: (k) => {
+        if (k === 'Escape') { pick(choices[choices.length - 1].id); return; }
+        const n = Number(k);
+        if (n >= 1 && n <= choices.length) pick(choices[n - 1].id);
+      } };
+    });
+  }
+
+  /**
+   * A whole conversation: exchanges until you take the leave option.
+   *
+   * The loop lives here rather than in the rules, which only ever say "this
+   * person is being spoken to". What she has to say is presentation, and the
+   * game should not need to be rebuilt to change a line of dialogue.
+   *
+   * What she says now is the run's statistics, and that is deliberately a
+   * placeholder - see docs/META.md. The point of building her today is the
+   * machinery underneath, so the fragments of story that are supposed to live
+   * here have somewhere to arrive into.
+   */
+  async showConversation(spec) {
+    let lines = spec.greeting;
+    for (;;) {
+      const choice = await this.showDialogue({
+        name: spec.name,
+        sprite: spec.face ?? spec.sprite,
+        lines,
+        choices: [
+          { id: 'stats', label: '1  這一趟走了多遠?' },
+          { id: 'who', label: '2  你是誰?' },
+          { id: 'leave', label: '3  離開 (Esc)' },
+        ],
+      });
+      if (choice === 'leave') { this.render(); return; }
+      lines = choice === 'stats' ? this.runReport() : spec.about ?? [
+        '我看著火。',
+        '除此之外的事,我大概已經忘了。',
+      ];
+    }
+  }
+
+  /** The placeholder she reads out. Everything here is already counted. */
+  runReport() {
+    const g = this.game;
+    const p = g.player;
+    const elapsed = fmtDuration(Date.now() - (g.startedAt ?? Date.now()));
+    return [
+      `你下到第 ${p.depth} 層,最深到過第 ${p.maxDepth} 層。`,
+      `倒下 ${p.deaths} 次,殺了 ${g.stats.kills} 個東西,坐過 ${g.stats.rests} 次火。`,
+      `身上有 ${p.souls} 個魂,走了 ${p.turns} 個回合,${elapsed}。`,
+      '',
+      '——火還記得這些。其他的它不說。',
+    ];
+  }
+
   showText(title, body) {
     return new Promise((resolve) => {
       const ov = this.el.overlay;

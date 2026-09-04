@@ -26,6 +26,7 @@ import { T, TILE, isDoor, isBonfire } from '../map/tiles.js';
 import { hash2 } from '../../../engine/util.js';
 import { spriteRotation } from '../game/patterns.js';
 import { STATE } from '../game/actors.js';
+import { NPC_BY_KEY } from '../data/npcs.js';
 
 const SPRITE_DIR = '../assets/';
 
@@ -194,6 +195,15 @@ export class Renderer {
       this.drawEnemy(ctx, e,
         rx * v.cell + v.offX + (off?.dx ?? 0) * v.cell,
         ry * v.cell + v.offY + (off?.dy ?? 0) * v.cell, v.cell, off?.flash ?? 0);
+    }
+
+    // --- people, under the enemies and the player. They never move and they
+    // cannot be hit, so nothing they could overlap is ever urgent.
+    for (const n of lvl.npcs) {
+      const rx = n.x - v.ox, ry = n.y - v.oy;
+      if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
+      if (!lvl.isVisible(n.x, n.y)) continue;
+      this.drawNpc(ctx, n, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
     // --- projectiles, above actors: they are the most urgent thing on screen
@@ -583,11 +593,11 @@ export class Renderer {
    * itself, and the colour is free to carry meaning, so this is also where
    * enemy tiers would go if they arrive.
    */
-  glow(ctx, px, py, cell, r, g, b) {
+  glow(ctx, px, py, cell, r, g, b, strength = 0.42) {
     const grad = ctx.createRadialGradient(
       px + cell / 2, py + cell * 0.6, cell * 0.05,
       px + cell / 2, py + cell * 0.6, cell * 0.62);
-    grad.addColorStop(0, `rgba(${r},${g},${b},.42)`);
+    grad.addColorStop(0, `rgba(${r},${g},${b},${strength})`);
     grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(px - cell * 0.15, py - cell * 0.15, cell * 1.3, cell * 1.3);
@@ -606,6 +616,31 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  /**
+   * Someone sitting by the fire.
+   *
+   * Never rotated. The art is a seated figure with her head bowed, and turning
+   * that to face you would read as her spinning on the spot - the rotation
+   * trick works for the roster because every one of them is drawn standing and
+   * symmetrical about its own axis. `NPCS[].still` says so per person rather
+   * than assuming it of everyone who is ever added here.
+   */
+  drawNpc(ctx, n, px, py, cell) {
+    const spec = NPC_BY_KEY[n.key];
+    if (!spec) return;
+    if (this.mode === 'ascii') {
+      this.glyph(ctx, spec.glyph, spec.colour, px, py, cell, 1);
+      return;
+    }
+    const img = this.sprite(spec.sprite);
+    if (img) this.blit(ctx, img, px, py, cell, 1, 1, spec.still ? 0 : 0);
+    else this.glyph(ctx, spec.glyph, spec.colour, px, py, cell, 1);
+    // A cool halo, so she reads as a fixture rather than a thing to fight -
+    // the warm one belongs to the player and the amber one to elites. Fainter
+    // than either: hers says "someone is here", not "look at this".
+    this.glow(ctx, px, py, cell, 150, 170, 220, 0.22);
   }
 
   /** ASCII cannot rotate, so facing gets a pip on the relevant edge. */

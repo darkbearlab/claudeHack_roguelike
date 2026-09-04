@@ -22,6 +22,7 @@ import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.j
 import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
+import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -634,7 +635,12 @@ check('walking is always free, however loaded you are', () => {
   p.stamina = 0;
   const before = { x: p.x, y: p.y };
   for (const d of DIRS) {
-    if (!g.level.passable(p.x + d.dx, p.y + d.dy)) continue;
+    const nx = p.x + d.dx, ny = p.y + d.dy;
+    if (!g.level.passable(nx, ny)) continue;
+    // A body occupies its tile, which has always been true of enemies and is
+    // now also true of the Fire Keeper standing at the fire you start beside.
+    // The claim is "there is always a legal move", not "every direction is".
+    if (g.level.occupant(nx, ny)) continue;
     g.step(d.dx, d.dy);
     break;
   }
@@ -2009,7 +2015,12 @@ check('every overlay closes by its own close button, not by position', () => {
   // binding, and the first picker button became the close button instead.
   const src = readFileSync(new URL('../js/ui/ui.js', import.meta.url), 'utf8');
 
-  assert(!/querySelector\('button'\)/.test(src.replace(/\/\/.*$/gm, '')),
+  // Block comments are stripped as well as line comments: the note explaining
+  // why not to do this quotes the thing it is warning about, and a test that
+  // cannot tell code from the comment describing it will fail on its own
+  // documentation.
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert(!/querySelector\('button'\)/.test(code),
          'an overlay still finds its close button by position');
 
   // Every screen that draws a Close button must also bind that exact button.
@@ -2109,8 +2120,16 @@ check('changing floor is not travelling across one', () => {
   assert(planCycle(evs).gateEnd === 0, 'the floor-change curtain gates input');
 
   // An ordinary step is still a step.
+  // Any direction that is actually free: a body occupies its tile, and the
+  // Fire Keeper stands near the fire you arrive beside.
   g.fx.clear(); g.fx.begin(0, g);
-  g.step(1, 0);
+  for (const d of DIRS) {
+    const nx = g.player.x + d.dx, ny = g.player.y + d.dy;
+    if (!g.level.passable(nx, ny) || g.level.occupant(nx, ny)) continue;
+    if (!g.level.diagonalOk(g.player.x, g.player.y, nx, ny, true)) continue;
+    g.step(d.dx, d.dy);
+    break;
+  }
   g.fx.end(g);
   const step = g.fx.take().filter((e) => e.kind === 'move');
   assert(step.length === 1 &&
@@ -2263,6 +2282,125 @@ check('the log is off unless something is going to draw it', () => {
   g.fx.end(g);
   assert(g.fx.take().length === 0, 'a disabled log still recorded events');
   return 'disabled by default, records nothing';
+});
+
+check('there is someone at the first fire, and nothing is standing on her', () => {
+  let floors = 0, missing = 0, notAtFire = 0, buried = 0;
+  for (let s = 0; s < 8; s++) {
+    const g = freshGame(`keeper-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      floors++;
+      const n = lvl.npcs[0];
+      if (!n) { missing++; continue; }
+      const fire = lvl.bonfires[0];
+      // Range two, not one: see placeKeeper. The ring touching the fire is the
+      // ground you back into, and she cannot be pushed off it.
+      const r = Math.max(Math.abs(n.x - fire.x), Math.abs(n.y - fire.y));
+      if (r < 1 || r > 2) notAtFire++;
+      if (lvl.enemyAt(n.x, n.y)) buried++;
+    }
+  }
+  assert(missing === 0, `${missing} floors have nobody at the fire`);
+  assert(notAtFire === 0, `${notAtFire} keepers are not within sight of the first bonfire`);
+  assert(buried === 0, `${buried} keepers have something spawned on top of them`);
+  return `${floors} floors, someone at every fire`;
+});
+
+check('a person never seals anything off', () => {
+  // She is impassable - a person cannot be killed or pushed, so for anything
+  // asking "can I get there" she is a wall. A wall placed automatically, every
+  // floor, next to the route everyone arrives on. The thing that could go
+  // badly wrong is her standing in the one gap between two halves of a level.
+  //
+  // Checked as reachability rather than as a placement rule, because the
+  // placement rule is a heuristic and heuristics are what this needs
+  // protecting from: tucking her into the most cornered tile sounded correct
+  // and made her a plug in a doorway.
+  const flood = (lvl, from, ignoreNpcs) => {
+    const seen = new Set([`${from.x},${from.y}`]);
+    const q = [from];
+    while (q.length) {
+      const c = q.pop();
+      for (const d of DIRS) {
+        const x = c.x + d.dx, y = c.y + d.dy, k = `${x},${y}`;
+        if (seen.has(k)) continue;
+        if (!lvl.inBounds(x, y)) continue;
+        if (!isWalkable(lvl.at(x, y))) continue;
+        if (!ignoreNpcs && lvl.npcAt(x, y)) continue;
+        seen.add(k); q.push({ x, y });
+      }
+    }
+    return seen;
+  };
+  let floors = 0, sealed = 0, lost = 0;
+  for (let s = 0; s < 8; s++) {
+    const g = freshGame(`seal-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      const from = lvl.upStair ?? lvl.bonfires[0];
+      if (!from) continue;
+      floors++;
+      const withHer = flood(lvl, from, false);
+      const without = flood(lvl, from, true);
+      // Only her own tile may be missing. Anything else means she is a plug.
+      const missing = [...without].filter((k) => !withHer.has(k));
+      const hers = lvl.npcs.map((n) => `${n.x},${n.y}`);
+      const cut = missing.filter((k) => !hers.includes(k));
+      if (cut.length) { sealed++; lost += cut.length; }
+    }
+  }
+  assert(sealed === 0, `${sealed} floors have ground cut off by her (${lost} tiles)`);
+  return `${floors} floors, nothing sealed off`;
+});
+
+check('she cannot be hit by anything, and it is not a flag that says so', () => {
+  // The guarantee is structural, not declared. Every attack in the game
+  // resolves through level.enemyAt, so a person - who lives in level.npcs -
+  // is unreachable by all of them at once. A boolean like `invulnerable: true`
+  // would only be as good as every future attack remembering to check it.
+  const { g } = arena('keeper-hit', 'husk', 4);
+  const p = g.player;
+  const lvl = g.level;
+  lvl.npcs.length = 0;
+  lvl.npcs.push({ key: 'firekeeper', x: p.x + 1, y: p.y });
+  const her = lvl.npcs[0];
+
+  assert(lvl.enemyAt(her.x, her.y) === null, 'a person answers to enemyAt');
+  assert(lvl.occupant(her.x, her.y) === her, 'a person is not counted as a body');
+
+  // Swing into her with the widest thing in the game and nothing should change.
+  p.equipItem(SLOT.MAIN, 'greataxe');
+  p.stamina = p.staminaMax;
+  const before = JSON.stringify(lvl.npcs);
+  g.useSkill('rend', { dx: 1, dy: 0 });
+  g.worldTurn();
+  assert(JSON.stringify(lvl.npcs) === before, 'a person was changed by being attacked');
+
+  // And walking into her is a conversation, not a swing - it must not spend
+  // the turn, because she stands in a room nothing spawns in and charging for
+  // a conversation held somewhere safe only teaches people not to have it.
+  let spoke = null;
+  g.ui.showConversation = (spec) => { spoke = spec.key; };
+  p.x = her.x - 1; p.y = her.y;
+  const turn = g.turn;
+  const spent = g.step(1, 0);
+  assert(spoke === 'firekeeper', 'walking into her did not start a conversation');
+  assert(spent === false && g.turn === turn, 'talking spent a turn');
+  assert(p.x === her.x - 1, 'the player walked through her');
+  return 'unreachable by construction; talking is free';
+});
+
+check('every person has art and a way to be drawn', () => {
+  const dir = new URL('../../assets/', import.meta.url);
+  for (const n of NPCS) {
+    assert(n.name && n.glyph && n.colour, `${n.key} is missing a name, glyph or colour`);
+    assert(existsSync(new URL(`${n.sprite}.png`, dir)), `${n.key} has no map sprite`);
+    // The face is optional, but a name that points at nothing is not.
+    if (n.face) assert(existsSync(new URL(`${n.face}.png`, dir)), `${n.key} has no portrait`);
+    assert(Array.isArray(n.greeting) && n.greeting.length, `${n.key} has nothing to say`);
+  }
+  return `${NPCS.length} person, art present`;
 });
 
 check('nothing spawns in the room with the fire in it', () => {

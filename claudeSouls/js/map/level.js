@@ -33,6 +33,12 @@ export class Level {
     this.enemies     = [];
     this.projectiles = [];
     this.bonfires    = [];      // {x, y, id}
+    // People. A separate list from `enemies` on purpose: every attack in the
+    // game resolves through `enemyAt`, so anything that is not in that list
+    // cannot be hit by anything, ever, without a single special case being
+    // written anywhere. Immunity by construction rather than by a flag someone
+    // has to remember to check.
+    this.npcs        = [];      // {key, x, y}
 
     this.upStair = null;
     this.downStair = null;
@@ -57,8 +63,28 @@ export class Level {
    * does not. Same distinction claudeHack ended up needing, imported here
    * deliberately rather than rediscovered.
    */
+  /**
+   * Can something move through here?
+   *
+   * Terrain, plus people - but deliberately NOT enemies, and the asymmetry is
+   * the point. A route through an enemy is a viable route: you kill it and
+   * walk on, which is why every caller checks `enemyAt` separately and gets to
+   * decide whether that is what it wants. A route through a person is never
+   * viable at all - you cannot kill her and you cannot displace her, walking
+   * into her is a conversation - so for anything asking "can I get there", she
+   * is a wall.
+   *
+   * The player's own step checks `npcAt` before it ever gets here, which is
+   * what keeps talking to her possible.
+   *
+   * Measured: without this, the bot loses about a floor and a half of progress
+   * per run to one seated figure. She stands beside the first bonfire, which
+   * is beside the up stairs, so she is next to where you arrive on every
+   * floor - and A* routed straight through her, over and over.
+   */
   passable(x, y, mover = null) {
     if (!this.inBounds(x, y)) return false;
+    if (this.npcAt(x, y)) return false;
     const t = this.at(x, y);
     if (isWalkable(t)) return true;
     if (t === T.DOOR_CLOSED) return !mover || !!mover.spec?.opensDoors;
@@ -125,6 +151,14 @@ export class Level {
 
   moveEnemy(e, x, y) { e.x = x; e.y = y; this.markEnemiesDirty(); }
 
+  npcAt(x, y) {
+    if (!this.inBounds(x, y)) return null;
+    return this.npcs.find((n) => n.x === x && n.y === y) ?? null;
+  }
+
+  /** Anything standing here that a body cannot walk through. */
+  occupant(x, y) { return this.enemyAt(x, y) ?? this.npcAt(x, y); }
+
   addEnemy(e, x, y) {
     e.x = x; e.y = y;
     this.enemies.push(e);
@@ -188,6 +222,7 @@ export class Level {
             avoidBonfires = false } = opts;
     const taken = new Set();
     for (const e of this.enemies) if (e.alive) taken.add(this.idx(e.x, e.y));
+    for (const n of this.npcs) taken.add(this.idx(n.x, n.y));
 
     const spots = [];
     for (let y = 0; y < this.h; y++) {

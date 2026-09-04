@@ -37,6 +37,7 @@ import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
 import { populate, spawnBoss } from './populate.js';
 import { FxLog } from './fx.js';
+import { NPC_BY_KEY } from '../data/npcs.js';
 import { saveGame, clearSave } from './save.js';
 
 export const VERSION = '0.1.0';
@@ -296,6 +297,19 @@ export class Game {
     return this.useSkill(c.key, { dx: c.dx, dy: c.dy }, { resolving: true });
   }
 
+  /**
+   * Say something to whoever is standing there.
+   *
+   * The game only opens the conversation; what is in it belongs to the UI, so
+   * the rules never need to know what anybody says. Async because a
+   * conversation is a loop of exchanges and the UI owns the waiting.
+   */
+  talkTo(npc) {
+    const spec = NPC_BY_KEY[npc.key];
+    if (!spec) return;
+    this.ui?.showConversation?.(spec);
+  }
+
   hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
@@ -453,6 +467,16 @@ export class Game {
       if (!swing) { this.msg('You have nothing to hit it with.', 'warn'); return false; }
       return this.useSkill(swing, { dx, dy });
     }
+
+    // Walking into a person talks to them. Checked after the enemy test and
+    // before anything else, so there is no arrangement of tiles in which the
+    // swing meant for a body lands on someone who is not one.
+    //
+    // It does not spend the turn: she stands beside a bonfire, which is a room
+    // nothing spawns in, and charging a turn for a conversation held somewhere
+    // safe only teaches people not to have it.
+    const npc = lvl.npcAt(nx, ny);
+    if (npc) { this.talkTo(npc); return false; }
 
     if (!lvl.inBounds(nx, ny)) { this.msg('You cannot go that way.'); return false; }
     if (!lvl.diagonalOk(p.x, p.y, nx, ny, true)) {

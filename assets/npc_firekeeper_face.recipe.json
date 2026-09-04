@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "name": "npc_firekeeper_face",
+  "style": "topdown-flat",
+  "kind": "portrait",
+  "desc": "a veiled woman with a pale still face and downcast eyes, dark grey hood, faint warm firelight on one cheek",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a veiled woman with a pale still face and downcast eyes, dark grey hood, faint warm firelight on one cheek, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\npc_firekeeper_face.src.png",
+    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-npc_firekeeper_face_20260904_084829_01.png",
+    "source_sha256": "08d137031d919f10a9eec7a6a7f2ef67b7d6befcece2403651a6f48e3e86ba57",
+    "cost_usd": 0.00464,
+    "meta": {
+      "model": "gpt-image-2",
+      "size": "768x1024",
+      "quality": "low",
+      "background": "transparent"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_03.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+    "palette_sha256": "fa3cc996cbf45cb88a5ef1aa69bf269f9d7edf98cb7441636eac8c0e8a24e146",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 36.9358
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 32.2257
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 7.1946
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 5.8954
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 8.9877
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 8.8577
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 40.2447
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 11.2548
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 19.1135
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 22.0174
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 8.422
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 14.6362
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "5714a338bef88620dc0165fc7dba7680c10eda389b536d5d2d9d52000e513293"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\npc_firekeeper_face.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 5.6355,
+    "palette_fit_delta_e76": 6.3959,
+    "warnings": [
+      "BACKDROP_COLOUR_IN_PALETTE"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\npc_firekeeper_face.qa.json"
+  },
+  "created": "20260904_084830",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 24.71
+}

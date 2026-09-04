@@ -188,8 +188,8 @@ function origin(lvl, e, dir, a, game) {
     if (!lvl.passable(nx, ny, e)) break;
     if (!lvl.diagonalOk(x, y, nx, ny)) break;
     if (game && nx === game.player.x && ny === game.player.y) break;
-    const other = lvl.enemyAt(nx, ny);
-    if (other && other !== e && other.alive) break;
+    const other = lvl.occupant(nx, ny);
+    if (other && other !== e && other.alive !== false) break;
     x = nx; y = ny;
   }
   return { x, y };
@@ -339,7 +339,7 @@ function stepAway(game, e, from) {
   for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
     const nx = e.x + dx, ny = e.y + dy;
     if (!game.level.passable(nx, ny, e)) continue;
-    if (game.level.enemyAt(nx, ny)) continue;
+    if (game.level.occupant(nx, ny)) continue;
     if (nx === game.player.x && ny === game.player.y) continue;
     const d = dist(nx, ny, from.x, from.y);
     if (d > bestD) { bestD = d; best = { x: nx, y: ny }; }
@@ -359,7 +359,7 @@ function tryStep(game, e, nx, ny) {
   const lvl = game.level;
   if (!lvl.inBounds(nx, ny)) return false;
   if (nx === game.player.x && ny === game.player.y) { e.face(nx - e.x, ny - e.y); return false; }
-  if (lvl.enemyAt(nx, ny)) return false;
+  if (lvl.occupant(nx, ny)) return false;
   if (!lvl.diagonalOk(e.x, e.y, nx, ny)) return false;
 
   const t = lvl.at(nx, ny);
