@@ -97,10 +97,30 @@ export const flyable = (t) => isWalkable(t) || t === T.PIT || t === T.RUBBLE || 
  */
 export const blocksDiagonal = (t) => t >= T.DOOR_CLOSED && t <= T.DOOR_BROKEN;
 
+/**
+ * A doorway only pinches you if it is a single leaf.
+ *
+ * The rule is about squeezing through a frame, so it has to ask how wide the
+ * frame is - and since corridors and their doorways became two tiles wide,
+ * most of them are not frames at all. Measured before this: **0 of 6151**
+ * diagonal rolls into a doorway got through, because every leaf of every
+ * double door was still refusing diagonals as if it were a gap one body wide.
+ *
+ * A leaf with another leaf beside it is half of an opening you can walk two
+ * abreast through. Nothing is being slipped past there.
+ */
+export function pinches(level, x, y) {
+  if (!blocksDiagonal(level.at(x, y))) return false;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    if (blocksDiagonal(level.at(x + dx, y + dy))) return false;   // a double doorway
+  }
+  return true;
+}
+
 export function diagonalOk(level, fx, fy, tx, ty) {
   if (fx === tx || fy === ty) return true;
-  return !blocksDiagonal(level.at(fx, fy)) &&
-         !blocksDiagonal(level.at(tx, ty)) &&
-         !blocksDiagonal(level.at(tx, fy)) &&
-         !blocksDiagonal(level.at(fx, ty));
+  return !pinches(level, fx, fy) &&
+         !pinches(level, tx, ty) &&
+         !pinches(level, tx, fy) &&
+         !pinches(level, fx, ty);
 }

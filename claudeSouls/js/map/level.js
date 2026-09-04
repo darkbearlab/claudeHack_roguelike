@@ -11,7 +11,7 @@
 // - the archer may well be dead before it lands.
 
 import { T, TILE, isWalkable, isOpaque, isDoor,
-         diagonalOk as tilesDiagonalOk, blocksDiagonal, flyable } from './tiles.js';
+         diagonalOk as tilesDiagonalOk, pinches, flyable } from './tiles.js';
 
 export const MAP_W = 64;
 export const MAP_H = 25;
@@ -140,7 +140,8 @@ export class Level {
     return !this.enemyAt(fx + dx, fy) && !this.enemyAt(fx, fy + dy);
   }
 
-  isDoorway(x, y) { return blocksDiagonal(this.at(x, y)); }
+  /** A gap narrow enough to squeeze through - not merely any door. */
+  isDoorway(x, y) { return pinches(this, x, y); }
 
   isVisible(x, y) { return this.inBounds(x, y) && !!this.visible[this.idx(x, y)]; }
   isSeen(x, y)    { return this.inBounds(x, y) && !!this.seen[this.idx(x, y)]; }

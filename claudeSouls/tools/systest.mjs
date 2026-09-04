@@ -1739,6 +1739,55 @@ check('you cannot sit down while something is hunting you', () => {
   return 'no reset button mid-fight';
 });
 
+check('a doorway two leaves wide does not pinch you', () => {
+  // Reported from play: rolls could not get through the new double doors.
+  //
+  // The rule is "a doorway cannot be entered or left diagonally", and it is
+  // there to stop things slipping past each other at a corridor mouth -
+  // funnelling enemies into a doorway is a real defensive skill here. But it
+  // is a rule about squeezing through a FRAME, and since doorways became two
+  // tiles wide most of them are not frames. Every leaf of every double door
+  // was still refusing diagonals as if it were a gap one body wide: measured,
+  // 0 of 6151 diagonal rolls into a doorway got through. Not one.
+  const isDoor = (t) => t === T.DOOR_OPEN || t === T.DOOR_CLOSED || t === T.DOOR_BROKEN;
+  let wideOk = 0, wideTried = 0, narrowThrough = 0, narrowTried = 0;
+  for (let s = 0; s < 6; s++) {
+    const g = freshGame(`pinch-${s}`);
+    for (let d = 1; d < 6; d++) {
+      const lvl = g.levelAt(d);
+      g.player.depth = d; g.level = lvl;
+      lvl.enemies.length = 0; lvl.markEnemiesDirty();
+      for (let y = 1; y < lvl.h - 1; y++) {
+        for (let x = 1; x < lvl.w - 1; x++) {
+          if (!isDoor(lvl.at(x, y))) continue;
+          const doubled = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+            .some(([dx, dy]) => isDoor(lvl.at(x + dx, y + dy)));
+          for (const dd of DIRS) {
+            if (!dd.dx || !dd.dy) continue;
+            const from = { x: x - dd.dx, y: y - dd.dy };
+            if (!lvl.walkable(from.x, from.y)) continue;
+            g.player.x = from.x; g.player.y = from.y;
+            g.player.stamina = g.player.staminaMax;
+            const moved = g.dash(1, dd);
+            if (doubled) { wideTried++; if (moved) wideOk++; }
+            else { narrowTried++; if (moved) narrowThrough++; }
+          }
+        }
+      }
+    }
+  }
+  assert(wideTried > 200 && narrowTried > 20,
+         `not enough doorways sampled (${wideTried} wide, ${narrowTried} narrow)`);
+  // Wide: you have room, so you may go through it corner-first.
+  assert(wideOk / wideTried > 0.9,
+         `only ${((100 * wideOk) / wideTried).toFixed(0)}% of diagonal rolls clear a double doorway`);
+  // Narrow: the chokepoint rule survives exactly where it still means
+  // something. Losing this would take away the defensive use of a doorway.
+  assert(narrowThrough === 0,
+         `${narrowThrough} diagonal rolls squeezed through a single-leaf doorway`);
+  return `double ${((100 * wideOk) / wideTried).toFixed(0)}% through, single 0% - the pinch is only where it is narrow`;
+});
+
 check('bodies block a diagonal, and a roll is the way through', () => {
   // Until now a pincer could always be stepped out of, which quietly undercut
   // packs, made block - the "nowhere to go" option - almost never correct, and
