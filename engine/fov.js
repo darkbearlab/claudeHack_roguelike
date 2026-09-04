@@ -42,7 +42,7 @@ export function computeFOV(level, ox, oy, radius, blind = false) {
   // Lit rooms reveal wholesale once you are inside them - including the walls,
   // which shadowcasting alone will not do for the corners.
   const room = level.roomAt(ox, oy);
-  if (room && room.lit) revealRoom(level, room);
+  if (room && room.lit) revealRoom(level, room, ox, oy);
 }
 
 function castLight(level, ox, oy, row, startSlope, endSlope, radius, xx, xy, yx, yy) {
@@ -78,10 +78,31 @@ function castLight(level, ox, oy, row, startSlope, endSlope, radius, xx, xy, yx,
   }
 }
 
-function revealRoom(level, room) {
+/**
+ * A lit room shows you itself - but not through anything standing in it.
+ *
+ * The wholesale reveal exists because shadowcasting alone leaves the room's own
+ * corners dark, and a room you are standing in should not have unlit corners.
+ * It was written when the only opaque thing was the wall around the outside,
+ * where "reveal everything inside" and "reveal everything you can see" are the
+ * same statement.
+ *
+ * They stop being the same the moment something opaque stands INSIDE a room -
+ * a pillar - because then the wholesale version hands you the far side of it
+ * for free and an ambush behind a colonnade is impossible by construction.
+ *
+ * So: reveal the boundary wholesale (that is what the corners needed) and the
+ * interior only where the viewer can actually see. In a room with nothing
+ * opaque in it, every interior tile passes and this is exactly the old
+ * behaviour - which is why nothing in claudeHack changes.
+ */
+function revealRoom(level, room, ox, oy) {
   for (let y = room.y - 1; y <= room.y + room.h; y++) {
     for (let x = room.x - 1; x <= room.x + room.w; x++) {
-      if (level.inBounds(x, y)) level.markSeen(x, y);
+      if (!level.inBounds(x, y)) continue;
+      const inside = x >= room.x && x < room.x + room.w &&
+                     y >= room.y && y < room.y + room.h;
+      if (!inside || hasLOS(level, ox, oy, x, y)) level.markSeen(x, y);
     }
   }
 }

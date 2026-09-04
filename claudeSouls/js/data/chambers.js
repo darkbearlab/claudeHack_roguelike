@@ -55,18 +55,26 @@ export const CHAMBERS = [
 
     // The decision. Everything below exists to force it.
     //
-    // Note what this is NOT. The first version said the pillars break line of
-    // sight, and that turned out to collide with a rule this game cannot give
-    // up: every room is lit, because a wind-up you cannot see is not a
-    // telegraph. Measured, the player sees the whole chamber - 84 of 84 tiles.
+    // The pillars do two things, and the second one had to be argued for.
     //
-    // What the pillars actually do is better. They block the archers' LINE OF
-    // FIRE while leaving your information complete: measured across 133
-    // colonnades, an archer can shoot only 34% of the lane. So you can see
-    // exactly what is going to happen and still have to decide when to cross a
-    // gap - which is the shape of decision this whole game is built on.
-    intent: '你看得見全部,但柱子切斷的是射界:中廊只有三分之一會被射到。'
-          + '問題不是「哪裡有敵人」,是「我什麼時候穿過空隙」。',
+    // They cut the archers' LINE OF FIRE: measured across 133 colonnades, an
+    // archer can shoot only about a third of the lane. That alone would make
+    // the chamber work.
+    //
+    // They also cut YOUR line of sight, which collides with the oldest rule in
+    // the generator - every room is lit, because a wind-up you cannot see is
+    // not a telegraph. The collision is worth it, because a colonnade you can
+    // see through is decoration and an ambush needs somewhere to hide.
+    // Measured: 225 creatures concealed against 123 in the open.
+    //
+    // The rule survives intact anyway. Anything mid-swing is forced visible
+    // (see Game.afterMove), so you can be surprised by something being there
+    // and never by a blow landing. Before that guarantee was added, 0 of 2097
+    // wind-ups were hidden in practice - anything close enough to reach you is
+    // close enough to see - but this is not a rule to leave to geometry.
+    intent: '你會被埋伏,但不會被沒預告的攻擊打到。柱子藏得住「有東西在那」,'
+          + '藏不住「它要出手了」——而它同時切掉三分之二的射界,'
+          + '所以問題是「我什麼時候穿過空隙」。',
 
     minDepth: 3,
     // Needs to be wide enough for two pillar rows and three lanes between them.

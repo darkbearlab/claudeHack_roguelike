@@ -259,9 +259,27 @@ export class Game {
 
   afterMove() {
     const p = this.player;
-    // Lighting is simple here on purpose: rooms are always lit, because a
-    // wind-up you cannot see is not a telegraph.
     computeFOV(this.level, p.x, p.y, 11, false);
+
+    // Anything mid-swing is visible, whatever is between you and it.
+    //
+    // Rooms used to be revealed wholesale, which made this impossible to need:
+    // you saw everything in the room you stood in. Pillars changed that on
+    // purpose - an ambush is worth having, and a colonnade you can see through
+    // is just decoration - so now something CAN be hidden from you.
+    //
+    // Being surprised by a creature's presence is fine. Being surprised by a
+    // blow is not: "every blow in the game is announced" is the rule the whole
+    // combat system rests on, and a telegraph behind a pillar is not a
+    // telegraph. Measured before adding this, it never actually happened
+    // (0 of 2097 wind-ups were hidden) because anything close enough to reach
+    // you is close enough to see - but an observation is not a guarantee, and
+    // this one is too important to leave to geometry.
+    for (const e of this.level.enemies) {
+      if (!e.alive || e.state !== STATE.WINDUP) continue;
+      for (const t of e.bodyTiles()) this.level.markSeen(t.x, t.y);
+      for (const t of e.attackTiles ?? []) this.level.markSeen(t.x, t.y);
+    }
     this.ui?.render();
   }
 

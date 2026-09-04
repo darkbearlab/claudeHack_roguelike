@@ -2289,47 +2289,61 @@ check('the log is off unless something is going to draw it', () => {
   return 'disabled by default, records nothing';
 });
 
-check('a colonnade cuts the line of FIRE, never the line of sight', () => {
-  // The situation's whole promise, and the version of it that survived contact
-  // with a rule this game cannot give up: every room is lit, because a wind-up
-  // you cannot see is not a telegraph. So the pillars are not allowed to hide
-  // anything - what they take away is the archers' shot, not your information.
-  let seen = 0, exposedShare = [];
-  for (let s = 0; s < 20 && seen < 8; s++) {
-    const g = freshGame(`col-${s}`);
-    for (let d = 3; d < DUNGEON_DEPTH && seen < 8; d++) {
+check('a pillar can hide a creature, but never a blow', () => {
+  // Both halves, and they pull against each other.
+  //
+  // Pillars must hide things or an ambush is impossible and a colonnade is
+  // decoration. But "every blow in the game is announced" is the rule the
+  // whole combat system rests on, and a telegraph behind a pillar is not a
+  // telegraph. So: you can be surprised by something being THERE, never by a
+  // blow arriving.
+  let seenCount = 0, hiddenCount = 0, windups = 0, hiddenWindups = 0, chambers = 0;
+  let exposure = [];
+  for (let s = 0; s < 16 && chambers < 6; s++) {
+    const g = freshGame(`amb-${s}`, 'heavy');
+    for (let d = 3; d < DUNGEON_DEPTH && chambers < 6; d++) {
       const lvl = g.levelAt(d);
       const ch = lvl.chambers?.[0];
-      if (!ch || ch.key !== 'colonnade') continue;
+      if (ch?.key !== 'colonnade') continue;
       const room = lvl.rooms.find((r) => r.id === ch.room);
-      const arch = lvl.livingEnemies().filter((e) =>
-        e.spec.attacks.some((a) => a.kind === 'ranged') &&
+      const inside = () => lvl.livingEnemies().filter((e) =>
         e.x >= room.x && e.x < room.x + room.w && e.y >= room.y && e.y < room.y + room.h);
-      if (!arch.length || !ch.anchors.lane.length) continue;
-      seen++;
+      if (!inside().length) continue;
+      chambers++;
 
-      // 1. you can see all of it. Stand in the lane and look.
-      g.player.depth = d; g.level = lvl;
-      const mid = ch.anchors.lane[ch.anchors.lane.length >> 1];
-      g.player.x = mid.x; g.player.y = mid.y;
+      g.player.depth = d; g.level = lvl; g.levels.set(d, lvl);
+      g.player.x = ch.anchors.lane[0].x; g.player.y = ch.anchors.lane[0].y;
       g.afterMove();
-      for (const a of arch) {
-        assert(lvl.isVisible(a.x, a.y),
-               'an archer in a colonnade is hidden from the lane - that is an ambush');
+      for (const e of inside()) (lvl.isVisible(e.x, e.y) ? seenCount++ : hiddenCount++);
+
+      const arch = inside().filter((e) => e.spec.attacks.some((a) => a.kind === 'ranged'));
+      if (arch.length) {
+        const shot = ch.anchors.lane.filter((t) =>
+          arch.some((a) => hasLOS(lvl, a.x, a.y, t.x, t.y, 12))).length;
+        exposure.push(shot / ch.anchors.lane.length);
       }
 
-      // 2. but the lane is genuinely mixed ground. All of it shootable is a
-      //    killing field with no decision in it; none of it is scenery.
-      const shot = ch.anchors.lane.filter((t) =>
-        arch.some((a) => hasLOS(lvl, a.x, a.y, t.x, t.y, 12))).length;
-      exposedShare.push(shot / ch.anchors.lane.length);
+      for (let t = 0; t < 40; t++) {
+        g.player.hp = g.player.hpMax; g.player.stamina = g.player.staminaMax;
+        g.worldTurn(); g.afterMove();
+        for (const e of lvl.livingEnemies()) {
+          if (e.state !== STATE.WINDUP) continue;
+          windups++;
+          if (!lvl.isVisible(e.x, e.y)) hiddenWindups++;
+        }
+      }
     }
   }
-  assert(seen >= 4, `only found ${seen} colonnades to check`);
-  const avg = exposedShare.reduce((a, b) => a + b, 0) / exposedShare.length;
+  assert(chambers >= 3, `only found ${chambers} colonnades to check`);
+  assert(hiddenCount > 0, 'the pillars hide nothing - an ambush is impossible here');
+  assert(windups > 50, `only saw ${windups} wind-ups; not enough to trust the next line`);
+  assert(hiddenWindups === 0,
+         `${hiddenWindups} of ${windups} wind-ups were invisible - a blow arrived unannounced`);
+  const avg = exposure.reduce((a, b) => a + b, 0) / Math.max(1, exposure.length);
   assert(avg > 0.05 && avg < 0.85,
          `${(100 * avg).toFixed(0)}% of the lane is under fire - that is a corridor, not a choice`);
-  return `${seen} colonnades: all visible, ${(100 * avg).toFixed(0)}% of the lane under fire`;
+  return `${hiddenCount} hidden vs ${seenCount} seen, ${windups} wind-ups all visible, ` +
+         `${(100 * avg).toFixed(0)}% of lane under fire`;
 });
 
 check('a situation is cast exactly, not topped up at random', () => {
