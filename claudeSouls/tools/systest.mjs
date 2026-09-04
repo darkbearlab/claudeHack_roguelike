@@ -11,7 +11,7 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
-import { T, isWalkable, isChest, isCorpse, flyable } from '../js/map/tiles.js';
+import { T, isWalkable, isChest, isCorpse, flyable, tileName } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -2958,6 +2958,43 @@ check('a big body cannot be shoved, and can always be broken away from', () => {
   assert(withRefuge === floors,
          `${floors - withRefuge} of ${floors} floors have nowhere a big creature cannot follow`);
   return `immovable; every one of ${floors} floors has ground it cannot reach`;
+});
+
+check('the dragon gets a hall to itself', () => {
+  // Reported from play: the boss room was also the bridge chamber, with the
+  // drop starting one tile off the span. Two separate mistakes met there.
+  //
+  // Chambers are stamped in mapgen and cast in populate - but populate returns
+  // early on the bottom floor, because the boss floor is placed by hand. So a
+  // chamber down here carved its terrain and never got its cast: pillars and
+  // chasms cut into the sanctum for nothing at all. And since the boss takes
+  // the largest room and chambers want large rooms too, they collided.
+  //
+  // The arena also has to be clear. Rubble and pits are scattered into every
+  // room big enough to hold them, and the biggest room is exactly where the
+  // dragon stands.
+  for (let s = 0; s < 20; s++) {
+    const g = freshGame(`arena-${s}`);
+    const lvl = g.levelAt(DUNGEON_DEPTH);
+    assert(!lvl.chambers?.length, `seed ${s}: a situation was built on the boss floor`);
+
+    const boss = lvl.enemies.find((e) => e.spec.boss);
+    assert(boss, `seed ${s}: no boss`);
+    const room = [...lvl.rooms].sort((a, b) => b.w * b.h - a.w * a.h)[0];
+    let open = 0;
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const t = lvl.at(x, y);
+        assert(t !== T.RUBBLE && t !== T.PIT && t !== T.PILLAR && t !== T.CHASM,
+               `seed ${s}: the arena has ${tileName(t)} in it`);
+        if (lvl.walkable(x, y)) open++;
+      }
+    }
+    // Enough ground for something four squares across to be fought rather than
+    // cornered.
+    assert(open >= 30, `seed ${s}: the arena is only ${open} tiles`);
+  }
+  return '20 bottom floors: no situation, no clutter, room to fight in';
 });
 
 check('the bottom floor always has a boss that fits on it', () => {

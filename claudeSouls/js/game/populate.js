@@ -169,6 +169,17 @@ export function spawnBoss(game, lvl) {
   // fallback did not check either, so two seeds in twenty produced a bottom
   // floor with **no boss on it at all**, which is a run that cannot be won.
   // Every candidate is now tested against the whole footprint.
+  // The arena is cleared first. A boss fight wants open ground: rubble and
+  // pits are scattered into every room big enough to hold them, and the boss
+  // takes the biggest room there is, so without this the dragon's hall came
+  // with obstacles nobody put there on purpose.
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) {
+      const t = lvl.at(x, y);
+      if (t === T.RUBBLE || t === T.PIT) lvl.set(x, y, T.FLOOR);
+    }
+  }
+
   const size = ENEMY_BY_KEY.firstflame.size ?? 1;
   const fits = (x, y) => lvl.bodyFits(x, y, size);
 

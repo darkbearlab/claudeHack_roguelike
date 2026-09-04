@@ -367,6 +367,13 @@ function placeBonfires(lvl, rng) {
  */
 function placeChambers(lvl, rng, depth) {
   lvl.chambers = [];
+  // Never the bottom floor. `populate` says "the boss floor is placed by hand"
+  // and returns before it would cast anybody - so a chamber down here got its
+  // terrain carved and its cast never filled: pillars and chasms cut into the
+  // sanctum for nothing. Worse, the boss takes the largest room and chambers
+  // like large rooms too, so one floor in seven put the dragon in a colonnade
+  // or on a bridge with the drop at its shoulder.
+  if (depth >= DUNGEON_DEPTH) return;
   const pool = CHAMBERS.filter((c) => depth >= c.minDepth);
   if (!pool.length) return;
 
