@@ -116,6 +116,120 @@ export const CHAMBERS = [
       { role: 'blocker', at: 'lane', n: [1, 1], aware: true },
     ],
   },
+
+  {
+    key: 'gauntlet',
+    name: 'the causeway',
+
+    // "A long narrow passage whose sides are not walls but open space, with
+    // something across the gap that pins your movement and shoots at you."
+    //
+    // The passage is drawn in PITS, and that is the whole trick. A pit stops
+    // feet and not arrows - it is documented that way in tiles.js, one deciding
+    // who can reach whom and the other who can shoot whom - so the flanks are
+    // ground you can see across and be shot across but cannot walk across.
+    // The corridor is made of threat and a hole in the floor; there is not one
+    // wall in it.
+    //
+    // The pit strips stop short of both ends deliberately. Without a way round
+    // this is not a decision, it is a toll.
+    intent: '兩側是坑不是牆:看得到、被射得到、但走不過去。'
+          + '所以只有直線衝過去吃箭,或者繞到盡頭——實測多花 3 到 7 步。',
+
+    minDepth: 4,
+    fits: (r) => r.w >= 9 && r.h >= 6,
+
+    build(lvl, room) {
+      const anchors = { causeway: [], far: [], end: [] };
+      // TWO tiles wide, not one, and that is not a detail.
+      //
+      // A one-wide causeway is a one-wide corridor, and the generator has a
+      // measured rule against those: every attack shape collapses to a single
+      // effective tile, the only movement left is forward and back, and block
+      // stops being the "nowhere to go" option and becomes mandatory. The
+      // first version of this chamber walked straight into the thing
+      // MAX_STRAIT exists to prevent - the test caught it.
+      //
+      // Two wide keeps the situation intact (you still cannot cross the pits,
+      // and everything beyond them can still shoot you) while leaving the
+      // sidestep that makes the fight a fight.
+      const yA = room.y + (room.h >> 1) - 1, yB = yA + 1;
+      const gap = 2;                       // columns left open at each end
+      const x0 = room.x + gap, x1 = room.x + room.w - 1 - gap;
+
+      for (let x = x0; x <= x1; x++) {
+        for (const y of [yA - 1, yB + 1]) {
+          if (lvl.at(x, y) === T.FLOOR) lvl.set(x, y, T.PIT);
+        }
+      }
+      for (let x = room.x; x < room.x + room.w; x++) {
+        for (const y of [yA, yB]) {
+          if (lvl.at(x, y) === T.FLOOR) anchors.causeway.push({ x, y });
+        }
+        // Beyond the pits: in plain sight, in range, and reachable only by
+        // walking all the way round the end.
+        for (let y = room.y; y < room.y + room.h; y++) {
+          if (y >= yA - 1 && y <= yB + 1) continue;
+          if (x >= x0 && x <= x1 && lvl.at(x, y) === T.FLOOR) anchors.far.push({ x, y });
+        }
+      }
+      const far = anchors.causeway.filter((t) => t.x >= x1);
+      anchors.end.push(...(far.length ? far : anchors.causeway.slice(-1)));
+      return anchors;
+    },
+
+    cast: [
+      { role: 'ranged', at: 'far', n: [2, 2], aware: true, spread: true },
+      { role: 'blocker', at: 'end', n: [1, 1], aware: true },
+    ],
+  },
+
+  {
+    key: 'centrepiece',
+    name: 'the broken floor',
+
+    // The opposite of a colonnade, on purpose. There the sight lines break and
+    // the ground is open; here the ground breaks and the sight lines are open.
+    //
+    // Rubble stops feet without stopping eyes, so everything in the room can
+    // see you and shoot you the whole time, and the only thing the terrain
+    // takes away is the straight route. Circling the mound is the answer to
+    // one enemy and the mistake against three.
+    intent: '視線全開,斷掉的是路。中央的碎石擋腳不擋眼,'
+          + '所以繞它可以躲開一個人的近身,卻躲不開任何一支箭。',
+
+    minDepth: 2,
+    fits: (r) => r.w >= 8 && r.h >= 5,
+
+    build(lvl, room) {
+      const anchors = { rim: [], ring: [] };
+      const cx = room.x + (room.w >> 1), cy = room.y + (room.h >> 1);
+      // A compact mound, not a scatter - it has to be worth walking round.
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (Math.abs(dx) + Math.abs(dy) > 1 + (dx && dy ? 0 : 1)) continue;
+          if (lvl.at(cx + dx, cy + dy) === T.FLOOR) lvl.set(cx + dx, cy + dy, T.RUBBLE);
+        }
+      }
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) {
+          if (lvl.at(x, y) !== T.FLOOR) continue;
+          const d = Math.max(Math.abs(x - cx), Math.abs(y - cy));
+          if (d >= 3) anchors.rim.push({ x, y });        // the outer edge
+          else if (d === 2) anchors.ring.push({ x, y }); // just off the mound
+        }
+      }
+      return anchors;
+    },
+
+    // Spread around the outside so there is no angle that answers all of them,
+    // and one thing already close enough to make standing still expensive.
+    cast: [
+      { role: 'ranged', at: 'rim', n: [1, 2], aware: true, spread: true },
+      { role: 'charger', at: 'rim', n: [1, 1], aware: true },
+      { role: 'blocker', at: 'ring', n: [1, 1], aware: true },
+    ],
+  },
 ];
 
 export const CHAMBER_BY_KEY = Object.fromEntries(CHAMBERS.map((c) => [c.key, c]));

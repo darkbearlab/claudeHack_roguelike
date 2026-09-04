@@ -23,7 +23,7 @@ import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from 
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
-import { CHAMBERS, CHAMBER_BY_KEY, castFor } from '../js/data/chambers.js';
+import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { hasLOS } from '../../engine/fov.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
@@ -2370,6 +2370,115 @@ check('a pillar can hide a creature, but never a blow', () => {
          `${(100 * avg).toFixed(0)}% of the lane is under fire - that is a corridor, not a choice`);
   return `${hiddenCount} hidden vs ${seenCount} seen, ${windups} wind-ups all visible, ` +
          `${(100 * avg).toFixed(0)}% of lane under fire`;
+});
+
+check('a causeway pins you without a single wall', () => {
+  // The spec: "a long narrow passage whose sides are not walls but open space,
+  // with something across the gap that pins your movement and shoots at you."
+  //
+  // Three claims, and all three have to hold or it is just a room with holes
+  // in it: you cannot cross, they CAN shoot across, and there is a way round
+  // that genuinely costs you.
+  const walk = (lvl, from) => {
+    const seen = new Map([[`${from.x},${from.y}`, 0]]);
+    const q = [from];
+    while (q.length) {
+      const c = q.shift();
+      const d = seen.get(`${c.x},${c.y}`);
+      for (const dd of DIRS) {
+        const x = c.x + dd.dx, y = c.y + dd.dy, k = `${x},${y}`;
+        if (seen.has(k) || !lvl.walkable(x, y)) continue;
+        seen.set(k, d + 1); q.push({ x, y });
+      }
+    }
+    return seen;
+  };
+  let checked = 0, detours = [];
+  for (let s = 0; s < 25 && checked < 5; s++) {
+    const g = freshGame(`gaunt-${s}`);
+    for (let d = 4; d < DUNGEON_DEPTH && checked < 5; d++) {
+      const lvl = g.levelAt(d);
+      const ch = lvl.chambers?.[0];
+      if (ch?.key !== 'gauntlet' || !ch.anchors.far.length) continue;
+      checked++;
+      const from = ch.anchors.causeway[ch.anchors.causeway.length >> 1];
+      const target = ch.anchors.far[ch.anchors.far.length >> 1];
+
+      // 1. walking straight at it, the first thing that stops you is a HOLE,
+      //    not a wall. (The causeway is two rows deep, so the midpoint between
+      //    the two anchors is still open floor - walk it properly instead.)
+      const sy = Math.sign(target.y - from.y);
+      let blocker = null;
+      for (let y = from.y + sy; y !== target.y; y += sy) {
+        if (!lvl.walkable(from.x, y)) { blocker = lvl.at(from.x, y); break; }
+      }
+      assert(blocker !== null, 'you can walk straight across - nothing is pinning anyone');
+      assert(blocker === T.PIT, 'the flank is made of something other than a pit');
+
+      // 2. but it can shoot you: a pit stops feet, not arrows.
+      assert(hasLOS(lvl, target.x, target.y, from.x, from.y, 12),
+             'the far side cannot see the causeway, so it cannot pin it either');
+
+      // 3. and the long way round exists, and is long.
+      const dist = walk(lvl, from);
+      const round = dist.get(`${target.x},${target.y}`);
+      assert(round !== undefined, 'the far side is unreachable - that is a wall, not a choice');
+      const asCrow = Math.max(Math.abs(target.x - from.x), Math.abs(target.y - from.y));
+      assert(round > asCrow, `the detour is ${round} steps for ${asCrow} tiles - it costs nothing`);
+      detours.push(round - asCrow);
+    }
+  }
+  assert(checked >= 3, `only found ${checked} causeways`);
+  const avg = detours.reduce((a, b) => a + b, 0) / detours.length;
+  return `${checked} causeways: cannot cross, can be shot, ${avg.toFixed(0)} extra steps round`;
+});
+
+check('a broken floor breaks the route and not the sight', () => {
+  // Deliberately the opposite of a colonnade. There the sight lines break and
+  // the ground is open; here the ground breaks and the sight lines are open -
+  // so circling the mound answers one thing closing on you and answers no
+  // arrows at all.
+  let checked = 0;
+  for (let s = 0; s < 20 && checked < 5; s++) {
+    const g = freshGame(`mound-${s}`);
+    for (let d = 2; d < DUNGEON_DEPTH && checked < 5; d++) {
+      const lvl = g.levelAt(d);
+      const ch = lvl.chambers?.[0];
+      if (ch?.key !== 'centrepiece') continue;
+      const room = lvl.rooms.find((r) => r.id === ch.room);
+      const cx = room.x + (room.w >> 1), cy = room.y + (room.h >> 1);
+      if (lvl.at(cx, cy) !== T.RUBBLE) continue;
+      checked++;
+
+      // the route is broken
+      assert(!lvl.walkable(cx, cy), 'the mound can be walked over');
+      // the sight is not: straight across the middle, both ways
+      const a = { x: cx, y: cy - 2 }, b = { x: cx, y: cy + 2 };
+      if (lvl.walkable(a.x, a.y) && lvl.walkable(b.x, b.y)) {
+        assert(hasLOS(lvl, a.x, a.y, b.x, b.y, 12),
+               'the mound blocks sight - that is a colonnade, not a broken floor');
+      }
+    }
+  }
+  assert(checked >= 3, `only found ${checked} broken floors`);
+  return `${checked} broken floors: feet stopped, eyes not`;
+});
+
+check('every situation says what it is for', () => {
+  // docs/SITUATIONS.md: the intent line is the standard the result is judged
+  // against, so a chamber without one is a chamber nobody can check.
+  for (const c of CHAMBERS) {
+    assert(c.intent && c.intent.length > 20, `${c.key} has no intent`);
+    assert(typeof c.fits === 'function' && typeof c.build === 'function',
+           `${c.key} is missing geometry`);
+    assert(c.cast?.length, `${c.key} has no cast - it is a room, not a situation`);
+    for (const part of c.cast) {
+      assert(ROLES[part.role], `${c.key} casts an unknown role "${part.role}"`);
+      assert(castFor(part.role, c.minDepth, ENEMY_BY_KEY),
+             `${c.key} wants a ${part.role} at depth ${c.minDepth} and nothing can play it`);
+    }
+  }
+  return `${CHAMBERS.length} situations, all castable at their own depth`;
 });
 
 check('a situation is cast exactly, not topped up at random', () => {
