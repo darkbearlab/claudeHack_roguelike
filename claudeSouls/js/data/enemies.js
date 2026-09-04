@@ -54,6 +54,9 @@ const E = (key, o) => ({
   charges: o.charges ?? false,
   attacks: o.attacks,
   boss: o.boss ?? false,
+  // Tiles on a side. Anything above 1 is room-bound - see the note on the
+  // First Flame, and Level.bodyFits.
+  size: o.size ?? 1,
 });
 
 const atk = (o) => ({
@@ -239,6 +242,14 @@ export const ENEMIES = [
     name: 'the First Flame', glyph: 'D', colour: '#e0402a', sprite: 'mon_dragon',
     hp: 70, speed: 12, stamina: 22, staminaRegen: 4, poise: 12, sight: 14,
     minDepth: 99, freq: 0, boss: true, opensDoors: true,
+    // Four squares of dragon. It is the right first big thing precisely
+    // because it never has to leave its room: measured over 300 floors, a 2x2
+    // body fits half of all room tiles but under 2% of corridor, so anything
+    // this size is room-bound by construction. For a wandering monster that
+    // would be a defect; for the thing at the bottom of the dungeon it is
+    // simply true, and it makes the sanctum the arena rather than a corridor
+    // you fight it in one tile at a time.
+    size: 2,
     attacks: [
       atk({ name: 'sear', kind: 'ranged', windup: 2, recovery: 2, range: 12, damage: 4, cost: 5,
             projectile: { speed: 4, glyph: '*', colour: '#ff7a3a' } }),

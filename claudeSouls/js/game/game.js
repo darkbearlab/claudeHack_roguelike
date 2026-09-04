@@ -351,6 +351,23 @@ export class Game {
     if (p.hp <= 0) this.die(source);
   }
 
+  /**
+   * The distinct creatures standing in a set of tiles.
+   *
+   * The whole reason this exists: a body can cover more than one square, and
+   * every attack in the game is a list of squares. Iterating the squares and
+   * asking what is on each one hits a big creature once per square it happens
+   * to occupy.
+   */
+  bodiesIn(tiles) {
+    const out = [];
+    for (const t of tiles) {
+      const e = this.level.enemyAt(t.x, t.y);
+      if (e && e.alive && !out.includes(e)) out.push(e);
+    }
+    return out;
+  }
+
   hurtEnemy(e, amount, byPlayer, impact = 0) {
     if (!e.alive) return;
     let dmg = amount;
@@ -778,13 +795,14 @@ export class Game {
     if (c.pattern) {
       const tiles = attackTiles(p.x, p.y, dir.dx, dir.dy, c.pattern);
       let hit = 0;
-      for (const t of tiles) {
-        const e = this.level.enemyAt(t.x, t.y);
-        if (e && e.alive) {
-          this.hurtEnemy(e, c.damage, true, c.impact);
-          if (c.knock && e.alive) this.knockBack(e, dir, c.knock);
-          hit++;
-        }
+      // Once per BODY, not once per tile. A shape that overlaps three squares
+      // of a 2x2 would otherwise deal its damage and its knockback three times
+      // to one creature - and that arrives looking like "big enemies are too
+      // weak", which is a resolution bug wearing a balance problem's clothes.
+      for (const e of this.bodiesIn(tiles)) {
+        this.hurtEnemy(e, c.damage, true, c.impact);
+        if (c.knock && e.alive) this.knockBack(e, dir, c.knock);
+        hit++;
       }
       this.ui?.animateTrail?.(tiles, '*', '#ff9a3c');
       this.msg(hit ? `${capitalise(c.name)} tears through ${hit}.` : `${capitalise(c.name)} hits nothing.`);
@@ -810,6 +828,9 @@ export class Game {
    * whatever it would have been pushed into, which is the interesting case.
    */
   knockBack(e, dir, tiles) {
+    // Big things are not shoved about. Without this a Shove walks a dragon
+    // across the room for three stamina.
+    if (e.immovable) return 0;
     let moved = 0;
     for (let i = 0; i < tiles; i++) {
       const nx = e.x + dir.dx, ny = e.y + dir.dy;
@@ -942,9 +963,8 @@ export class Game {
 
     const tiles = attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern);
     let hit = 0;
-    for (const t of tiles) {
-      const e = this.level.enemyAt(t.x, t.y);
-      if (e && e.alive) {
+    for (const e of this.bodiesIn(tiles)) {
+      {
         const wasWindup = e.state === STATE.WINDUP;
         const poiseBefore = e.poiseLeft;
         this.hurtEnemy(e, def.damage + m.damage, true, (def.impact ?? 0) + m.impact);

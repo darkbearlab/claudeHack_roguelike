@@ -190,11 +190,14 @@ export class Renderer {
       if (!e.alive) continue;
       const rx = e.x - v.ox, ry = e.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
-      if (!lvl.isVisible(e.x, e.y)) continue;
+      // Visible if ANY part of it is. Something four squares across should
+      // not vanish because the corner it is anchored at happens to be behind
+      // the door frame you are looking through.
+      if (!e.bodyTiles().some((t) => lvl.isVisible(t.x, t.y))) continue;
       const off = this.anim?.offsetFor(e.uid);
       this.drawEnemy(ctx, e,
         rx * v.cell + v.offX + (off?.dx ?? 0) * v.cell,
-        ry * v.cell + v.offY + (off?.dy ?? 0) * v.cell, v.cell, off?.flash ?? 0);
+        ry * v.cell + v.offY + (off?.dy ?? 0) * v.cell, v.cell, off?.flash ?? 0, e.size);
     }
 
     // --- people, under the enemies and the player. They never move and they
@@ -483,44 +486,49 @@ export class Renderer {
   // --------------------------------------------------------------- actors
 
   drawEnemy(ctx, e, px, py, cell, hurt = 0) {
+    // Everything below is measured in the creature's own footprint rather
+    // than in tiles, so a 2x2 gets a sprite, a hit flash, a halo and a
+    // wind-up badge that are all twice the size - one creature, drawn once,
+    // at the size it actually is.
+    const span = cell * (e.size ?? 1);
     const winding = e.state === STATE.WINDUP;
     const spent = e.state === STATE.RECOVER || e.state === STATE.RESTING;
 
     if (this.mode === 'ascii') {
-      this.glyph(ctx, e.glyph, winding ? '#ff8a70' : e.colour, px, py, cell, spent ? 0.55 : 1);
-      this.facingPip(ctx, e.facing, px, py, cell, e.colour);
+      this.glyph(ctx, e.glyph, winding ? '#ff8a70' : e.colour, px, py, span, spent ? 0.55 : 1);
+      this.facingPip(ctx, e.facing, px, py, span, e.colour);
     } else {
       const img = this.sprite(e.sprite);
-      if (img) this.blit(ctx, img, px, py, cell, spent ? 0.62 : 1, 1, spriteRotation(e.facing.dx, e.facing.dy, e.sprite));
-      else this.glyph(ctx, e.glyph, e.colour, px, py, cell, spent ? 0.6 : 1);
+      if (img) this.blit(ctx, img, px, py, span, spent ? 0.62 : 1, 1, spriteRotation(e.facing.dx, e.facing.dy, e.sprite));
+      else this.glyph(ctx, e.glyph, e.colour, px, py, span, spent ? 0.6 : 1);
     }
 
     // An elite is a normal species with more of it, so it needs to be readable
     // as one at a glance - the sprite is the same and the name only shows in
     // the log.
-    if (hurt > 0) this.hurtWash(ctx, px, py, cell, hurt);
+    if (hurt > 0) this.hurtWash(ctx, px, py, span, hurt);
 
-    if (e.elite) this.glow(ctx, px, py, cell, 232, 150, 60);
+    if (e.elite) this.glow(ctx, px, py, span, 232, 150, 60);
 
     // State badge. The player should never have to click to learn this.
     if (winding) {
       ctx.fillStyle = '#ff5a44';
-      ctx.font = `bold ${Math.floor(cell * 0.5)}px ui-monospace, monospace`;
+      ctx.font = `bold ${Math.floor(span * 0.5)}px ui-monospace, monospace`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('!', px + cell / 2, py + cell * 0.16);
+      ctx.fillText('!', px + span / 2, py + span * 0.16);
       // Ticks for turns remaining, so "two away" and "one away" are distinct.
       for (let i = 0; i < e.timer; i++) {
-        ctx.fillRect(px + cell * (0.62 + i * 0.12), py + cell * 0.08, cell * 0.08, cell * 0.14);
+        ctx.fillRect(px + span * (0.62 + i * 0.12), py + span * 0.08, span * 0.08, span * 0.14);
       }
     } else if (e.state === STATE.RECOVER) {
-      this.glyph(ctx, '·', '#8fd48f', px + cell * 0.3, py - cell * 0.24, cell * 0.7, 1);
+      this.glyph(ctx, '·', '#8fd48f', px + span * 0.3, py - span * 0.24, span * 0.7, 1);
     } else if (e.state === STATE.RESTING) {
-      this.glyph(ctx, '~', '#8fd48f', px + cell * 0.3, py - cell * 0.24, cell * 0.7, 1);
+      this.glyph(ctx, '~', '#8fd48f', px + span * 0.3, py - span * 0.24, span * 0.7, 1);
     }
 
-    if (e.hp < e.hpMax && cell >= 16) {
-      const w = cell * 0.72, h = Math.max(2, cell * 0.075);
-      const bx = px + cell * 0.14, by = py + cell - h - 1;
+    if (e.hp < e.hpMax && span >= 16) {
+      const w = span * 0.72, h = Math.max(2, span * 0.075);
+      const bx = px + span * 0.14, by = py + span - h - 1;
       ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(bx, by, w, h);
       const frac = e.hp / e.hpMax;
       ctx.fillStyle = frac > 0.5 ? '#56d364' : frac > 0.25 ? '#e3b341' : '#f85149';

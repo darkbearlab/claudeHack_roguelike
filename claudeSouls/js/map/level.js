@@ -141,7 +141,16 @@ export class Level {
     if (!this.inBounds(x, y)) return null;
     if (!this._idx) {
       this._idx = new Map();
-      for (const e of this.enemies) if (e.alive) this._idx.set(this.idx(e.x, e.y), e);
+      // Every tile of a body, not just its anchor. That one line is what makes
+      // a big enemy work everywhere at once: all seventeen enemyAt call sites -
+      // attacks, movement, pathing, the diagonal rule, the bot - already ask
+      // "what is standing here", and now they get the same object back from
+      // any square it covers. It also gives self-friendly-fire immunity for
+      // free, because the existing `other !== e` check compares identity.
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        for (const t of e.bodyTiles()) this._idx.set(this.idx(t.x, t.y), e);
+      }
     }
     return this._idx.get(this.idx(x, y)) ?? null;
   }
@@ -150,6 +159,25 @@ export class Level {
   occupantAt(x, y) { return this.enemyAt(x, y); }
 
   moveEnemy(e, x, y) { e.x = x; e.y = y; this.markEnemiesDirty(); }
+
+  /**
+   * Can this body stand with its anchor here?
+   *
+   * Terrain for every tile it would cover, and no other body in any of them.
+   * `ignore` is the mover itself, so a 2x2 shuffling one square does not trip
+   * over the three tiles it is already standing on.
+   */
+  bodyFits(x, y, size, ignore = null) {
+    for (let dy = 0; dy < size; dy++) {
+      for (let dx = 0; dx < size; dx++) {
+        const tx = x + dx, ty = y + dy;
+        if (!this.passable(tx, ty, ignore)) return false;
+        const o = this.enemyAt(tx, ty);
+        if (o && o !== ignore) return false;
+      }
+    }
+    return true;
+  }
 
   npcAt(x, y) {
     if (!this.inBounds(x, y)) return null;
@@ -221,7 +249,13 @@ export class Level {
     const { roomsOnly = false, awayFrom = null, minDist = 0, avoidFeatures = true,
             avoidBonfires = false } = opts;
     const taken = new Set();
-    for (const e of this.enemies) if (e.alive) taken.add(this.idx(e.x, e.y));
+    // Every tile of every body, not just its anchor. A creature that covers
+    // four squares had three of them look empty here, so ordinary enemies were
+    // being spawned inside the dragon.
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      for (const t of e.bodyTiles()) taken.add(this.idx(t.x, t.y));
+    }
     for (const n of this.npcs) taken.add(this.idx(n.x, n.y));
 
     const spots = [];

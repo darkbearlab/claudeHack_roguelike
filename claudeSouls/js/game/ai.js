@@ -182,7 +182,12 @@ function chooseAttack(game, e, seen) {
  * was a geometry bug.
  */
 function origin(lvl, e, dir, a, game) {
-  let x = e.x, y = e.y;
+  // A blow comes out of the part of it that is facing you. For a one-tile
+  // creature that is simply where it stands; for a 2x2 the anchor corner would
+  // put half its attacks in the air on its far side, so the swing starts from
+  // whichever of its squares is nearest the player.
+  const from = game ? e.nearestTileTo(game.player.x, game.player.y) : { x: e.x, y: e.y };
+  let x = from.x, y = from.y;
   for (let i = 0; i < (a.step ?? 0); i++) {
     const nx = x + dir.dx, ny = y + dir.dy;
     if (!lvl.passable(nx, ny, e)) break;
@@ -193,6 +198,12 @@ function origin(lvl, e, dir, a, game) {
     x = nx; y = ny;
   }
   return { x, y };
+}
+
+/** Would a body anchored here stand on the player? */
+function occupiesPlayer(game, x, y, size) {
+  const p = game.player;
+  return p.x >= x && p.x < x + size && p.y >= y && p.y < y + size;
 }
 
 /** Ranged attacks fire along one of the eight lines, so they can be side-stepped. */
@@ -264,6 +275,7 @@ function resolveAttack(game, e) {
   } else {
     const tiles = e.attackTiles ?? [];
     let hitAnything = false;
+    const struck = new Set();          // one blow per body, not per tile
     for (const t of tiles) {
       if (t.x === game.player.x && t.y === game.player.y) {
         game.msg(`The ${e.name}'s ${a.name} catches you!`, 'bad');
@@ -274,7 +286,11 @@ function resolveAttack(game, e) {
         hitAnything = true;
       }
       const other = game.level.enemyAt(t.x, t.y);
-      if (other && other !== e && other.alive) {
+      // `other !== e` is also what stops a big creature friendly-firing itself:
+      // every tile of its body returns the same object, so identity excludes
+      // it without a size check anywhere.
+      if (other && other !== e && other.alive && !struck.has(other)) {
+        struck.add(other);
         // Friendly fire is not a special case; it falls out of attacks
         // covering tiles rather than targeting creatures.
         game.msg(`The ${e.name} hits the ${other.name}!`, 'good');
@@ -359,7 +375,13 @@ function tryStep(game, e, nx, ny) {
   const lvl = game.level;
   if (!lvl.inBounds(nx, ny)) return false;
   if (nx === game.player.x && ny === game.player.y) { e.face(nx - e.x, ny - e.y); return false; }
-  if (lvl.occupant(nx, ny)) return false;
+  // A body needs room for all of itself. For the one-tile case this is the
+  // same test as before; for a 2x2 it is why it cannot enter a corridor -
+  // measured, only 1.9% of corridor tiles can hold one.
+  if (e.size > 1) {
+    if (!lvl.bodyFits(nx, ny, e.size, e)) return false;
+    if (occupiesPlayer(game, nx, ny, e.size)) { e.face(nx - e.x, ny - e.y); return false; }
+  } else if (lvl.occupant(nx, ny)) return false;
   if (!lvl.diagonalOk(e.x, e.y, nx, ny)) return false;
 
   const t = lvl.at(nx, ny);

@@ -2460,6 +2460,126 @@ check('a chest still has something standing over it', () => {
   return `${stores} chest rooms, all guarded`;
 });
 
+check('a big body is one creature from every square it covers', () => {
+  const { g } = arena('big-index', 'husk', 6);
+  const lvl = g.level;
+  lvl.enemies.length = 0; lvl.markEnemiesDirty();
+  const d = new Enemy('firstflame', g.rng);
+  lvl.addEnemy(d, g.player.x + 3, g.player.y - 1);
+  assert(d.size === 2, 'the First Flame is not two tiles a side');
+  assert(d.bodyTiles().length === 4, `a 2x2 covers ${d.bodyTiles().length} tiles`);
+  for (const t of d.bodyTiles()) {
+    assert(lvl.enemyAt(t.x, t.y) === d, `${t.x},${t.y} does not answer as the dragon`);
+    assert(!lvl.passable(t.x, t.y) || lvl.occupant(t.x, t.y) === d,
+           `${t.x},${t.y} is not occupied by it`);
+  }
+  return '4 squares, one creature';
+});
+
+check('an area attack hits a big body once, not once per square', () => {
+  // THE bug this whole feature was going to arrive as. Every attack in the
+  // game is a list of tiles, and the loop over them used to ask what was
+  // standing on each one - so a shape overlapping three squares of a 2x2 dealt
+  // its damage three times to one creature. It does not read as a resolution
+  // bug from the outside; it reads as "big enemies are too weak", and this
+  // project has a documented habit of tuning numbers at those.
+  const { g } = arena('big-hit', 'husk', 6);
+  const lvl = g.level;
+  lvl.enemies.length = 0; lvl.markEnemiesDirty();
+  const p = g.player;
+  const d = new Enemy('firstflame', g.rng);
+  lvl.addEnemy(d, p.x + 1, p.y - 1);          // its body straddles the arc
+  p.equipItem(SLOT.MAIN, 'greataxe');          // rend: a five-tile arc
+  p.stamina = p.staminaMax;
+
+  const covered = attackTiles(p.x, p.y, 1, 0, SKILL_BY_KEY.rend.pattern)
+    .filter((t) => lvl.enemyAt(t.x, t.y) === d).length;
+  assert(covered >= 2, `the test did not overlap the body (${covered} tiles)`);
+
+  const before = d.hp;
+  g.useSkill('rend', { dx: 1, dy: 0 });
+  // rend declares before it lands - it is one of the three attacks with a
+  // wind-up - so the blow has to be resolved before there is any damage to
+  // count.
+  if (g.player.charging) g.resolveCharge();
+  const dealt = before - d.hp;
+  const once = SKILL_BY_KEY.rend.damage;
+  assert(dealt === once,
+         `a ${covered}-tile overlap dealt ${dealt} damage; one blow is ${once}`);
+  return `${covered} squares overlapped, ${dealt} damage dealt once`;
+});
+
+check('a big body does not set fire to itself', () => {
+  // Its own attack covers its own squares. `other !== e` already handles it,
+  // because every tile of a body returns the same object - so this is
+  // immunity by identity rather than by a size check, and it cannot be
+  // forgotten by whatever attack is added next.
+  const { g } = arena('big-ff', 'husk', 8);
+  const lvl = g.level;
+  lvl.enemies.length = 0; lvl.markEnemiesDirty();
+  const d = new Enemy('firstflame', g.rng);
+  lvl.addEnemy(d, g.player.x + 2, g.player.y);
+  d.aware = true;
+  const before = d.hp;
+  for (let i = 0; i < 30 && d.alive; i++) { g.player.hp = g.player.hpMax; g.worldTurn(); }
+  assert(d.hp >= before, `it damaged itself down to ${d.hp} from ${before}`);
+  return 'never hits itself, by identity';
+});
+
+check('a big body cannot be shoved, and cannot squeeze into a corridor', () => {
+  const { g } = arena('big-move', 'husk', 6);
+  const lvl = g.level;
+  lvl.enemies.length = 0; lvl.markEnemiesDirty();
+  const p = g.player;
+  const d = new Enemy('firstflame', g.rng);
+  lvl.addEnemy(d, p.x + 1, p.y);
+  const where = { x: d.x, y: d.y };
+  assert(d.immovable, 'a 2x2 is not marked immovable');
+  assert(g.knockBack(d, { dx: 1, dy: 0 }, 3) === 0, 'a dragon was shoved');
+  assert(d.x === where.x && d.y === where.y, 'a dragon moved when pushed');
+
+  // And the geometric consequence: measured over 300 floors a 2x2 fits 1.9% of
+  // corridor tiles, so it is room-bound by construction and an encounter you
+  // can always walk away from.
+  let corridorFits = 0, corridorTiles = 0;
+  for (let s = 0; s < 3; s++) {
+    const gg = freshGame(`corr-${s}`);
+    for (let dep = 1; dep < DUNGEON_DEPTH; dep++) {
+      const l = gg.levelAt(dep);
+      for (let y = 0; y < l.h; y++) {
+        for (let x = 0; x < l.w; x++) {
+          if (!isWalkable(l.at(x, y)) || l.roomAt(x, y)) continue;
+          corridorTiles++;
+          if (l.bodyFits(x, y, 2)) corridorFits++;
+        }
+      }
+    }
+  }
+  const pc = (100 * corridorFits) / Math.max(1, corridorTiles);
+  assert(pc < 15, `a 2x2 fits ${pc.toFixed(1)}% of corridor - it is not room-bound`);
+  return `immovable; fits ${pc.toFixed(1)}% of corridor tiles`;
+});
+
+check('the bottom floor always has a boss that fits on it', () => {
+  // Making the boss 2x2 broke this immediately: "the middle of the biggest
+  // room" is no longer somewhere it can necessarily stand, and neither the
+  // original spot nor its fallback checked the footprint - two seeds in twenty
+  // produced a bottom floor with no boss at all, which is a run that cannot be
+  // won. Then ordinary enemies started spawning *inside* it, because the free
+  // -spot search only ever marked a creature's anchor tile.
+  for (let s = 0; s < 15; s++) {
+    const g = freshGame(`bossfit-${s}`);
+    const lvl = g.levelAt(DUNGEON_DEPTH);
+    const b = lvl.enemies.find((e) => e.spec.boss);
+    assert(b, `seed ${s}: the bottom floor has no boss`);
+    for (const t of b.bodyTiles()) {
+      assert(lvl.enemyAt(t.x, t.y) === b,
+             `seed ${s}: something else is standing inside the boss`);
+    }
+  }
+  return '15 bottom floors, a whole boss on each';
+});
+
 check('the boss is only on the bottom floor', () => {
   for (let s = 0; s < 6; s++) {
     const g = freshGame(`nb:${s}`);

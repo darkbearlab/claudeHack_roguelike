@@ -60,6 +60,10 @@ export function populate(game, lvl, rng) {
 
 export function spawn(game, lvl, key, x, y, rng, noGroup = false) {
   const spec = ENEMY_BY_KEY[key];
+  // A big thing needs room to exist. Refusing here rather than nudging it is
+  // deliberate: the placement routines all retry, and a creature quietly moved
+  // somewhere it fits is a creature that is not where the level meant it.
+  if ((spec.size ?? 1) > 1 && !lvl.bodyFits(x, y, spec.size)) return 0;
   const e = new Enemy(key, rng);
   lvl.addEnemy(e, x, y);
   let n = 1;
@@ -106,13 +110,38 @@ export function spawnBoss(game, lvl) {
   const room = [...lvl.rooms].sort((a, b) => b.w * b.h - a.w * a.h)[0];
   if (!room) return;
 
-  const bx = room.x + (room.w >> 1);
-  const by = room.y + (room.h >> 1);
-  if (lvl.walkable(bx, by)) spawn(game, lvl, 'firstflame', bx, by, rng, true);
-  else {
-    const s = lvl.randomFreeSpot(rng, { roomsOnly: true });
-    if (s) spawn(game, lvl, 'firstflame', s.x, s.y, rng, true);
+  // The boss is four squares of dragon, so "the middle of the biggest room"
+  // is no longer guaranteed to be somewhere it can stand - and the old
+  // fallback did not check either, so two seeds in twenty produced a bottom
+  // floor with **no boss on it at all**, which is a run that cannot be won.
+  // Every candidate is now tested against the whole footprint.
+  const size = ENEMY_BY_KEY.firstflame.size ?? 1;
+  const fits = (x, y) => lvl.bodyFits(x, y, size);
+
+  const centre = { x: room.x + (room.w >> 1) - ((size - 1) >> 1),
+                   y: room.y + (room.h >> 1) - ((size - 1) >> 1) };
+  let at = fits(centre.x, centre.y) ? centre : null;
+
+  // Failing that, the tile of the biggest room closest to its middle that the
+  // body does fit in - so it still reads as an arena rather than a corner.
+  if (!at) {
+    let best = null, bestD = Infinity;
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        if (!fits(x, y)) continue;
+        const d = Math.abs(x - centre.x) + Math.abs(y - centre.y);
+        if (d < bestD) { bestD = d; best = { x, y }; }
+      }
+    }
+    at = best;
   }
+  // And failing even that, anywhere on the floor it fits.
+  if (!at) {
+    for (let y = 0; y < lvl.h && !at; y++) {
+      for (let x = 0; x < lvl.w && !at; x++) if (fits(x, y)) at = { x, y };
+    }
+  }
+  if (at) spawn(game, lvl, 'firstflame', at.x, at.y, rng, true);
 
   for (let i = 0; i < 5; i++) {
     const s = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 8 });
