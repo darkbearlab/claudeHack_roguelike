@@ -157,8 +157,15 @@ function chooseAttack(game, e, seen) {
     // stepping attack threatens further than it looks and one pace back is not
     // enough. Whatever is computed here is exactly what gets shown and exactly
     // what gets hit.
+    //
+    // A charge asks the same question of its whole path. It has no pattern to
+    // consult - the ground it covers is its own footprint walked forward - so
+    // without this branch it fell through to a one-tile 'front' and the horned
+    // one simply never charged.
     const from = origin(game.level, e, dir, a, game);
-    const tiles = attackTiles(from.x, from.y, dir.dx, dir.dy, a.pattern);
+    const tiles = a.rush
+      ? rushStops(game.level, e, dir, a).flatMap((s) => s.hit)
+      : attackTiles(from.x, from.y, dir.dx, dir.dy, a.pattern);
     if (tiles.some((t) => t.x === p.x && t.y === p.y)) options.push({ attack: a, dir });
   }
 
@@ -212,6 +219,37 @@ function aligned(e, p) {
   return dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
 }
 
+/**
+ * A charge that arrives in stages: hit the ground ahead, move into it, repeat.
+ *
+ * The area it threatens is **its own footprint moved forward** rather than a
+ * pattern from the shape table, and that is the whole idea: what it hits is
+ * exactly the space it is about to occupy. It generalises to any size for
+ * free, and it fixes - for this attack at least - the problem that a shape
+ * table built for one-tile creatures gives a two-tile bull a one-tile punch.
+ *
+ * Returns every stop it will make. Stopping early is a real outcome: a wall,
+ * or anything else it cannot stand in, ends the charge where it stands.
+ */
+function rushStops(lvl, e, dir, a) {
+  const { times, advance } = a.rush;
+  const stops = [];
+  let x = e.x, y = e.y;
+  for (let i = 0; i < times; i++) {
+    const nx = x + dir.dx * advance, ny = y + dir.dy * advance;
+    const hit = [];
+    for (let dy = 0; dy < e.size; dy++) {
+      for (let dx = 0; dx < e.size; dx++) hit.push({ x: nx + dx, y: ny + dy });
+    }
+    stops.push({ at: { x: nx, y: ny }, hit });
+    // It swings first and then finds out whether it can get there, so the
+    // blow that runs you down still lands before it piles into the wall.
+    if (!lvl.bodyFits(nx, ny, e.size, e)) break;
+    x = nx; y = ny;
+  }
+  return stops;
+}
+
 function beginWindup(game, e, attack, dir) {
   e.face(dir.dx, dir.dy);
   e.attack = attack;
@@ -221,9 +259,13 @@ function beginWindup(game, e, attack, dir) {
   const from = attack.kind === 'ranged'
     ? { x: e.x, y: e.y }
     : origin(game.level, e, dir, attack, game);
-  e.attackTiles = attack.kind === 'ranged'
-    ? rayTiles(game.level, e.x, e.y, dir, attack.range)
-    : attackTiles(from.x, from.y, dir.dx, dir.dy, attack.pattern);
+  e.attackTiles = attack.rush
+    // The whole path, every stop of it. A charge that only telegraphed its
+    // first stride would be three unannounced blows wearing one announcement.
+    ? rushStops(game.level, e, dir, attack).flatMap((s) => s.hit)
+    : attack.kind === 'ranged'
+      ? rayTiles(game.level, e.x, e.y, dir, attack.range)
+      : attackTiles(from.x, from.y, dir.dx, dir.dy, attack.pattern);
 
   // windup 0 means no telegraph: it simply happens. Reserved for cheap, fast
   // attacks, so that standing next to something always costs you.
@@ -256,6 +298,55 @@ function resolveAttack(game, e) {
   e.stamina = Math.max(0, e.stamina - a.cost);
   e.state = STATE.RECOVER;
   e.timer = a.recovery;
+
+  // ---- a charge: swing, advance, repeat -----------------------------------
+  if (a.rush) {
+    const dir = e.attackDir;
+    const struck = new Set();
+    let landed = 0, moved = 0;
+    for (const stop of rushStops(game.level, e, dir, a)) {
+      for (const t of stop.hit) {
+        if (t.x === game.player.x && t.y === game.player.y && !struck.has(game.player)) {
+          struck.add(game.player);
+          game.msg(`The ${e.name} runs you down!`, 'bad');
+          game.hurtPlayer(a.damage, `${e.name}'s ${a.name}`, {
+            from: { dx: -dir.dx, dy: -dir.dy }, unblockable: !!a.unblockable,
+          });
+          landed++;
+        }
+        const other = game.level.enemyAt(t.x, t.y);
+        // One blow per body per charge - it runs through you once, however
+        // many of its stops your square happens to fall inside.
+        if (other && other !== e && other.alive && !struck.has(other)) {
+          struck.add(other);
+          game.msg(`The ${e.name} tramples the ${other.name}!`, 'good');
+          game.hurtEnemy(other, a.damage, false);
+          landed++;
+        }
+      }
+      if (!game.level.bodyFits(stop.at.x, stop.at.y, e.size, e)) break;
+      game.level.moveEnemy(e, stop.at.x, stop.at.y);
+      moved++;
+    }
+    if (!landed && game.level.isVisible(e.x, e.y)) {
+      game.msg(`The ${e.name} thunders past.`);
+    }
+    if (moved === 0 && game.level.isVisible(e.x, e.y)) {
+      game.msg(`The ${e.name} slams into the wall.`, 'good');
+    }
+    if (a.next) {
+      let d2 = dir;
+      if (a.next.reaim) {
+        const dx = game.player.x - e.x, dy = game.player.y - e.y;
+        if (dx || dy) d2 = snapDir(dx, dy);
+      }
+      e.attack = null;
+      beginWindup(game, e, a.next, d2);
+      return;
+    }
+    e.attack = null;
+    return;
+  }
 
   // A stepping attack actually moves. The tiles were computed from here when
   // the wind-up started, so the promise still holds.

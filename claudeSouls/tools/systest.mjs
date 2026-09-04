@@ -2460,6 +2460,74 @@ check('a chest still has something standing over it', () => {
   return `${stores} chest rooms, all guarded`;
 });
 
+check('a charge announces every stride it will take', () => {
+  // Three strides behind one wind-up would be two unannounced blows if only
+  // the first were drawn. The telegraph is the whole path.
+  const { g } = arena('rush-tel', 'minotaur', 4);
+  const m = g.level.enemies[0];
+  assert(m.size === 2, 'the horned one is not two tiles a side');
+  const charge = m.spec.attacks.find((a) => a.rush);
+  assert(charge, 'the horned one has no charge');
+  assert(charge.rush.times === 3 && charge.rush.advance === 2,
+         'the charge is not three strides of two');
+
+  // Drive it until it commits to something, then look at what it drew.
+  let telegraphed = 0;
+  for (let t = 0; t < 60 && m.alive; t++) {
+    g.player.hp = g.player.hpMax;
+    g.worldTurn();
+    if (m.state === STATE.WINDUP && m.attack?.rush) {
+      telegraphed = m.attackTiles.length;
+      break;
+    }
+  }
+  assert(telegraphed > 0, 'the horned one never charged in 60 turns');
+  // Each stride threatens its own 2x2 footprint, so a full charge is 12 tiles
+  // and a charge that runs out of room is fewer - never more, and never one.
+  assert(telegraphed % 4 === 0 && telegraphed <= 12 && telegraphed >= 4,
+         `a charge telegraphed ${telegraphed} tiles; expected 4, 8 or 12`);
+  return `${telegraphed} tiles announced before it moved`;
+});
+
+check('a charge runs you down once, however many strides cover you', () => {
+  // The rush hits with its own footprint at every stop, and those footprints
+  // overlap where it stops short. Without a per-body guard, standing in the
+  // wrong square would take the same blow twice from one charge.
+  const { g } = arena('rush-once', 'minotaur', 3);
+  const m = g.level.enemies[0];
+  const p = g.player;
+  const charge = m.spec.attacks.find((a) => a.rush);
+  let hits = 0;
+  const real = g.hurtPlayer.bind(g);
+  g.hurtPlayer = (n, src, o) => { if (/charge/.test(src ?? '')) hits++; return real(n, src, o); };
+  for (let t = 0; t < 80 && m.alive; t++) {
+    p.hp = p.hpMax;
+    const before = hits;
+    g.worldTurn();
+    // A single charge resolves inside one turn, so more than one hit from it
+    // in a turn is the bug.
+    assert(hits - before <= 1, `one charge landed ${hits - before} blows in a turn`);
+  }
+  return `charge blows all landed once each (${hits} total)`;
+});
+
+check('a charge stops at a wall instead of walking through it', () => {
+  const { g } = arena('rush-wall', 'minotaur', 3);
+  const lvl = g.level;
+  const m = g.level.enemies[0];
+  for (let t = 0; t < 80 && m.alive; t++) {
+    g.player.hp = g.player.hpMax;
+    g.worldTurn();
+    // Wherever it has got to, it is standing somewhere its whole body fits.
+    assert(lvl.bodyFits(m.x, m.y, m.size, m),
+           `the horned one is standing at ${m.x},${m.y} where its body does not fit`);
+    for (const t2 of m.bodyTiles()) {
+      assert(lvl.walkable(t2.x, t2.y), `part of it is inside rock at ${t2.x},${t2.y}`);
+    }
+  }
+  return 'never ends a charge inside the geometry';
+});
+
 check('a big body is one creature from every square it covers', () => {
   const { g } = arena('big-index', 'husk', 6);
   const lvl = g.level;

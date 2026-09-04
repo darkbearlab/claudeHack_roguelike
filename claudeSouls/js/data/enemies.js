@@ -74,6 +74,10 @@ const atk = (o) => ({
   reaim: o.reaim ?? false,          // a follow-up that turns to face you again
   unblockable: o.unblockable ?? false,   // a shield is no help against this
   projectile: o.projectile ?? null,
+  // { times, advance } - a charge that swings, moves and repeats. The area it
+  // hits is the attacker's own footprint moved forward, not a pattern, so it
+  // scales with the body. See rushStops in ai.js.
+  rush: o.rush ?? null,
 });
 
 export const ENEMIES = [
@@ -222,14 +226,27 @@ export const ENEMIES = [
     name: 'horned one', glyph: 'H', colour: '#8a5a3a', sprite: 'mon_minotaur',
     hp: 22, speed: 12, stamina: 16, poise: 8,
     minDepth: 7, freq: 9, opensDoors: true, charges: true,
+    // Two tiles a side. That makes it room-bound - a 2x2 fits under 2% of
+    // corridor - so it stops being something that follows you through the
+    // dungeon and becomes something that owns the room it is in. The charge
+    // below is why it is worth the trade.
+    size: 2,
     attacks: [
-      // Telegraphs a six-tile lane and then runs down it, hitting everything
-      // in the way - including anything of its own that is standing there.
+      // A charge in three strides: hit the ground ahead, move into it, again,
+      // again. The ground it hits is its own 2x2 footprint moved forward, so
+      // what it threatens is exactly the space it is about to occupy - which
+      // is both the honest telegraph and, incidentally, the fix for a two-tile
+      // bull swinging a one-tile punch.
+      //
+      // The whole path is drawn during the wind-up. Three strides announced by
+      // one telegraph would otherwise be two unannounced blows.
+      //
       // Unblockable, and flagged rather than derived. A shield does nothing
       // against something that ran you over - and which attacks ignore a shield
       // is the sort of thing a player has to be able to look up, not infer from
       // geometry. Same reasoning as the wind-up flag.
-      atk({ name: 'charge', windup: 2, recovery: 2, pattern: 'line6', range: 6, damage: 5, cost: 8, step: 6,
+      atk({ name: 'charge', windup: 2, recovery: 2, damage: 5, cost: 8,
+            rush: { times: 3, advance: 2 },
             unblockable: true,
             next: atk({ name: 'gore', windup: 1, recovery: 2, pattern: 'arc3', damage: 3,
                         cost: 0, reaim: true }) }),

@@ -69,7 +69,7 @@ function diagOk(level, fx, fy, tx, ty) {
 function stepOk(level, x, y, mover, ignoreMonsters, doorsOk) {
   if (!level.passable(x, y, mover)) return false;
   if (!doorsOk && level.isDoorway?.(x, y)) return false;
-  if (!ignoreMonsters && occupied(level, x, y)) return false;
+  if (!ignoreMonsters && occupied(level, x, y, mover)) return false;
   return true;
 }
 
@@ -82,8 +82,21 @@ function stepOk(level, x, y, mover, ignoreMonsters, doorsOk) {
  * and it only surfaced once a second consumer existed - which is exactly the
  * argument for not designing an engine interface against a single caller.
  */
-function occupied(level, x, y) {
-  return !!(level.occupantAt ? level.occupantAt(x, y) : level.monsterAt?.(x, y));
+/**
+ * Is something OTHER than the mover standing here?
+ *
+ * The mover is excluded, and that only started to matter when a creature could
+ * be bigger than a tile: a 2x2 body stands on four squares, so three of the
+ * four it wants to shuffle onto are its own, and without this the search
+ * refused every one of them. A two-tile bull could not take a single step and
+ * simply stood in front of the first pillar it met.
+ *
+ * Harmless for one-tile movers, which are never asked about the square they
+ * are already on.
+ */
+function occupied(level, x, y, mover = null) {
+  const who = level.occupantAt ? level.occupantAt(x, y) : level.monsterAt?.(x, y);
+  return !!who && who !== mover;
 }
 
 function rebuild(came, goal, W) {
@@ -131,7 +144,7 @@ export function flowField(level, goals, opts = {}) {
       if (dist[ni] !== -1) continue;
       if (!level.passable(nx, ny, mover)) continue;
       if (avoidHazards && level.hazard(nx, ny)) continue;
-      if (!ignoreMonsters && occupied(level, nx, ny)) continue;
+      if (!ignoreMonsters && occupied(level, nx, ny, mover)) continue;
       if (!diagOk(level, x, y, nx, ny)) continue;
       dist[ni] = d + 1;
       queue.push(ni);

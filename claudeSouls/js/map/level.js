@@ -83,6 +83,20 @@ export class Level {
    * floor - and A* routed straight through her, over and over.
    */
   passable(x, y, mover = null) {
+    // A body bigger than a tile is asking "can I stand here", not "is this one
+    // square clear" - and the pathfinder asks through this method. Without it
+    // A* planned a route a single tile wide and `tryStep` then refused every
+    // step of it, so a 2x2 bull walked into a pillar and oscillated in front
+    // of it forever.
+    //
+    // `bodyFits` deliberately calls `tilePassable` rather than coming back
+    // here, or this recurses until the stack gives out.
+    if (mover && (mover.size ?? 1) > 1) return this.bodyFits(x, y, mover.size, mover);
+    return this.tilePassable(x, y, mover);
+  }
+
+  /** One square: terrain, and people, who cannot be walked through. */
+  tilePassable(x, y, mover = null) {
     if (!this.inBounds(x, y)) return false;
     if (this.npcAt(x, y)) return false;
     const t = this.at(x, y);
@@ -171,7 +185,7 @@ export class Level {
     for (let dy = 0; dy < size; dy++) {
       for (let dx = 0; dx < size; dx++) {
         const tx = x + dx, ty = y + dy;
-        if (!this.passable(tx, ty, ignore)) return false;
+        if (!this.tilePassable(tx, ty, ignore)) return false;
         const o = this.enemyAt(tx, ty);
         if (o && o !== ignore) return false;
       }
