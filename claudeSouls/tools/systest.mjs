@@ -23,6 +23,8 @@ import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from 
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
+import { CHAMBERS, CHAMBER_BY_KEY, castFor } from '../js/data/chambers.js';
+import { hasLOS } from '../../engine/fov.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -634,15 +636,18 @@ check('walking is always free, however loaded you are', () => {
   p.equipItem(SLOT.OFF, 'tower');
   p.stamina = 0;
   const before = { x: p.x, y: p.y };
+  // Keep trying until one works, rather than committing to the first
+  // direction that looks plausible. The claim is "there is always a legal
+  // move", not "the first passable direction is one" - a body occupies its
+  // tile, and a diagonal through a doorframe is refused however clear it
+  // looks. Testing the claim means looking for the move, not guessing it.
   for (const d of DIRS) {
     const nx = p.x + d.dx, ny = p.y + d.dy;
     if (!g.level.passable(nx, ny)) continue;
-    // A body occupies its tile, which has always been true of enemies and is
-    // now also true of the Fire Keeper standing at the fire you start beside.
-    // The claim is "there is always a legal move", not "every direction is".
     if (g.level.occupant(nx, ny)) continue;
+    if (!g.level.diagonalOk(p.x, p.y, nx, ny, true)) continue;
     g.step(d.dx, d.dy);
-    break;
+    if (p.x !== before.x || p.y !== before.y) break;
   }
   assert(p.x !== before.x || p.y !== before.y,
          'a fully loaded player at zero stamina could not move at all');
@@ -2282,6 +2287,118 @@ check('the log is off unless something is going to draw it', () => {
   g.fx.end(g);
   assert(g.fx.take().length === 0, 'a disabled log still recorded events');
   return 'disabled by default, records nothing';
+});
+
+check('a colonnade cuts the line of FIRE, never the line of sight', () => {
+  // The situation's whole promise, and the version of it that survived contact
+  // with a rule this game cannot give up: every room is lit, because a wind-up
+  // you cannot see is not a telegraph. So the pillars are not allowed to hide
+  // anything - what they take away is the archers' shot, not your information.
+  let seen = 0, exposedShare = [];
+  for (let s = 0; s < 20 && seen < 8; s++) {
+    const g = freshGame(`col-${s}`);
+    for (let d = 3; d < DUNGEON_DEPTH && seen < 8; d++) {
+      const lvl = g.levelAt(d);
+      const ch = lvl.chambers?.[0];
+      if (!ch || ch.key !== 'colonnade') continue;
+      const room = lvl.rooms.find((r) => r.id === ch.room);
+      const arch = lvl.livingEnemies().filter((e) =>
+        e.spec.attacks.some((a) => a.kind === 'ranged') &&
+        e.x >= room.x && e.x < room.x + room.w && e.y >= room.y && e.y < room.y + room.h);
+      if (!arch.length || !ch.anchors.lane.length) continue;
+      seen++;
+
+      // 1. you can see all of it. Stand in the lane and look.
+      g.player.depth = d; g.level = lvl;
+      const mid = ch.anchors.lane[ch.anchors.lane.length >> 1];
+      g.player.x = mid.x; g.player.y = mid.y;
+      g.afterMove();
+      for (const a of arch) {
+        assert(lvl.isVisible(a.x, a.y),
+               'an archer in a colonnade is hidden from the lane - that is an ambush');
+      }
+
+      // 2. but the lane is genuinely mixed ground. All of it shootable is a
+      //    killing field with no decision in it; none of it is scenery.
+      const shot = ch.anchors.lane.filter((t) =>
+        arch.some((a) => hasLOS(lvl, a.x, a.y, t.x, t.y, 12))).length;
+      exposedShare.push(shot / ch.anchors.lane.length);
+    }
+  }
+  assert(seen >= 4, `only found ${seen} colonnades to check`);
+  const avg = exposedShare.reduce((a, b) => a + b, 0) / exposedShare.length;
+  assert(avg > 0.05 && avg < 0.85,
+         `${(100 * avg).toFixed(0)}% of the lane is under fire - that is a corridor, not a choice`);
+  return `${seen} colonnades: all visible, ${(100 * avg).toFixed(0)}% of the lane under fire`;
+});
+
+check('a situation is cast exactly, not topped up at random', () => {
+  // The composition IS the situation. Before the general placement learned to
+  // skip these rooms, a colonnade of two archers and one blocker came out with
+  // six things in it, which is not a decision, it is a crowd.
+  let checked = 0;
+  for (let s = 0; s < 14; s++) {
+    const g = freshGame(`cast-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      const ch = lvl.chambers?.[0];
+      if (!ch) continue;
+      const spec = CHAMBER_BY_KEY[ch.key];
+      const room = lvl.rooms.find((r) => r.id === ch.room);
+      const inside = lvl.livingEnemies().filter((e) =>
+        e.x >= room.x && e.x < room.x + room.w && e.y >= room.y && e.y < room.y + room.h);
+      const most = spec.cast.reduce((n, c) => n + c.n[1], 0);
+      assert(inside.length <= most,
+             `${ch.key} was cast for at most ${most} and came out with ${inside.length}`);
+      checked++;
+    }
+  }
+  assert(checked > 0, 'no chambers generated at all');
+  return `${checked} chambers, none diluted`;
+});
+
+check('a situation never eats the fire or the chest', () => {
+  let checked = 0;
+  for (let s = 0; s < 14; s++) {
+    const g = freshGame(`chroom-${s}`);
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const ch of lvl.chambers ?? []) {
+        checked++;
+        const room = lvl.rooms.find((r) => r.id === ch.room);
+        assert(room, `${ch.key} points at a room that does not exist`);
+        for (const b of lvl.bonfires) {
+          assert(!(b.x >= room.x && b.x < room.x + room.w &&
+                   b.y >= room.y && b.y < room.y + room.h),
+                 'a situation was built on top of a bonfire');
+        }
+        if (lvl.store) assert(lvl.store.room !== ch.room, 'a situation ate the storeroom');
+      }
+    }
+  }
+  return `${checked} chambers, none on a fire or a chest`;
+});
+
+check('a colonnade can be walked through', () => {
+  // Pillars with no gaps are a wall with extra steps. There has to be a way
+  // between them or the "which lane" decision is not a decision.
+  let checked = 0;
+  for (let s = 0; s < 14; s++) {
+    const g = freshGame(`cross-${s}`);
+    for (let d = 3; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      const ch = lvl.chambers?.[0];
+      if (ch?.key !== 'colonnade') continue;
+      checked++;
+      // From every lane tile, at least one flank tile is reachable without
+      // leaving the room - i.e. the pillar rows have holes in them.
+      const reach = ch.anchors.lane.some((t) =>
+        [[0, -1], [0, 1]].some(([dx, dy]) => lvl.walkable(t.x + dx, t.y + dy)));
+      assert(reach, 'the pillar rows are solid - the colonnade is two corridors');
+    }
+  }
+  assert(checked > 0, 'no colonnades generated');
+  return `${checked} colonnades, all crossable`;
 });
 
 check('there is someone at the first fire, and nothing is standing on her', () => {

@@ -15,9 +15,21 @@
 
 import { Level, MAP_W, MAP_H } from './level.js';
 import { T, isWalkable } from './tiles.js';
+import { CHAMBERS } from '../data/chambers.js';
 
 const GRID_COLS = 4;
-const GRID_ROWS = 3;
+// Two rows, not three. On a 64x25 map a 4x3 grid gives cells of 15x7, which
+// caps a room at 12x4 - and a four-tall room cannot hold a situation. A
+// colonnade needs five rows (aisle, pillars, lane, pillars, aisle), so with
+// the old grid there was no room on any floor that a chamber could be built
+// in: measured, 0.0%.
+//
+// It also moves the map toward what it is supposed to feel like. Wide shallow
+// rooms joined by long thin corridors is the shape this generator inherited,
+// and it is exactly the look we are trying to get away from. Bigger rooms mean
+// less rock, shorter corridors and more space for attack shapes that were
+// designed with space in mind.
+const GRID_ROWS = 2;
 
 export const DUNGEON_DEPTH = 10;
 
@@ -31,6 +43,7 @@ export function generateLevel(depth, rng) {
   placeKeeper(lvl);
   scatterCover(lvl, rng);
   placeStoreroom(lvl, rng, depth);
+  placeChambers(lvl, rng, depth);
   // Last, and that matters: a long single-width corridor turns most of the
   // combat system off, and scatterCover drops rubble and pits that BLOCK
   // movement - so widening before it runs lets it narrow the map straight back
@@ -286,6 +299,37 @@ function placeBonfires(lvl, rng) {
     const s = lvl.randomFreeSpot(rng);
     if (s) put(s.x, s.y);
   }
+}
+
+/**
+ * Stamp a situation into a room.
+ *
+ * Deliberately after the bonfires and the keeper, so a chamber can never be
+ * built on top of the one square the game promises is a breath - and before
+ * `populate`, because the enemies it asks for are placed by reading the
+ * anchors it leaves behind.
+ *
+ * One per floor for now. This is the seam the situation pool grows from: more
+ * templates and per-theme pools change this function's *inputs*, not its
+ * shape.
+ */
+function placeChambers(lvl, rng, depth) {
+  lvl.chambers = [];
+  const pool = CHAMBERS.filter((c) => depth >= c.minDepth);
+  if (!pool.length) return;
+
+  const taken = new Set();
+  for (const b of lvl.bonfires) taken.add(roomAt(lvl, b.x, b.y)?.id);
+  if (lvl.upStair) taken.add(roomAt(lvl, lvl.upStair.x, lvl.upStair.y)?.id);
+  if (lvl.store) taken.add(lvl.store.room);
+
+  const spec = rng.pick(pool);
+  const options = lvl.rooms.filter((r) => !taken.has(r.id) && spec.fits(r));
+  if (!options.length) return;
+
+  const room = rng.pick(options);
+  const anchors = spec.build(lvl, room);
+  lvl.chambers.push({ key: spec.key, room: room.id, anchors });
 }
 
 /**

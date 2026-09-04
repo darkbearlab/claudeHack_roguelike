@@ -19,6 +19,7 @@
 
 import { Enemy } from './actors.js';
 import { pickEnemy, ENEMY_BY_KEY } from '../data/enemies.js';
+import { CHAMBER_BY_KEY, castFor } from '../data/chambers.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T } from '../map/tiles.js';
 import { DIRS } from '../../../engine/util.js';
@@ -28,14 +29,24 @@ export function populate(game, lvl, rng) {
   if (depth === DUNGEON_DEPTH) return;      // the boss floor is placed by hand
 
   placeGuards(game, lvl, rng);
+  // Out of the same budget as everything else. "Enemy count is not the
+  // difficulty dial - composition is" applies to situations too: a floor with
+  // a colonnade on it is not a floor with three more enemies, it is a floor
+  // where three of them are standing somewhere that means something.
+  const staged = castChambers(game, lvl, rng, depth);
   placeElite(game, lvl, rng, depth);
 
   // Grows slowly. Doubling the count is not how this game gets harder.
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
 
   const place = (key) => {
+    // avoidChambers: a situation's composition is the situation. Letting the
+    // ordinary random placement top it up turned a colonnade of two archers
+    // and one blocker into a room with six things in it, which is not a
+    // decision, it is a crowd.
     const spot = lvl.randomFreeSpot(rng, {
-      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7, avoidBonfires: true });
+      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7,
+      avoidBonfires: true, avoidChambers: true });
     if (!spot) return 0;
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
@@ -43,7 +54,7 @@ export function populate(game, lvl, rng) {
   // Packs first, and they come out of the same budget - a floor with a pack on
   // it is not a floor with more enemies, it is a floor where some of them are
   // standing together and threatening overlapping ground.
-  let placed = placePacks(game, lvl, rng, want);
+  let placed = staged + placePacks(game, lvl, rng, want - staged);
 
   for (let guard = 0; placed < want && guard < want * 12; guard++) {
     placed += place(pickEnemy(rng, depth).key);
@@ -56,6 +67,49 @@ export function populate(game, lvl, rng) {
   // index, which a group spawn could step straight over.
   if (!lvl.enemies.some((e) => e.spec.speed < 12)) place('husk');
   if (!lvl.enemies.some((e) => e.spec.speed >= 12)) place('hound');
+}
+
+/**
+ * Fill the situations mapgen stamped into this floor.
+ *
+ * This is the half that makes a chamber a chamber. The geometry is already
+ * there; without this a colonnade is a room that happens to have pillars in
+ * it, and the enemies that give it meaning would be scattered by the same
+ * random placement as everywhere else.
+ *
+ * Roles rather than species, resolved at this depth - so the shape of a
+ * situation stays fixed while its teeth grow with the floor. See
+ * js/data/chambers.js.
+ */
+export function castChambers(game, lvl, rng, depth) {
+  let cast = 0;
+  for (const ch of lvl.chambers ?? []) {
+    const spec = CHAMBER_BY_KEY[ch.key];
+    if (!spec) continue;
+    for (const part of spec.cast) {
+      const key = castFor(part.role, depth, ENEMY_BY_KEY);
+      if (!key) continue;
+      const spots = [...(ch.anchors[part.at] ?? [])];
+      if (!spots.length) continue;
+      const n = rng.int(part.n[0], part.n[1]);
+      // `spread` pushes them apart, which is the difference between two
+      // archers covering the room and two archers covering each other.
+      if (part.spread) spots.sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      for (let i = 0; i < n; i++) {
+        const at = part.spread
+          ? spots[Math.floor((i * (spots.length - 1)) / Math.max(1, n - 1))]
+          : rng.pick(spots);
+        if (!at || lvl.occupant(at.x, at.y)) continue;
+        const before = lvl.enemies.length;
+        spawn(game, lvl, key, at.x, at.y, rng, true);
+        const e = lvl.enemies[lvl.enemies.length - 1];
+        // Awake from the start: a threat you cannot see coming is an ambush,
+        // and a situation is meant to be a decision.
+        if (e && lvl.enemies.length > before) { cast += lvl.enemies.length - before; if (part.aware) e.aware = true; }
+      }
+    }
+  }
+  return cast;
 }
 
 export function spawn(game, lvl, key, x, y, rng, noGroup = false) {
@@ -276,7 +330,8 @@ const PACKS = [
  */
 function placePack(game, lvl, rng, pack) {
   const anchor = lvl.randomFreeSpot(rng, {
-    roomsOnly: true, awayFrom: lvl.upStair, minDist: 9, avoidBonfires: true,
+    roomsOnly: true, awayFrom: lvl.upStair, minDist: 9,
+    avoidBonfires: true, avoidChambers: true,
   });
   if (!anchor) return 0;
 
@@ -359,7 +414,8 @@ export function placeElite(game, lvl, rng, depth) {
   if (depth < 3 || depth >= DUNGEON_DEPTH) return 0;
 
   const spot = lvl.randomFreeSpot(rng, {
-    roomsOnly: true, awayFrom: lvl.upStair, minDist: 10, avoidBonfires: true });
+    roomsOnly: true, awayFrom: lvl.upStair, minDist: 10,
+    avoidBonfires: true, avoidChambers: true });
   if (!spot) return 0;
 
   const key = pickFrom(ELITES, depth, rng);

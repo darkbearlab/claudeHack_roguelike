@@ -39,6 +39,10 @@ export class Level {
     // written anywhere. Immunity by construction rather than by a flag someone
     // has to remember to check.
     this.npcs        = [];      // {key, x, y}
+    // Situations stamped into rooms: { key, room, anchors }. mapgen builds the
+    // geometry and leaves the named positions here; populate reads them and
+    // does the casting. See js/data/chambers.js and docs/SITUATIONS.md.
+    this.chambers    = [];
 
     this.upStair = null;
     this.downStair = null;
@@ -259,9 +263,16 @@ export class Level {
     return false;
   }
 
+  /** Rooms a situation has been stamped into, which random spawns must skip. */
+  inChamber(x, y) {
+    if (!this.chambers?.length) return false;
+    const r = this.roomAt(x, y);
+    return !!r && this.chambers.some((c) => c.room === r.id);
+  }
+
   randomFreeSpot(rng, opts = {}) {
     const { roomsOnly = false, awayFrom = null, minDist = 0, avoidFeatures = true,
-            avoidBonfires = false } = opts;
+            avoidBonfires = false, avoidChambers = false } = opts;
     const taken = new Set();
     // Every tile of every body, not just its anchor. A creature that covers
     // four squares had three of them look empty here, so ordinary enemies were
@@ -281,6 +292,7 @@ export class Level {
         if (taken.has(i)) continue;
         if (avoidFeatures && (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE)) continue;
         if (avoidBonfires && this.isSanctuary(x, y)) continue;
+        if (avoidChambers && this.inChamber(x, y)) continue;
         if (roomsOnly && !this.roomAt(x, y)) continue;
         if (awayFrom && Math.max(Math.abs(x - awayFrom.x), Math.abs(y - awayFrom.y)) < minDist) continue;
         spots.push({ x, y });

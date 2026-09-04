@@ -25,6 +25,12 @@ export const T = {
   PIT:        11,   // blocks movement for walkers, projectiles fly over
   CHEST:      12,   // walk onto it, then press the context button
   CORPSE:     13,   // where you died, holding what you had not banked
+  // The first terrain in this game that blocks movement AND sight without
+  // being a wall. Rubble and pits both stop feet without stopping eyes, which
+  // is deliberate - one decides who can reach whom, the other who can shoot
+  // whom - but it left nothing at all that breaks a line of sight inside a
+  // room. A colonnade needs exactly that: cover you can lose someone behind.
+  PILLAR:     14,
 };
 
 const def = (name, glyph, colour, walk, opaque, extra = {}) =>
@@ -42,6 +48,7 @@ TILE[T.STAIRS_DOWN] = def('stairs down',  '>', '#e8e2d0', true,  false);
 TILE[T.STAIRS_UP]   = def('stairs up',    '<', '#e8e2d0', true,  false);
 TILE[T.BONFIRE]     = def('bonfire',      '&', '#ff9a3c', true,  false, { bonfire: true });
 TILE[T.RUBBLE]      = def('rubble',       '*', '#8a8378', false, false);
+TILE[T.PILLAR]      = def('pillar',       'I', '#9a9184', false, true);
 TILE[T.PIT]         = def('pit',          '^', '#2a2a30', false, false, { pit: true });
 // Both are walkable: you stand on them and then take what is there. Making
 // them obstacles would mean a guard could body-block the loot forever.

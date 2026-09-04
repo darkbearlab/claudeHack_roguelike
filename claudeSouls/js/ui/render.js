@@ -278,6 +278,23 @@ export class Renderer {
         ctx.ellipse(px + cell / 2, py + cell / 2, cell * 0.38, cell * 0.34, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
+      case T.PILLAR: {
+        // Drawn as a column standing ON the floor rather than as a chunk of
+        // wall: it is inside a room, and reading it as wall would make the
+        // room look broken instead of built.
+        this.floor(ctx, px, py, cell, n, dim, false);
+        const j = (n % 10) - 5;
+        const w = cell * 0.62, o = (cell - w) / 2;
+        ctx.fillStyle = rgb(20, 19, 22, dim * 0.55);          // its shadow
+        ctx.fillRect(px + o + cell * 0.08, py + o + cell * 0.12, w, w);
+        ctx.fillStyle = rgb(126 + j, 120 + j, 110 + j, dim);
+        ctx.fillRect(px + o, py + o, w, w);
+        ctx.fillStyle = rgb(160, 154, 142, dim);              // lit top edge
+        ctx.fillRect(px + o, py + o, w, Math.max(1, cell * 0.1));
+        ctx.fillStyle = rgb(70, 66, 60, dim);                 // shaded base
+        ctx.fillRect(px + o, py + o + w - Math.max(1, cell * 0.12), w, Math.max(1, cell * 0.12));
+        break;
+      }
       case T.RUBBLE:
         this.floor(ctx, px, py, cell, n, dim, false);
         ctx.fillStyle = rgb(120, 114, 104, dim);
