@@ -11,7 +11,7 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
-import { T, isWalkable, isChest, isCorpse } from '../js/map/tiles.js';
+import { T, isWalkable, isChest, isCorpse, flyable } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
@@ -2372,65 +2372,74 @@ check('a pillar can hide a creature, but never a blow', () => {
          `${(100 * avg).toFixed(0)}% of lane under fire`;
 });
 
-check('a causeway pins you without a single wall', () => {
-  // The spec: "a long narrow passage whose sides are not walls but open space,
-  // with something across the gap that pins your movement and shoots at you."
+check('a span is a corridor whose walls are missing', () => {
+  // Three attempts to build this, and the failures are worth keeping:
   //
-  // Three claims, and all three have to hold or it is just a room with holes
-  // in it: you cannot cross, they CAN shoot across, and there is a way round
-  // that genuinely costs you.
-  const walk = (lvl, from) => {
-    const seen = new Map([[`${from.x},${from.y}`, 0]]);
-    const q = [from];
-    while (q.length) {
-      const c = q.shift();
-      const d = seen.get(`${c.x},${c.y}`);
-      for (const dd of DIRS) {
-        const x = c.x + dd.dx, y = c.y + dd.dy, k = `${x},${y}`;
-        if (seen.has(k) || !lvl.walkable(x, y)) continue;
-        seen.set(k, d + 1); q.push({ x, y });
-      }
-    }
-    return seen;
-  };
-  let checked = 0, detours = [];
+  //   pits      a wall you can see over. Contradicted the sentence it was
+  //             built from, and read on screen as a row of polka dots.
+  //   no terrain at all - which lost the corridor and left a room with
+  //             archers in it.
+  //   a bridge over a chasm, which is both: a real, made, narrow route whose
+  //             borders are absence rather than stone.
+  //
+  // So what has to hold is exactly that combination.
+  let checked = 0, covered = [];
   for (let s = 0; s < 25 && checked < 5; s++) {
-    const g = freshGame(`gaunt-${s}`);
+    const g = freshGame(`span-${s}`);
     for (let d = 4; d < DUNGEON_DEPTH && checked < 5; d++) {
       const lvl = g.levelAt(d);
       const ch = lvl.chambers?.[0];
-      if (ch?.key !== 'gauntlet' || !ch.anchors.far.length) continue;
+      if (ch?.key !== 'gauntlet' || !ch.anchors.ledge.length) continue;
+      const arch = lvl.livingEnemies().filter((e) => e.spec.attacks.some((a) => a.kind === 'ranged'));
+      if (arch.length < 2) continue;
       checked++;
-      const from = ch.anchors.causeway[ch.anchors.causeway.length >> 1];
-      const target = ch.anchors.far[ch.anchors.far.length >> 1];
 
-      // 1. walking straight at it, the first thing that stops you is a HOLE,
-      //    not a wall. (The causeway is two rows deep, so the midpoint between
-      //    the two anchors is still open floor - walk it properly instead.)
-      const sy = Math.sign(target.y - from.y);
-      let blocker = null;
-      for (let y = from.y + sy; y !== target.y; y += sy) {
-        if (!lvl.walkable(from.x, y)) { blocker = lvl.at(from.x, y); break; }
+      // 1. the route is real and you can walk it.
+      assert(ch.anchors.span.length >= 4, 'the span is too short to be a crossing');
+      for (const t of ch.anchors.span) {
+        assert(lvl.walkable(t.x, t.y), `the span is not walkable at ${t.x},${t.y}`);
       }
-      assert(blocker !== null, 'you can walk straight across - nothing is pinning anyone');
-      assert(blocker === T.PIT, 'the flank is made of something other than a pit');
+      // ...and two lanes wide, because a one-wide route collapses every attack
+      // shape in the game - the rule MAX_STRAIT exists to enforce.
+      const rows = new Set(ch.anchors.span.map((t) => t.y));
+      assert(rows.size === 2, `the span is ${rows.size} lanes wide, not 2`);
 
-      // 2. but it can shoot you: a pit stops feet, not arrows.
-      assert(hasLOS(lvl, target.x, target.y, from.x, from.y, 12),
-             'the far side cannot see the causeway, so it cannot pin it either');
+      // 2. what borders it is absence, not stone - so it can be seen and shot
+      //    across, and only your feet are stopped.
+      const mid = ch.anchors.span[ch.anchors.span.length >> 1];
+      const sy = Math.sign(ch.anchors.ledge[0].y - mid.y) || 1;
+      let border = null;
+      for (let y = mid.y + sy; y !== ch.anchors.ledge[0].y; y += sy) {
+        if (!lvl.walkable(mid.x, y)) { border = lvl.at(mid.x, y); break; }
+      }
+      assert(border === T.CHASM, 'the span is bordered by something other than the drop');
+      assert(flyable(T.CHASM), 'arrows do not cross the drop - then it is just a wall');
 
-      // 3. and the long way round exists, and is long.
-      const dist = walk(lvl, from);
-      const round = dist.get(`${target.x},${target.y}`);
-      assert(round !== undefined, 'the far side is unreachable - that is a wall, not a choice');
-      const asCrow = Math.max(Math.abs(target.x - from.x), Math.abs(target.y - from.y));
-      assert(round > asCrow, `the detour is ${round} steps for ${asCrow} tiles - it costs nothing`);
-      detours.push(round - asCrow);
+      // 3. the far bank is reachable, the long way. "Go and deal with them"
+      //    has to be an option or the bridge is a toll booth.
+      const seen = new Set([`${mid.x},${mid.y}`]);
+      const q = [mid];
+      while (q.length) {
+        const c = q.pop();
+        for (const dd of DIRS) {
+          const x = c.x + dd.dx, y = c.y + dd.dy, k = `${x},${y}`;
+          if (seen.has(k) || !lvl.walkable(x, y)) continue;
+          seen.add(k); q.push({ x, y });
+        }
+      }
+      const reachable = ch.anchors.ledge.filter((t) => seen.has(`${t.x},${t.y}`)).length;
+      assert(reachable > 0, 'the far bank cannot be reached at all - that is a wall');
+
+      // 4. and crossing costs you: the span is under fire.
+      const hot = ch.anchors.span.filter((t) =>
+        arch.some((a) => hasLOS(lvl, a.x, a.y, t.x, t.y, 12))).length;
+      covered.push(hot / ch.anchors.span.length);
     }
   }
-  assert(checked >= 3, `only found ${checked} causeways`);
-  const avg = detours.reduce((a, b) => a + b, 0) / detours.length;
-  return `${checked} causeways: cannot cross, can be shot, ${avg.toFixed(0)} extra steps round`;
+  assert(checked >= 3, `only found ${checked} spans`);
+  const avg = covered.reduce((a, b) => a + b, 0) / covered.length;
+  assert(avg > 0.4, `only ${(100 * avg).toFixed(0)}% of the span is under fire - nobody is holding it`);
+  return `${checked} spans: 2 lanes over the drop, ${(100 * avg).toFixed(0)}% under fire, far bank reachable`;
 });
 
 check('a broken floor breaks the route and not the sight', () => {

@@ -22,7 +22,7 @@
 //   4. **The aim preview.** While a skill is selected, the tiles it would hit
 //      are outlined, so committing is never a guess.
 
-import { T, TILE, isDoor, isBonfire } from '../map/tiles.js';
+import { T, TILE, isDoor, isBonfire, isChasm } from '../map/tiles.js';
 import { hash2 } from '../../../engine/util.js';
 import { spriteRotation } from '../game/patterns.js';
 import { STATE } from '../game/actors.js';
@@ -278,6 +278,37 @@ export class Renderer {
         ctx.ellipse(px + cell / 2, py + cell / 2, cell * 0.38, cell * 0.34, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
+      case T.CHASM: {
+        // Drawn as absence, not as an object. No floor underneath, no outline
+        // of its own - the only edge you see is the lit lip of whatever solid
+        // ground it borders, which is what makes a stretch of it read as one
+        // opening rather than as a row of holes.
+        ctx.fillStyle = '#04050a';
+        ctx.fillRect(px, py, cell, cell);
+        const lipN = !isChasm(lvl.at(x, y - 1)) && lvl.at(x, y - 1) !== T.STONE;
+        if (lipN) {
+          ctx.fillStyle = rgb(60, 56, 50, dim);
+          ctx.fillRect(px, py, cell, Math.max(1, cell * 0.16));
+        }
+        break;
+      }
+      case T.BRIDGE: {
+        // A made thing: planks across, and a rail on whichever sides face the
+        // drop. It has to be obvious at a glance that this is the way over.
+        ctx.fillStyle = rgb(96, 74, 48, dim);
+        ctx.fillRect(px, py, cell, cell);
+        ctx.fillStyle = rgb(70, 52, 32, dim);
+        for (let k = 1; k < 4; k++) {
+          ctx.fillRect(px, py + (cell * k) / 4, cell, Math.max(1, cell * 0.05));
+        }
+        ctx.fillStyle = rgb(150, 120, 82, dim);
+        for (const [dx, dy] of [[0, -1], [0, 1]]) {
+          if (!isChasm(lvl.at(x + dx, y + dy))) continue;
+          ctx.fillRect(px, dy < 0 ? py : py + cell - Math.max(1, cell * 0.12),
+                       cell, Math.max(1, cell * 0.12));
+        }
+        break;
+      }
       case T.PILLAR: {
         // Drawn as a column standing ON the floor rather than as a chunk of
         // wall: it is inside a room, and reading it as wall would make the

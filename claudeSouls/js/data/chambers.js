@@ -119,68 +119,74 @@ export const CHAMBERS = [
 
   {
     key: 'gauntlet',
-    name: 'the causeway',
+    name: 'the span',
 
-    // "A long narrow passage whose sides are not walls but open space, with
-    // something across the gap that pins your movement and shoots at you."
+    // A corridor variant whose walls are missing.
     //
-    // The passage is drawn in PITS, and that is the whole trick. A pit stops
-    // feet and not arrows - it is documented that way in tiles.js, one deciding
-    // who can reach whom and the other who can shoot whom - so the flanks are
-    // ground you can see across and be shot across but cannot walk across.
-    // The corridor is made of threat and a hole in the floor; there is not one
-    // wall in it.
+    // Two wrong turns got here. The first built the flanks out of PITS - a
+    // wall you can see over, which contradicts the whole sentence. The second
+    // removed the terrain entirely, which lost the thing that made it a
+    // corridor at all: it became a room with archers in it.
     //
-    // The pit strips stop short of both ends deliberately. Without a way round
-    // this is not a decision, it is a toll.
-    intent: '兩側是坑不是牆:看得到、被射得到、但走不過去。'
-          + '所以只有直線衝過去吃箭,或者繞到盡頭——實測多花 3 到 7 步。',
+    // What it wants is both. The route is real, made and narrow, and what
+    // borders it is not stone but ABSENCE - so the far side is ground you can
+    // see, be seen from, and be shot from, and cannot reach without walking
+    // all the way round. That is the corridor drawn in danger, with the danger
+    // standing on solid ground where you can eventually get at it.
+    //
+    // Two lanes wide, not one. A one-wide span is a one-wide corridor and the
+    // generator has a measured rule against those - every attack shape
+    // collapses, the only movement is forward and back. Two lanes leaves the
+    // sidestep and still reads as a bridge.
+    intent: '一條有欄杆的橋,兩側不是牆是空的:看得到對面、被對面射得到、走不過去。'
+          + '所以是低頭走完這座橋,還是繞一大圈上去把守橋的人解決掉。',
 
     minDepth: 4,
-    fits: (r) => r.w >= 9 && r.h >= 6,
+    fits: (r) => r.w >= 10 && r.h >= 6,
 
     build(lvl, room) {
-      const anchors = { causeway: [], far: [], end: [] };
-      // TWO tiles wide, not one, and that is not a detail.
+      const anchors = { span: [], ledge: [], head: [] };
+      // The drop runs the length of the room; the span crosses it lengthwise.
       //
-      // A one-wide causeway is a one-wide corridor, and the generator has a
-      // measured rule against those: every attack shape collapses to a single
-      // effective tile, the only movement left is forward and back, and block
-      // stops being the "nowhere to go" option and becomes mandatory. The
-      // first version of this chamber walked straight into the thing
-      // MAX_STRAIT exists to prevent - the test caught it.
-      //
-      // Two wide keeps the situation intact (you still cannot cross the pits,
-      // and everything beyond them can still shoot you) while leaving the
-      // sidestep that makes the fight a fight.
-      const yA = room.y + (room.h >> 1) - 1, yB = yA + 1;
-      const gap = 2;                       // columns left open at each end
-      const x0 = room.x + gap, x1 = room.x + room.w - 1 - gap;
+      // A one-tile margin of solid ground is kept all the way round, and that
+      // is a connectivity rule rather than a decorative one: a door opens onto
+      // the tile inside the wall it is in, and a door opening onto thin air is
+      // a floor cut in half. The test caught exactly that.
+      const top = room.y + Math.floor((room.h - 2) / 2);
+      const bottom = top + 1;
+      const x0 = room.x + 2, x1 = room.x + room.w - 3;
+      const y0 = room.y + 1, y1 = room.y + room.h - 2;
 
-      for (let x = x0; x <= x1; x++) {
-        for (const y of [yA - 1, yB + 1]) {
-          if (lvl.at(x, y) === T.FLOOR) lvl.set(x, y, T.PIT);
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          if (lvl.at(x, y) !== T.FLOOR) continue;
+          lvl.set(x, y, (y === top || y === bottom) ? T.BRIDGE : T.CHASM);
         }
       }
-      for (let x = room.x; x < room.x + room.w; x++) {
-        for (const y of [yA, yB]) {
-          if (lvl.at(x, y) === T.FLOOR) anchors.causeway.push({ x, y });
-        }
-        // Beyond the pits: in plain sight, in range, and reachable only by
-        // walking all the way round the end.
-        for (let y = room.y; y < room.y + room.h; y++) {
-          if (y >= yA - 1 && y <= yB + 1) continue;
-          if (x >= x0 && x <= x1 && lvl.at(x, y) === T.FLOOR) anchors.far.push({ x, y });
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) {
+          const t = lvl.at(x, y);
+          if (t === T.BRIDGE) anchors.span.push({ x, y });
+          // Solid ground the other side of the drop: in plain sight, in range,
+          // and only reachable the long way round.
+          else if (t === T.FLOOR && (y < top || y > bottom) &&
+                   x >= x0 && x <= x1) {
+            // The far bank: solid, in sight, in range, across the drop.
+            anchors.ledge.push({ x, y });
+          }
         }
       }
-      const far = anchors.causeway.filter((t) => t.x >= x1);
-      anchors.end.push(...(far.length ? far : anchors.causeway.slice(-1)));
+      anchors.ledge.sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      anchors.head.push(...anchors.span.filter((t) => t.x >= x1));
       return anchors;
     },
 
+    // Archers on the ledges either side, so no angle on the bridge answers
+    // both of them, and something holding the far end so the crossing is not
+    // simply a walk.
     cast: [
-      { role: 'ranged', at: 'far', n: [2, 2], aware: true, spread: true },
-      { role: 'blocker', at: 'end', n: [1, 1], aware: true },
+      { role: 'ranged', at: 'ledge', n: [2, 3], aware: true, spread: true },
+      { role: 'blocker', at: 'head', n: [1, 1], aware: true },
     ],
   },
 

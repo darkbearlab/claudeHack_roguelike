@@ -31,6 +31,17 @@ export const T = {
   // whom - but it left nothing at all that breaks a line of sight inside a
   // room. A colonnade needs exactly that: cover you can lose someone behind.
   PILLAR:     14,
+  // ---- open space you cannot cross ---------------------------------------
+  // A chasm is not a big pit, and the difference is the whole point of having
+  // both. A PIT is a hole in a floor - a hazard dotted about a room. A CHASM
+  // is the floor being *absent*: it comes in continuous stretches, it reads as
+  // a place rather than as an obstacle, and what crosses it is a structure.
+  //
+  // It is what "the sides are not walls, they are open space" needs. A wall
+  // stops sight and shot; a chasm stops only your feet, so the far side is a
+  // place you can see, be seen from, and be shot from - and cannot reach.
+  CHASM:      15,
+  BRIDGE:     16,   // a way over one. Walkable, and obviously a made thing.
 };
 
 const def = (name, glyph, colour, walk, opaque, extra = {}) =>
@@ -49,6 +60,8 @@ TILE[T.STAIRS_UP]   = def('stairs up',    '<', '#e8e2d0', true,  false);
 TILE[T.BONFIRE]     = def('bonfire',      '&', '#ff9a3c', true,  false, { bonfire: true });
 TILE[T.RUBBLE]      = def('rubble',       '*', '#8a8378', false, false);
 TILE[T.PILLAR]      = def('pillar',       'I', '#9a9184', false, true);
+TILE[T.CHASM]       = def('the drop',     ' ', '#05070c', false, false, { chasm: true });
+TILE[T.BRIDGE]      = def('bridge',       '=', '#8a6a44', true,  false, { bridge: true });
 TILE[T.PIT]         = def('pit',          '^', '#2a2a30', false, false, { pit: true });
 // Both are walkable: you stand on them and then take what is there. Making
 // them obstacles would mean a guard could body-block the loot forever.
@@ -63,8 +76,17 @@ export const isChest    = (t) => t === T.CHEST;
 export const isCorpse   = (t) => t === T.CORPSE;
 export const tileName   = (t) => TILE[t].name;
 
-/** Can a projectile pass through? Rubble is cover you shoot over; walls are not. */
-export const flyable = (t) => isWalkable(t) || t === T.PIT || t === T.RUBBLE;
+export const isChasm = (t) => t === T.CHASM;
+
+/**
+ * Can a projectile pass through?
+ *
+ * Rubble is cover you shoot over; walls are not. A chasm is open air, so it is
+ * the most flyable thing there is - which is exactly what makes a bridge
+ * frightening: the gap that stops you walking does nothing whatever to stop
+ * what is being shot at you across it.
+ */
+export const flyable = (t) => isWalkable(t) || t === T.PIT || t === T.RUBBLE || t === T.CHASM;
 
 /**
  * Doorways cannot be entered or left diagonally.
