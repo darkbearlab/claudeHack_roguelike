@@ -2124,6 +2124,48 @@ check('every enemy can be built and fought', () => {
   return `${ENEMIES.length} species x 40 turns`;
 });
 
+check('a shape is the same size whichever way you face', () => {
+  // A latent bug, found the moment new shapes were added and measured.
+  //
+  // Patterns were written facing east and turned with a rotation matrix, which
+  // is right for an arc and wrong for anything with DEPTH. Facing south-east
+  // the unit vector is (0.71, 0.71), so (1,0) and (2,0) both round onto (1,1)
+  // and a lane silently loses a tile. Measured across the table:
+  //
+  //   reach2  2 -> 1     a spear thrusting diagonally hit ONE tile
+  //   line3   3 -> 2
+  //   line6   6 -> 4     the pike's signature lane, a third shorter
+  //   sweepR  5 -> 4     which puts a hole in the union the sweep pair exists
+  //                      to guarantee
+  //
+  // Nothing on screen said why, because the telegraph is drawn from the same
+  // function - it was not lying, it was just weaker, diagonally, invisibly.
+  // `around2` had been fixed for this exact reason years of commits ago and
+  // nobody thought to check the rest of the table.
+  //
+  // Shapes with depth are computed from the facing now instead of turned into
+  // it. This pins the property rather than the technique: whatever a shape is
+  // built from, it must be the same size in all eight directions.
+  const wrong = [];
+  for (const name of Object.keys(PATTERNS)) {
+    const sizes = DIRS.map((d) => attackTiles(0, 0, d.dx, d.dy, name).length);
+    const east = attackTiles(0, 0, 1, 0, name).length;
+    if (Math.min(...sizes) !== east || Math.max(...sizes) !== east) {
+      wrong.push(`${name}: ${east} east, ${Math.min(...sizes)}-${Math.max(...sizes)} around`);
+    }
+  }
+  assert(wrong.length === 0, `shapes change size when you turn: ${wrong.join('; ')}`);
+
+  // The sweeps are a designed pair - stepping out of one is meant to walk into
+  // the other - so their union has to be whole in every facing too.
+  for (const d of DIRS) {
+    const both = new Set([...attackTiles(0, 0, d.dx, d.dy, 'sweepL'),
+                          ...attackTiles(0, 0, d.dx, d.dy, 'sweepR')].map((t) => `${t.x},${t.y}`));
+    assert(both.size === 8, `the sweep pair covers ${both.size} tiles facing ${d.name}, not 8`);
+  }
+  return `${Object.keys(PATTERNS).length} shapes, none changes size when you turn`;
+});
+
 check('every skill can be used in every direction', () => {
   // Every skill in the game, not just the ones the starting kit holds - each is
   // reached by equipping whatever grants it, which also proves every weapon in
