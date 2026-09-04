@@ -2218,25 +2218,51 @@ check('a stage with nothing in it takes no time', () => {
   return `walk ${walk}ms, fight ${fight}ms, idle 0ms`;
 });
 
-check('a corpse is never seen to swing', () => {
-  // Everything in a turn resolves simultaneously, but what you did and what
-  // they did back are separate rounds, and they must stay separate on the
-  // clock. Merged into one set of stages, an enemy you killed would play its
-  // attack alongside the survivors' - it had none, because it was already dead
-  // when they acted, and the show would be inventing one.
+check('a corpse is never seen to swing, but everyone walks together', () => {
+  // Two rules that used to be one, and separating them is what fixed enemies
+  // stuttering across the floor.
+  //
+  // The rounds are kept apart so a creature you killed is never seen to act:
+  // it was already dead when the survivors moved, and merging the stages would
+  // have the show invent an attack it never made. That is a statement about
+  // ATTACKS, where the order carries the causality.
+  //
+  // Walking carries none. You and they moved in the same turn, and showing it
+  // that way is more truthful - so movement is deliberately exempt and plays
+  // at once for both rounds. Keeping it separate cost the thing you spend most
+  // of the game looking at: on a plain walking turn the enemies' slide was the
+  // LAST half of a 235ms animation, so any input inside that window snapped it
+  // off half-played, and at any normal walking pace that was nearly every
+  // turn.
   const plan = planCycle([
+    { kind: 'move', uid: 0, round: 0, from: { x: 0, y: 0 }, to: { x: 1, y: 0 } },
     { kind: 'attack', uid: 0, round: 0, dx: 1, dy: 0 },
     { kind: 'hit', uid: 1, round: 0 },
     { kind: 'die', uid: 1, round: 0, x: 3, y: 3 },
+    { kind: 'move', uid: 2, round: 1, from: { x: 9, y: 9 }, to: { x: 8, y: 9 } },
     { kind: 'attack', uid: 2, round: 1, dx: -1, dy: 0 },
     { kind: 'hit', uid: 0, round: 1 },
   ]);
-  const yours = plan.events.filter((e) => e.round === 0);
-  const theirs = plan.events.filter((e) => e.round === 1);
-  const lastYours = Math.max(...yours.map((e) => e.at));
-  assert(theirs.every((e) => e.at >= lastYours),
-         'their round starts before yours has finished');
-  return `yours ends ${Math.round(plan.roundBoundary)}ms, theirs starts after`;
+  const at = (kind, round) => plan.events.find((e) => e.kind === kind && e.round === round)?.at;
+
+  // The causal half: nothing of theirs SWINGS until your round is done.
+  const lastOfYours = Math.max(...plan.events
+    .filter((e) => e.round === 0 && e.kind !== 'move').map((e) => e.at));
+  assert(at('attack', 1) >= lastOfYours,
+         'their attack starts before your round has finished');
+
+  // The exemption, checked on purpose rather than by the absence of test data.
+  assert(at('move', 0) === 0 && at('move', 1) === 0,
+         'movement is not shared between the rounds - enemies will stutter');
+
+  // And a plain walk is only as long as one step.
+  const walk = planCycle([
+    { kind: 'move', uid: 0, round: 0, from: { x: 0, y: 0 }, to: { x: 1, y: 0 } },
+    { kind: 'move', uid: 1, round: 1, from: { x: 5, y: 5 }, to: { x: 4, y: 5 } },
+  ]);
+  assert(walk.span <= 140,
+         `a walking turn takes ${Math.round(walk.span)}ms; it should be one step long`);
+  return `walk ${Math.round(walk.span)}ms shared; their swing waits for yours`;
 });
 
 check('the log records what the finished state can no longer tell you', () => {

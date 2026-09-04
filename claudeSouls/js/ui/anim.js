@@ -76,9 +76,33 @@ export function planRound(events, t0) {
  */
 export function planCycle(events) {
   const evs = events.map((e) => ({ ...e }));
-  const r0 = evs.filter((e) => e.round === 0);
-  const r1 = evs.filter((e) => e.round !== 0);
-  const end0 = planRound(r0, 0);
+
+  // Movement is shared between the rounds, and only movement.
+  //
+  // The rounds are kept apart so that something you killed is never seen to
+  // swing - that is a statement about ATTACKS, where the order carries the
+  // causality. Walking has no such problem: you and they moved in the same
+  // turn, and showing it that way is more truthful, not less.
+  //
+  // Keeping them apart cost the thing you actually look at. On a plain walking
+  // turn the player slid from 0 to 130ms and the enemies only started at 105,
+  // finishing at 235 - so their slide was the *last* half of the animation,
+  // and any input inside 235ms snapped it off half-played. Walking at any
+  // normal pace, enemies were being cut short nearly every turn, which is what
+  // made them stutter across the floor instead of stepping.
+  const walking = evs.filter((e) => e.kind === 'move');
+  for (const e of walking) e.at = 0;
+
+  // Only YOUR movement holds up YOUR swing. An earlier version delayed the
+  // whole cycle whenever anything at all had walked, which meant an enemy
+  // stepping somewhere across the room pushed back the animation of the blow
+  // you had already struck.
+  const youMoved = walking.some((e) => e.round === 0);
+
+  const rest = evs.filter((e) => e.kind !== 'move');
+  const r0 = rest.filter((e) => e.round === 0);
+  const r1 = rest.filter((e) => e.round !== 0);
+  const end0 = planRound(r0, youMoved ? AFTER_MOVE : 0);
   const end1 = planRound(r1, end0);
   const dur = (e) => ({ move: MOVE_MS, knock: MOVE_MS, attack: ATTACK_MS,
                         hit: HIT_MS, die: DIE_MS, level: LEVEL_MS }[e.kind] ?? 0);
@@ -202,7 +226,7 @@ export class Animator {
       if (e.uid !== uid || (e.kind !== 'move' && e.kind !== 'knock')) continue;
       const p = clamp01((t - e.at) / this.durationOf(e));
       if (p <= 0 || p >= 1) continue;
-      const ease = 1 - (1 - p) * (1 - p);
+      const ease = p * p * (3 - 2 * p);        // must match offsetFor
       dx += lerp(e.from.x - e.to.x, 0, ease);
       dy += lerp(e.from.y - e.to.y, 0, ease);
     }
@@ -229,7 +253,12 @@ export class Animator {
       if (e.kind === 'move' || e.kind === 'knock') {
         // Start displaced back where it came from and slide home, so the
         // sprite arrives at the tile the rules already put it on.
-        const ease = 1 - (1 - p) * (1 - p);
+        //
+        // Smoothstep rather than ease-out. A step should leave and arrive
+        // gently; easing only the arrival makes the sprite lurch off the mark
+        // and then drift, which reads as a twitch at exactly the moment your
+        // eye goes to it.
+        const ease = p * p * (3 - 2 * p);
         dx += lerp(e.from.x - e.to.x, 0, ease);
         dy += lerp(e.from.y - e.to.y, 0, ease);
       } else if (e.kind === 'attack') {
