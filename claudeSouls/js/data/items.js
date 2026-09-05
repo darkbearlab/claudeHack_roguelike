@@ -152,6 +152,9 @@ export const ITEMS = [
   }),
   weapon('blades', {
     name: 'paired blades', family: 'blade', power: 0, weight: 2, primary: 'slice', secondary: 'flurry',
+    // Innate, because the description has always promised it and it was a
+    // global rule until now. This is the weapon the kill-refund was for.
+    affixes: ['reaping'],
     desc: '很輕、很便宜。一條精力砍十次,配合擊殺退還 CD。',
   }),
   weapon('falchion', {

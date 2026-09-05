@@ -57,7 +57,14 @@ export const HEROES = [
     // attack is the refill and standing off doing nothing is starving. Her
     // roll is cheap, so she can dance - but dancing does not feed her, which
     // is what keeps her in the fight instead of circling it.
-    stamina: { max: 20, regen: 1 },
+    //
+    // A quarter per turn, not one. At 1 she recovered a roll every other turn
+    // and siphon was an accelerator rather than her only engine; at 0.25 it
+    // takes eight turns to afford one roll and twenty to afford Unmake, so
+    // waiting is not a plan. It is deliberately NOT zero: siphon is the one
+    // skill of hers that does not accept payment in health, so a rate of zero
+    // is a state she could never act her way out of.
+    stamina: { max: 20, regen: 0.25 },
     roll: { cost: 2, distance: 2 },
 
     skills: ['siphon', 'unmake', 'lance'],

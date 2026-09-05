@@ -31,6 +31,10 @@ const affix = (key, o) => ({
   knock: o.knock ?? 0,
   stamina: o.stamina ?? 0,
   cooldown: o.cooldown ?? 0,
+  // Not a number. The affix rules are otherwise strictly numeric deltas, and
+  // this is the documented exception rather than the start of a drift: it
+  // changes WHEN cooldowns tick, not what any skill's shape or numbers are.
+  kills: o.kills ?? false,
 });
 
 export const AFFIXES = [
@@ -45,6 +49,15 @@ export const AFFIXES = [
   affix('tempered', {
     name: '淬火', hint: '主要技能傷害 +1,精力 +1',
     damage: 1, stamina: 1,
+  }),
+  // A behaviour rather than a delta, and the only one. It was the default
+  // until it was measured against when it actually pays: the turn something
+  // dies is the turn you are least under pressure, so refunding then rewarded
+  // the exchange you had already won. As an affix it is a real choice, and the
+  // paired blades were always built around it.
+  affix('reaping', {
+    name: '收割', hint: '每擊殺一個敵人,所有技能 CD −1',
+    on: 'both', kills: true,
   }),
   affix('quick', {
     name: '迅捷', hint: '次要技能 CD −1',

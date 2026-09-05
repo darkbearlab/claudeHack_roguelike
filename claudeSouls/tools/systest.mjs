@@ -690,7 +690,12 @@ check('walking is always free, however loaded you are', () => {
   return 'no locked states';
 });
 
-check('stamina comes back fast until something notices you', () => {
+check('stamina comes back at one rate, seen or not', () => {
+  // The reverse of what this used to assert. Out of combat the bar refilled
+  // four times as fast, which meant it was only a resource inside the window
+  // where something could see you: every corridor between fights reset it, so
+  // what you spent getting somewhere cost nothing and there was never a reason
+  // to leave a fight holding anything back.
   const g = freshGame('aggro', 'light');
   for (const e of g.level.enemies) { e.aware = false; e.lost = 0; }
   assert(!g.inCombat(), 'nothing has seen the player, but the game says combat');
@@ -700,8 +705,8 @@ check('stamina comes back fast until something notices you', () => {
   assert(g.inCombat(), 'an aware enemy does not count as combat');
   const fight = g.player.regenRate(g.inCombat());
 
-  assert(calm > fight, `out of combat regen ${calm} is not better than ${fight}`);
-  return `${fight}/turn hunted, ${calm}/turn otherwise`;
+  assert(calm === fight, `being unseen still pays: ${calm} vs ${fight}`);
+  return `${fight}/turn either way`;
 });
 
 check('stamina regen is just under one light roll', () => {
@@ -892,15 +897,30 @@ check('a stepping attack moves the attacker but never onto an occupant', () => {
   return 'steppers stop before bodies, and still connect';
 });
 
-check('a kill refunds a turn of every cooldown', () => {
-  const { g, e } = arena('combo-cd', 'hound', 1);
-  const slot = g.player.skill('sweep');
-  slot.cd = 3;
-  e.hp = 1;
-  g.useSkill('strike', { dx: 1, dy: 0 });
-  assert(!e.alive, 'the hound survived a strike at 1 hp');
-  assert(slot.cd === 2, `cooldown ${slot.cd}, expected 2`);
-  return 'kill -> cooldowns tick';
+check('a kill pays you back only if the weapon reaps', () => {
+  // This was every weapon's rule, always. As a default it paid out at the
+  // wrong moment - the turn a thing dies is the turn you are under the least
+  // pressure - so it is an affix now, and the paired blades carry it innately
+  // because they were designed around it.
+  const bare = arena('combo-cd', 'hound', 1);
+  bare.g.player.equipItem(SLOT.MAIN, 'sword');
+  const s1 = bare.g.player.skill('sweep');
+  s1.cd = 3;
+  bare.e.hp = 1;
+  bare.g.useSkill('strike', { dx: 1, dy: 0 });
+  assert(!bare.e.alive, 'the hound survived a strike at 1 hp');
+  assert(s1.cd === 3, `a plain sword refunded on kill: cooldown ${s1.cd}`);
+
+  const reap = arena('combo-cd', 'hound', 1);
+  reap.g.player.equipItem(SLOT.MAIN, 'blades');
+  assert(reap.g.player.hasAffix('reaping'), 'the paired blades no longer reap');
+  const s2 = reap.g.player.skill('flurry');
+  s2.cd = 3;
+  reap.e.hp = 1;
+  reap.g.useSkill('slice', { dx: 1, dy: 0 });
+  assert(!reap.e.alive, 'the hound survived a slice at 1 hp');
+  assert(s2.cd === 2, `the blades did not refund: cooldown ${s2.cd}`);
+  return 'plain weapon 3 -> 3, reaping 3 -> 2';
 });
 
 check('sustained aggression exhausts an enemy', () => {
@@ -2284,8 +2304,20 @@ check('the soulbinder feeds on hitting things, and can spend herself', () => {
   const p = g.player;
   p.hero = HERO_BY_KEY.binder;
 
-  // Her basic attack is her only real recovery: one a turn otherwise.
-  assert(p.staminaRegen === 1, 'her recovery is not the constraint it is meant to be');
+  // Her basic attack is her only real recovery. Stated as the CONSEQUENCE
+  // rather than as a number: this used to assert `staminaRegen === 1`, and a
+  // rate of 1 turned out to be a perfectly good plan on its own - she could
+  // wait two turns for a roll and siphon was merely an accelerator. What has
+  // to be true is that landing one is worth a long, unaffordable wait.
+  const perHit = SKILL_BY_KEY.siphon.refund;
+  const perTurn = p.regenRate(true);
+  const turnsPerHit = perHit / perTurn;
+  assert(turnsPerHit >= 10,
+    `one siphon is worth ${turnsPerHit} turns of standing still - waiting is a plan`);
+  // And never zero, or there is a state she cannot act her way out of: siphon
+  // is the one skill of hers that will not take payment in health.
+  assert(perTurn > 0, 'a rate of zero is a soft lock, not a constraint');
+  assert(!SKILL_BY_KEY.siphon.bleed, 'siphon now bleeds - the soft-lock argument needs revisiting');
   p.stamina = 3;
   const before = p.stamina;
   g.useSkill('siphon', { dx: 1, dy: 0 });

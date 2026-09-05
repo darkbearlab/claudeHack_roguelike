@@ -7,10 +7,13 @@
 //    Souls emotion: "one more hit, or keep enough to get out?" Cooldowns only
 //    stop one answer being right every single turn.
 //
-// 2. **A kill refunds one turn of every cooldown.** This is what turns a fight
-//    from a list of separate decisions into a combo - kill, cooldowns come
-//    back, next skill, kill again. It also rewards correct target *order*,
-//    which is exactly the thinking the game is supposed to be about.
+// 2. **A kill refunds one turn of every cooldown - if your weapon reaps.**
+//    This was everyone's rule, always, and it turned a fight into a combo:
+//    kill, cooldowns come back, next skill, kill again. It is an affix now
+//    (`reaping`, innate on the paired blades, which were built around it).
+//    As a default it paid out at the wrong moment - the turn a thing dies is
+//    the turn you are under the least pressure - so it rewarded the exchange
+//    you had already won rather than the one you were losing.
 //
 // 3. **Almost every skill belongs to a weapon.** Roll and block are the only
 //    ones you always have. Everything else arrives on a piece of equipment,

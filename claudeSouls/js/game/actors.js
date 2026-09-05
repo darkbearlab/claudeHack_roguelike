@@ -481,13 +481,17 @@ export class Player {
   }
 
   /**
-   * Stamina comes back slowly under load, and only while nothing has seen you.
+   * Stamina comes back slowly under load. One rate, everywhere.
    *
-   * The second half is the important one. Out of a fight the bar refills fast,
-   * so exploration is not a tax and you do not arrive at a fight already spent.
-   * The moment something notices you, it becomes the scarce thing it is meant to
-   * be. `inCombat` is decided by the game, not here, because it depends on the
-   * level.
+   * There used to be a second rate: out of a fight the bar refilled four times
+   * as fast, so exploration was not a tax and you never arrived at a fight
+   * already spent. That is gone, deliberately. It meant the bar was only ever
+   * a resource inside the exact window where something could see you, and
+   * every corridor reset it - so what you spent getting to a fight cost you
+   * nothing, and there was no reason to leave a fight with anything in hand.
+   *
+   * `inCombat` is still accepted so the callers do not have to change shape,
+   * and so the parameter is here to be used again if a rule wants it.
    */
   regenRate(inCombat) {
     // Both of the things you are wearing that say what they cost you. A heavy
@@ -511,12 +515,15 @@ export class Player {
     if (this.hero) {
       // A hero's recovery is the hero's, and armour still nudges it - the rags
       // that give everyone their stamina back give it to her too.
-      const h = Math.max(1, this.hero.stamina.regen + armour);
-      return inCombat ? h : h * 4;
+      // Floored low rather than at 1, because a hero whose whole design is
+      // "you must attack to refuel" needs a rate below one per turn - and a
+      // rate of zero is a soft lock, not a design. See the binder: siphon is
+      // her only real recovery and it does not accept payment in health, so at
+      // zero stamina and zero regen she could not act at all, ever.
+      return Math.max(0.25, this.hero.stamina.regen + armour);
     }
-    const base = Math.max(1, PLAYER.staminaRegen + 2 + armour
-                             - Math.floor(Math.max(0, this.weight - this.allowance) / 5));
-    return inCombat ? base : base * 4;
+    return Math.max(1, PLAYER.staminaRegen + 2 + armour
+                       - Math.floor(Math.max(0, this.weight - this.allowance) / 5));
   }
 
   canAfford(cost) { return this.stamina >= cost; }
@@ -533,7 +540,15 @@ export class Player {
       // Nor while a blow is still in the air. Wind-up and recovery are the two
       // halves of the same commitment; if the bar refilled through one of them
       // the long attacks would pay for their own next swing.
-      this.stamina = Math.min(this.staminaMax, this.stamina + this.regenRate(inCombat));
+      // Carried as a fraction, because a rate below one per turn has to
+      // accumulate or it rounds to nothing. Everyone else's rate is a whole
+      // number and this behaves exactly as it always did for them.
+      this.staminaFrac = (this.staminaFrac ?? 0) + this.regenRate(inCombat);
+      const whole = Math.floor(this.staminaFrac);
+      if (whole > 0) {
+        this.staminaFrac -= whole;
+        this.stamina = Math.min(this.staminaMax, this.stamina + whole);
+      }
     }
     for (const s of this.skills) if (s.cd > 0) s.cd--;
   }
@@ -541,7 +556,22 @@ export class Player {
   /** A kill refunds one turn of every cooldown. This is the combo engine. */
   onKill() {
     this.kills++;
-    for (const s of this.skills) if (s.cd > 0) s.cd--;
+    // A kill used to refund one turn of every cooldown, for everybody, always.
+    // It is an affix now. As a default it paid you for winning the exchange
+    // you had already won, which is the wrong moment to be generous: the turn
+    // a thing dies is the turn you are least under pressure.
+    if (this.hasAffix('reaping')) {
+      for (const s of this.skills) if (s.cd > 0) s.cd--;
+    }
+  }
+
+  /** Is this affix on anything you are holding? */
+  hasAffix(key) {
+    for (const slot of [SLOT.MAIN, SLOT.OFF]) {
+      const it = this.item(slot);
+      if (it && affixesOn(it, this.affix[it.key]).some((a) => a.key === key)) return true;
+    }
+    return false;
   }
 
   face(dx, dy) {

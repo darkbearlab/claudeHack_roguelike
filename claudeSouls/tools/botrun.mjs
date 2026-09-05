@@ -233,6 +233,18 @@ function canBump(p) {
 }
 
 function arms(p) {
+  // A hero's verbs come from the hero, and this read them off the WEAPON -
+  // so with HERO=knight the bot planned around `strike`, which he does not
+  // have, and `hasSkill` then refused every attack it proposed. The HERO flag
+  // was measuring a confused player rather than that character.
+  //
+  // Same mistake as `step()` hardcoding 'strike' and the bot only ever
+  // carrying a longsword, both already in DESIGN.md. Third time in this file's
+  // lineage: whenever "what is your basic attack" is answered from anywhere
+  // but the live skill list, it eventually answers wrong.
+  if (p.hero) {
+    return { prim: SKILL_BY_KEY[p.hero.skills[0]], sec: SKILL_BY_KEY[p.hero.skills[1]] ?? null };
+  }
   const main = p.item(SLOT.MAIN);
   const prim = SKILL_BY_KEY[main?.primary] ?? SKILL_BY_KEY.strike;
   const sec = SKILL_BY_KEY[main?.secondary] ?? null;
@@ -349,7 +361,15 @@ function act(game, rng) {
   }
 
   // 4. Breathe. Never enter a fight without enough for one dodge.
-  if (p.stamina < reserve + p.costOf(arms(p).prim.key)) {
+  //
+  // Unless swinging is how you BUY the dodge. The binder's basic attack costs
+  // 2 and refunds 5 on a hit, so holding stamina back to stay safe is how she
+  // starves - and this rule, written before any hero existed, had her waiting
+  // 46% of every fight. That was a measurement of the bot, not of her.
+  const prim = arms(p).prim;
+  const feeds = (SKILL_BY_KEY[prim.key]?.refund ?? 0) > p.costOf(prim.key);
+  const floor = feeds ? p.costOf(prim.key) : reserve + p.costOf(prim.key);
+  if (p.stamina < floor) {
     const threat = lvl.livingEnemies().some((e) => dist(e.x, e.y, p.x, p.y) <= 2);
     if (!threat) return { kind: 'wait' };
     const safe = safeSteps(game, danger);
@@ -464,7 +484,12 @@ async function run(seed, maxTurns, vow) {
   const rng = new RNG(`bot:${seed}`);
   const game = new Game(null);
   game.ui = new BotUI();
-  game.newGame({ seed, name: 'Bot', vow });
+  // HERO=binder. Same argument as WEAPON= below, one level up: skills bind to
+  // a person now, so a bot that only ever plays the pre-hero kit measures a
+  // game nobody plays. It matters most for the binder, whose whole economy is
+  // "you recover by hitting things" - a run that regenerates 5 a turn cannot
+  // tell you anything about a character who regenerates a quarter.
+  game.newGame({ seed, name: 'Bot', vow, hero: process.env.HERO || undefined });
   // WEAPON=pike. The bot has always carried the starting sword, and that has
   // already hidden one whole class of bug (step() hardcoding 'strike' meant
   // mace-and-shield could not attack with the direction keys, and nothing
