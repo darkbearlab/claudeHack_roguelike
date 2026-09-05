@@ -314,14 +314,29 @@ export class Player {
    * Everyone rolls two tiles.
    *
    * Heavy armour used to roll one, and that number was doing something nobody
-   * intended. Against the attack shapes that arrived later - a five-tile arc, a
-   * six-tile lane, the boss's solid 5x5 - **two tiles is the minimum that
-   * escapes anything**, so a one-tile roll was not "dodging less well", it was
-   * not dodging at all. Heavy survived by tanking with its damage reduction,
-   * which is the opposite of what the vow was supposed to feel like.
+   * intended: heavy survived by tanking with its damage reduction, which is the
+   * opposite of what the vow was supposed to feel like. Distance is a cliff and
+   * stamina is a slope, so the weight went into the stamina economy where it
+   * can be tuned.
    *
-   * Distance is a cliff; stamina is a slope. So the weight is expressed in the
-   * stamina economy, where it can be tuned, and everyone gets a roll that works.
+   * **The claim that used to be here was overstated**, and measuring it for a
+   * character built around a one-tile roll is what showed that. It read "two
+   * tiles is the minimum that escapes anything". Across all fourteen shapes in
+   * all eight facings, with the attacker's own square correctly excluded as a
+   * destination, one step escapes EVERY shape except `around2` - and even there
+   * it clears two thirds of the tiles, failing only from the ring pressed
+   * against the attacker.
+   *
+   * So a one-tile roll is a weakness against exactly one attack in the game,
+   * the boss's pyre, and only at adjacent range. That attack telegraphs for
+   * three turns, the longest wind-up there is. "Do not be next to the dragon
+   * when it draws breath" is a rule you can learn, which is a different thing
+   * from being shut out of the fight - and a character with a short roll can
+   * carry a different way out instead, which is a design worth leaving room
+   * for rather than ruling out here.
+   *
+   * (The first attempt at that measurement said 100% for around2 as well,
+   * because the probe let you escape onto the attacker's own square.)
    */
   rollDistance() { return SKILL_BY_KEY.roll.dash; }
 
