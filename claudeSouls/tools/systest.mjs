@@ -22,7 +22,7 @@ import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.j
 import { attackTiles, snapDir, PATTERNS, RADIAL, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
-import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
+import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
 import { hasLOS } from '../../engine/fov.js';
@@ -2244,12 +2244,79 @@ check('walking up to someone is how you become them', () => {
     for (const k of h.skills) assert(g.player.hasSkill(k), `${h.key}'s ${k} is not on the bar`);
     assert(g.player.staminaMax === h.stamina.max, `${h.key}'s pool is not shown in the hall`);
 
+    // The stair is not the door any more - the weaver is. Reaching it without
+    // her says so and changes nothing.
+    assert(g.descend() === false, `the stair let ${h.key} leave without the weaver`);
+    assert(g.inHub, 'a refused descent left the hall anyway');
+
+    g.weaverAgreed = true;
     assert(g.descend() === true, `could not start a run as ${h.key}`);
-    assert(!g.inHub && g.player.depth === 1, 'the stair did not start a run');
+    assert(!g.inHub && g.player.depth === 1, 'agreeing with the weaver did not start a run');
     assert(g.player.hero?.key === h.key, 'the run started as somebody else');
     for (const k of h.skills) assert(g.player.hasSkill(k), `${h.key} lost ${k} on the way down`);
   }
   return `${HEROES.length} heroes taken up and taken down`;
+});
+
+check('the weaver is the door, and she is one person with three faces', () => {
+  const g = freshGame('weaver');
+  g.ui = Object.assign(new QuietUI(), { showConversation() {} });
+  g.enterHub();
+
+  const npc = g.level.npcs.find((n) => n.key === 'weaver');
+  assert(npc, 'nobody is keeping the way down');
+  // Beside the stair, never on it. The fire keeper was once tucked into the
+  // most-cornered tile of a room, which is exactly where a doorway is, and she
+  // became a plug; the person you MUST talk to is the worst possible thing to
+  // put in a corridor.
+  const stair = g.level.downStair;
+  assert(!(npc.x === stair.x && npc.y === stair.y), 'the weaver is standing on the stair');
+  assert(Math.max(Math.abs(npc.x - stair.x), Math.abs(npc.y - stair.y)) <= 2,
+    'the weaver is nowhere near the way she is supposed to be keeping');
+
+  // No hero, no descent - and that is a different refusal from hers.
+  assert(g.descend() === false, 'a run started with nobody chosen');
+
+  const spec = NPC_BY_KEY.weaver;
+  assert(spec.ages?.length >= 3, 'she does not have three ages');
+  const seen = new Set();
+  for (const a of spec.ages) {
+    const worn = weaverAt(spec, a.key);
+    assert(worn.name === spec.name, 'an age changed who she is');
+    assert(worn.face, `the ${a.key} has no portrait`);
+    assert(worn.greeting?.length, `the ${a.key} has nothing to say`);
+    seen.add(worn.face);
+    seen.add(worn.greeting.join('|'));
+  }
+  assert(seen.size === spec.ages.length * 2, 'two of her ages are the same age');
+
+  // And the hall picks one, and holds it while you are standing there.
+  assert(spec.ages.some((a) => a.key === g.weaverAge), `the hall chose ${g.weaverAge}`);
+  const held = g.weaverAge;
+  for (let i = 0; i < 20; i++) g.worldTurn();
+  assert(g.weaverAge === held, 'she changed age while you were looking at her');
+  return `beside the stair, ${spec.ages.length} ages, showing ${held}`;
+});
+
+check('her age is not taken out of the run seed', () => {
+  // placeKeeper once drew from the generation RNG and shifted every decision
+  // after it, which made three A/B comparisons meaningless because they were
+  // measuring two different dungeons. She must not be able to do that.
+  const dungeons = new Set();
+  const ages = new Set();
+  for (let i = 0; i < 12; i++) {
+    const g = new Game(null);
+    g.ui = Object.assign(new QuietUI(), { showConversation() {} });
+    g.newGame({ seed: 'fixed-seed', name: 'A', hero: 'knight' });
+    g.enterHub();
+    ages.add(g.weaverAge);
+    g.weaverAgreed = true;
+    g.descend();
+    dungeons.add(g.level.tiles.join(','));
+  }
+  assert(dungeons.size === 1,
+    `the same seed produced ${dungeons.size} different first floors`);
+  return `${ages.size} of her ages seen across 12 visits, and one dungeon throughout`;
 });
 
 check('nothing acts in the hall', () => {
@@ -3542,14 +3609,24 @@ check('she cannot be hit by anything, and it is not a flag that says so', () => 
 
 check('every person has art and a way to be drawn', () => {
   const dir = new URL('../../assets/', import.meta.url);
+  let faces = 0;
   for (const n of NPCS) {
     assert(n.name && n.glyph && n.colour, `${n.key} is missing a name, glyph or colour`);
     assert(existsSync(new URL(`${n.sprite}.png`, dir)), `${n.key} has no map sprite`);
-    // The face is optional, but a name that points at nothing is not.
-    if (n.face) assert(existsSync(new URL(`${n.face}.png`, dir)), `${n.key} has no portrait`);
-    assert(Array.isArray(n.greeting) && n.greeting.length, `${n.key} has nothing to say`);
+    // Somebody with several ages is checked in every one of them. The weaver
+    // has three, and a missing portrait on the age you happen not to be shown
+    // is exactly the kind of hole that surfaces months later in front of a
+    // player rather than here.
+    for (const worn of (n.ages ?? [null]).map((a) => weaverAt(n, a?.key))) {
+      // The face is optional, but a name that points at nothing is not.
+      if (worn.face) {
+        assert(existsSync(new URL(`${worn.face}.png`, dir)), `${n.key} has no portrait ${worn.face}`);
+        faces++;
+      }
+      assert(Array.isArray(worn.greeting) && worn.greeting.length, `${n.key} has nothing to say`);
+    }
   }
-  return `${NPCS.length} person, art present`;
+  return `${NPCS.length} people, ${faces} portraits, all present`;
 });
 
 check('nothing spawns in the room with the fire in it', () => {

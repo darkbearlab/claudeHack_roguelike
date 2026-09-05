@@ -35,6 +35,10 @@ export const ART_FACING = {
   // She is drawn seated and is never rotated (NPCS[].still), so this value is
   // recorded for completeness rather than used.
   npc_firekeeper: 'S',
+  // Seated at her spindle, like the keeper. Never rotated to face you - the
+  // art is a front view of somebody sitting down, and turning it would spin
+  // the whole figure on the spot.
+  npc_weaver: 'S',
   // The roster. Same as everything else the generator makes: a front view.
   hero_knight: 'S',
   hero_binder: 'S',

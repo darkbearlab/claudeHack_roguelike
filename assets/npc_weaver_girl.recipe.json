@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "name": "npc_weaver_girl_amber",
+  "style": "topdown-flat",
+  "kind": "portrait",
+  "desc": "a young girl of about ten with a small round face, wide open eyes and a loose dark braid over one shoulder, striking pale golden-amber eyes that stand out brightly against her warm brown skin, a rust-red headscarf, a deep teal shawl over a dark bodice, one large gold hoop earring",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a young girl of about ten with a small round face, wide open eyes and a loose dark braid over one shoulder, striking pale golden-amber eyes that stand out brightly against her warm brown skin, a rust-red headscarf, a deep teal shawl over a dark bodice, one large gold hoop earring, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\npc_weaver_girl_amber.src.png",
+    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-npc_weaver_girl_amber_20260905_222856_01.png",
+    "source_sha256": "c2847f9a71acc9666f46b5d223b27e98109db88c6f9093ea614829a29efb5838",
+    "cost_usd": 0.00483,
+    "meta": {
+      "model": "gpt-image-2",
+      "size": "768x1024",
+      "quality": "low",
+      "background": "transparent"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_07.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+    "palette_sha256": "e871e6d9fbc2effc4cb88c193a29d7b411d01f7571308038e3739ae3f116fd82",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 30.0785
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 37.1542
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 11.8696
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 15.5205
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 16.0712
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 12.5532
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 38.489
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 11.0023
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 25.3027
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 19.9177
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 17.7363
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 31.5352
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "1d52bf3e549b94198c383ab84ceffbcd979a8878e76f4d30559f15704ff30f38"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\npc_weaver_girl_amber.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 7.8496,
+    "palette_fit_delta_e76": 12.0981,
+    "warnings": [
+      "HIGH_QUANT_ERROR",
+      "PALETTE_SET_POOR_FIT"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\npc_weaver_girl_amber.qa.json"
+  },
+  "created": "20260905_222857",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 23.69
+}

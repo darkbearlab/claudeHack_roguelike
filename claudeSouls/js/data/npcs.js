@@ -42,7 +42,80 @@ export const NPCS = [
       '你要下去多少次都可以——火會記得。',
     ],
   },
+
+  {
+    key: 'weaver',
+    name: '時間編織者',
+    sprite: 'npc_weaver',
+    glyph: 'W',
+    colour: '#d8a24a',
+    still: true,
+    // She is the door. Talking to her is how a run begins - see `descend` and
+    // the note in hub.js on why the stair alone is not enough.
+    opensTheWay: true,
+
+    // Three ages, one woman. Same clothes, same brown skin and amber eyes;
+    // what changes is how old she looks and what she says.
+    //
+    // Kept as DATA rather than as three NPCs, because she is one person. The
+    // hall picks a face when you walk into it, so she is stable for as long as
+    // you are standing in front of her and different the next time you come
+    // back - which is the whole point of her. Anything that reads `face` or
+    // `greeting` has to go through `weaverAt`, so there is one place that
+    // knows an NPC can have more than one face.
+    ages: [
+      {
+        key: 'crone',
+        face: 'npc_weaver_crone',
+        greeting: [
+          '又是你。你走過的線我都收著。',
+          '有些線斷在半路。斷了也是一種形狀。',
+        ],
+        about: [
+          '我織的時候不看樣子,只看它會不會斷。',
+          '你們總問結局。結局是線用完了,不是線打了個好結。',
+        ],
+      },
+      {
+        key: 'girl',
+        face: 'npc_weaver_girl',
+        greeting: [
+          '你回來了!這次要走哪一條?',
+          '我幫你挑了一條新的。它還沒有人走過喔。',
+        ],
+        about: [
+          '姐姐說我不可以偷看還沒織完的地方。可是我偷看了。',
+          '你死掉的時候我有在看。不要怕,我會把線接回去。',
+        ],
+      },
+      {
+        key: 'woman',
+        face: 'npc_weaver_woman',
+        greeting: [
+          '線都理好了。要下去就下去。',
+          '同一條線,你走第幾次了?我沒有在數。你有。',
+        ],
+        about: [
+          '種子不是我給的。我只是知道它們叫什麼名字。',
+          '碎片你留著。帶得回來的東西,才算走過。',
+        ],
+      },
+    ],
+  },
 ];
+
+/**
+ * The weaver wearing one of her ages.
+ *
+ * Everything that draws or talks to her goes through here, so nothing else
+ * needs to know she has three faces. `ageKey` comes from the hall and is fixed
+ * for as long as you are in it.
+ */
+export function weaverAt(spec, ageKey) {
+  if (!spec?.ages) return spec;
+  const age = spec.ages.find((a) => a.key === ageKey) ?? spec.ages[0];
+  return { ...spec, ...age };
+}
 
 /**
  * The heroes, standing in the hall as people you can talk to.

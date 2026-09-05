@@ -98,11 +98,12 @@ ${roster}
  * measurement of a different game - the bot would be choosing from twelve
  * weapons instead of playing the kit its numbers were gathered with.
  *
- * On by default because it was asked for; `?gear=kit` gives the real start
- * back without editing anything, and flipping the constant turns it off for
- * good. Nothing else in the codebase can reach it.
+ * Off now: weapons belong to a hero's family and are found in the dungeon,
+ * so handing the player one of everything skips the loop it was meant to
+ * exercise. `?gear=all` brings it back for a session. Nothing else in the
+ * codebase can reach it.
  */
-const TEST_ALL_GEAR = true;
+const TEST_ALL_GEAR = false;
 
 function stockEverything(game) {
   const p = game.player;
@@ -115,7 +116,7 @@ function stockEverything(game) {
     // Stocked full, and a bonfire refills them like anything else.
     if (p.charges[c.key] === undefined) p.charges[c.key] = c.charges;
   }
-  game.msg(`測試模式:全部 ${ITEMS.length} 件裝備、${CONSUMABLES.length} 個消耗品都給你了(?gear=kit 可以拿掉)。`, 'good');
+  game.msg(`測試模式:全部 ${ITEMS.length} 件裝備、${CONSUMABLES.length} 個消耗品都給你了。`, 'good');
 }
 
 function start() {
@@ -130,7 +131,7 @@ function start() {
     game.pendingSeed = seed;
     game.onRunStart = (g) => {
       const params = new URLSearchParams(location.search);
-      if (TEST_ALL_GEAR && params.get('gear') !== 'kit') stockEverything(g);
+      if (TEST_ALL_GEAR || params.get('gear') === 'all') stockEverything(g);
     };
     game.enterHub();
     game.player.name = name;

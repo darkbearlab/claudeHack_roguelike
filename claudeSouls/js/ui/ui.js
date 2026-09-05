@@ -1033,23 +1033,71 @@ export class UI {
         // A person in the hall has nothing to say about how far a run went -
         // there is no run. The keeper keeps the reckoning; the heroes talk
         // about themselves.
-        choices: spec.hero
-          ? [
-              { id: 'who', label: '1  跟我說說你自己' },
-              { id: 'leave', label: '2  就這樣吧 (Esc)' },
-            ]
-          : [
-              { id: 'stats', label: '1  這一趟走了多遠?' },
-              { id: 'who', label: '2  你是誰?' },
-              { id: 'leave', label: '3  離開 (Esc)' },
-            ],
+        choices: this.conversationChoices(spec),
       });
       if (choice === 'leave') { this.render(); return; }
+      if (choice === 'descend') {
+        // She is the door. Agreeing here is what a run starts from, so the
+        // conversation closes and the descent runs in the same breath.
+        this.game.weaverAgreed = true;
+        this.render();
+        await this.game.command('>');
+        return;
+      }
+      if (choice === 'seed') { lines = this.seedReport(); continue; }
+      if (choice === 'notready') {
+        lines = ['你還沒決定要當誰。', '線我理好了,人得你自己挑。'];
+        continue;
+      }
       lines = choice === 'stats' ? this.runReport() : spec.about ?? [
         '我看著火。',
         '除此之外的事,我大概已經忘了。',
       ];
     }
+  }
+
+  /**
+   * Who offers what.
+   *
+   * Three shapes, and the weaver's is the only one with a consequence in it -
+   * she opens the way down. Her "go" is refused up front rather than hidden,
+   * because a menu that silently omits the thing you came for reads as a bug;
+   * being told to go and pick somebody first is an answer.
+   */
+  conversationChoices(spec) {
+    if (spec.hero) {
+      return [
+        { id: 'who', label: '1  跟我說說你自己' },
+        { id: 'leave', label: '2  就這樣吧 (Esc)' },
+      ];
+    }
+    if (spec.opensTheWay) {
+      const ready = !!this.game.hero;
+      return [
+        { id: ready ? 'descend' : 'notready',
+          label: ready ? '1  帶我下去' : '1  帶我下去(還沒選人)' },
+        { id: 'seed', label: '2  這一趟的線是哪一條?' },
+        { id: 'who', label: '3  你是誰?' },
+        { id: 'leave', label: '4  之後再說 (Esc)' },
+      ];
+    }
+    return [
+      { id: 'stats', label: '1  這一趟走了多遠?' },
+      { id: 'who', label: '2  你是誰?' },
+      { id: 'leave', label: '3  離開 (Esc)' },
+    ];
+  }
+
+  /** The seed, said the way she would say it. */
+  seedReport() {
+    const g = this.game;
+    const seed = g.pendingSeed || g.seed || '(還沒有名字)';
+    const hero = g.hero?.name;
+    return [
+      `這一條叫「${seed}」。`,
+      hero ? `走它的人是${hero}。` : '還沒有人要走它。',
+      '同一條線,走幾次都是同一條。變的是你。',
+    ];
   }
 
   /** The placeholder she reads out. Everything here is already counted. */

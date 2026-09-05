@@ -39,7 +39,7 @@ import { populate, spawnBoss } from './populate.js';
 import { FxLog } from './fx.js';
 import { buildHub } from '../map/hub.js';
 import { HERO_BY_KEY } from '../data/heroes.js';
-import { NPC_BY_KEY } from '../data/npcs.js';
+import { NPC_BY_KEY, weaverAt } from '../data/npcs.js';
 import { saveGame, clearSave } from './save.js';
 
 export const VERSION = '0.1.0';
@@ -252,8 +252,22 @@ export class Game {
     this.player.depth = 0;
     this.turn = 0;
     this.messages = [];
+    // Which of her ages is here this time. Chosen once per visit rather than
+    // per glance, so she is one person while you are talking to her and
+    // somebody else the next time you come back - the change should read as
+    // "she is not fixed in time", not as a flicker.
+    //
+    // Drawn from a throwaway RNG, deliberately NOT `this.rng`: the run's seed
+    // decides the dungeon, and taking a number out of it here would shift
+    // every generation decision after it. That exact mistake is in DESIGN.md
+    // under placeKeeper.
+    const ages = NPC_BY_KEY.weaver?.ages ?? [];
+    this.weaverAge = ages.length
+      ? ages[new RNG(`weaver:${Date.now()}:${Math.random()}`).rn2(ages.length)].key
+      : null;
+    this.weaverAgreed = false;
     this.msg('灰燼之廳。火還亮著。', 'good');
-    this.msg('走向一個人來選擇他。準備好了就走下階梯。');
+    this.msg('走向一個人來選擇他。然後去跟階梯旁的編織者說一聲。');
     this.afterMove();
   }
 
@@ -396,6 +410,8 @@ export class Game {
     const spec = NPC_BY_KEY[npc.key];
     if (!spec) return;
     if (spec.hero) { this.chooseHero(spec.hero); this.ui?.showConversation?.(spec); return; }
+    // She wears one of her ages, and the UI never learns she has three.
+    if (spec.ages) { this.ui?.showConversation?.(weaverAt(spec, this.weaverAge)); return; }
     this.ui?.showConversation?.(spec);
   }
 
@@ -1299,6 +1315,12 @@ export class Game {
     // somebody they did not pick.
     if (this.inHub) {
       if (!this.hero) { this.msg('先去跟他們其中一個說話。', 'warn'); return false; }
+      // The weaver opens the way, not the step. Reaching the stair on your own
+      // tells you so; it does not start anything.
+      if (!this.weaverAgreed) {
+        this.msg('階梯是編織者的。去跟她說一聲。', 'warn');
+        return false;
+      }
       this.inHub = false;
       this.newGame({ seed: this.pendingSeed, name: this.player.name, hero: this.hero.key });
       this.onRunStart?.(this);
