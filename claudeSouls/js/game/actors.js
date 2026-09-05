@@ -333,9 +333,21 @@ export class Player {
    */
   meleeSkill() {
     const melee = (k) => k && SKILL_BY_KEY[k] && !SKILL_BY_KEY[k].ranged && SKILL_BY_KEY[k].damage;
+    // Only from what you can actually use. This preferred the main weapon's
+    // `primary` outright, which was true right up until heroes were given
+    // weapons: the squire holds a spear whose primary is `thrust`, a real
+    // melee skill that he does not have, so walking into something did
+    // nothing at all. Two of the three heroes could not bump-attack; the
+    // binder worked only because her focus happens to name a skill she has.
+    //
+    // Fourth time this exact question has been answered from the wrong place -
+    // step() hardcoding 'strike', the bot only ever carrying a longsword, the
+    // bot's arms() reading the weapon. All in DESIGN.md. The answer is always
+    // the same: ask the live skill list, never the equipment.
+    const usable = this.activeSkills();
     const main = this.item(SLOT.MAIN)?.primary;
-    if (melee(main)) return main;
-    return this.activeSkills().find(melee) ?? null;
+    if (usable.includes(main) && melee(main)) return main;
+    return usable.find(melee) ?? null;
   }
 
   /**

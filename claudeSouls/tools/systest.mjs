@@ -2411,6 +2411,52 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+check('walking into something attacks it, whoever you are', () => {
+  // Two of the three heroes could not attack by walking into things, and the
+  // regression arrived with a feature: `meleeSkill()` preferred the main
+  // weapon's `primary`, which was harmless while heroes were empty-handed and
+  // wrong the moment they were given weapons. The squire holds a spear whose
+  // primary is `thrust` - a real melee skill he does not have - so the bump
+  // resolved to nothing at all. The binder was fine only by luck.
+  //
+  // The fourth time this question has been answered from the equipment rather
+  // than from the live skill list. Pinned as a consequence for every hero, so
+  // the next weapon change cannot quietly take the basic action away again.
+  const broken = [];
+  for (const h of HEROES) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: 'bump', name: 'A', hero: h.key });
+    const p = g.player;
+
+    let spot = null;
+    for (let y = 2; y < g.level.h - 2 && !spot; y++) {
+      for (let x = 2; x < g.level.w - 2 && !spot; x++) {
+        if (g.level.passable(x, y) && g.level.passable(x + 1, y)) spot = { x, y };
+      }
+    }
+    assert(spot, 'no two adjacent open tiles on floor one');
+    p.x = spot.x; p.y = spot.y;
+
+    g.level.enemies.length = 0;
+    const e = new Enemy('husk', g.rng);
+    e.x = p.x + 1; e.y = p.y; e.hp = 40; e.hpMax = 40;
+    g.level.enemies.push(e);
+    g.level.markEnemiesDirty();
+    p.stamina = p.staminaMax;
+
+    const skill = p.meleeSkill();
+    if (!p.activeSkills().includes(skill)) {
+      broken.push(`${h.key} bumps with ${skill}, which is not one of their skills`);
+      continue;
+    }
+    g.step(1, 0);
+    if (e.hp === 40) broken.push(`${h.key} walked into a husk and nothing happened`);
+  }
+  assert(broken.length === 0, broken.join('; '));
+  return `${HEROES.length} heroes, each bumping with a skill they actually have`;
+});
+
 check('the weapon in a hero hand is worth picking up', () => {
   // The bug this pins: heroes started with empty hands, and affixes are
   // addressed through the weapon that grants the skill. A hero's verbs are not
