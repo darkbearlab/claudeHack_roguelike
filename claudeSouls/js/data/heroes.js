@@ -37,7 +37,11 @@ export const HEROES = [
     roll: { cost: 4, distance: 2 },
 
     skills: ['thrust', 'sweep', 'turnaside'],
-    kit: { armour: 'mail', item: 'flask', magic: null },
+    // "一把長劍" - so he holds one, and every blade he finds is a version of
+    // it. The family is what he can pick up; the weapon does not tell him what
+    // to do, it only sharpens what he already knows.
+    family: 'blade',
+    kit: { armour: 'mail', main: 'sword', item: 'flask', magic: null },
     about: ['我學會的第一件事,是不要跟比你快的東西比快。',
             '看它舉手。看它要往哪裡去。然後把它推到別的地方去。'],
   },
@@ -57,7 +61,11 @@ export const HEROES = [
     roll: { cost: 2, distance: 2 },
 
     skills: ['siphon', 'unmake', 'lance'],
-    kit: { armour: 'leathers', item: 'flask', magic: null },
+    // She carries no weapon, which left her with nothing to hang an affix on -
+    // so a third of what the dungeon drops would have been dead to her. A
+    // focus is the carrier: no edge, no reach, just what the debt is kept on.
+    family: 'focus',
+    kit: { armour: 'leathers', main: 'tally', item: 'flask', magic: null },
     about: ['我身上沒有多的東西。要用,就得先拿。',
             '所以不要停下來。停下來的人會發現自己什麼都沒有。'],
   },
@@ -77,7 +85,11 @@ export const HEROES = [
     roll: { cost: 3, distance: 1 },
 
     skills: ['pierce2', 'bannersweep', 'onward'],
-    kit: { armour: 'brigandine', item: 'flask', magic: 'rally' },
+    // The banner is on a shaft, so what he can hold is a shaft. His family has
+    // the heaviest ladder in the game (spear 5, pike 9, halberd 10) and his
+    // recovery is 2, so trading up is a real decision rather than a pickup.
+    family: 'polearm',
+    kit: { armour: 'brigandine', main: 'spear', item: 'flask', magic: 'rally' },
     about: ['他倒下的時候旗還舉著。我只是把它接住而已。',
             '我跑起來就停不下來。師傅說那總有一天會害死我。'],
   },

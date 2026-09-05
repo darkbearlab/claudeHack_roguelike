@@ -616,7 +616,11 @@ check('every weapon that commits on both attacks does so deliberately', () => {
   // recovery commits you on the casual action too. That is allowed - it is
   // what makes a pike a pike - but it must be a short, named list rather than
   // something that quietly grows every time a skill is retuned.
-  const ALL_IN = ['greataxe', 'halberd', 'pike'];
+  // greatsword joined deliberately: it is the blade family's heavy end, and
+  // every other two-handed heavy in the game is already on this list. It
+  // shares cleave/rend with the greataxe, which costs nothing now that a
+  // weapon's own skills only matter to whoever is playing without a hero.
+  const ALL_IN = ['greataxe', 'halberd', 'pike', 'greatsword'];
   const found = [];
   for (const it of ITEMS.filter((i) => i.kind === 'weapon')) {
     const ks = [it.primary, it.secondary].filter(Boolean).map((k) => SKILL_BY_KEY[k]);
@@ -1062,15 +1066,22 @@ check('a temporary affix is spent in hits that land, not turns that pass', () =>
   for (let i = 0; i < 4; i++) g.worldTurn();
   assert(p.affix.sword.temp.hits === TEMP_HITS, 'time wore the oil off');
 
-  const base = SKILL_BY_KEY.strike.damage;
-  let boosted = 0;
+  // The baseline is OBSERVED, not restated. It used to be
+  // `SKILL_BY_KEY.strike.damage`, which stopped being what the player deals
+  // the day weapons started carrying a power of their own - and the test then
+  // counted every hit as boosted, because the sword's own +1 was over the
+  // line. The loop runs two swings past the affix, so the smallest number in
+  // it is by construction an unboosted hit.
+  const dealt = [];
   for (let i = 0; i < TEMP_HITS + 2; i++) {
     e.hp = 999; e.x = p.x + 1; e.y = p.y; g.level.markEnemiesDirty();
     p.stamina = p.staminaMax; p.recover = 0; p.skill('strike').cd = 0;
     const before = e.hp;
     g.useSkill('strike', { dx: 1, dy: 0 });
-    if (before - e.hp > base) boosted++;
+    dealt.push(before - e.hp);
   }
+  const base = Math.min(...dealt);
+  const boosted = dealt.filter((d) => d > base).length;
   assert(boosted === TEMP_HITS, `${boosted} boosted hits, expected exactly ${TEMP_HITS}`);
   assert(!(p.affix.sword.temp.hits > 0), 'the oil never ran out');
   return `${TEMP_HITS} hits, and turns do not count`;
@@ -2368,6 +2379,96 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+check('the weapon in a hero hand is worth picking up', () => {
+  // The bug this pins: heroes started with empty hands, and affixes are
+  // addressed through the weapon that grants the skill. A hero's verbs are not
+  // on any weapon, so `itemGranting` returned null for all of them and every
+  // affix in the game did nothing. Measured then: a spear with `keen` gave the
+  // squire +5 weight and +0 of everything else. A third of the loot table was
+  // a strict downgrade.
+  //
+  // So this asserts the consequence: for every hero, holding their own weapon
+  // beats holding nothing, and an affix on it reaches their own first skill.
+  const flat = [];
+  for (const h of HEROES) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: 'kit', name: 'A', hero: h.key });
+    const p = g.player;
+    const first = h.skills[0];
+    assert(p.item(SLOT.MAIN), `${h.key} starts empty-handed`);
+    assert(p.item(SLOT.MAIN).family === h.family, `${h.key} starts holding the wrong family`);
+
+    // Not "armed does more damage than bare" - that was the first version and
+    // the binder failed it correctly. She starts on the bottom rung of her
+    // family on purpose, so her opening focus is power 0 and adds nothing to
+    // the number. What must be true of every hero is that the slot is not
+    // DEAD, and for her it earns its place by carrying affixes. That something
+    // better exists and costs her is the next test's job.
+    const armed = p.mods(first).damage;
+    p.equipItem(SLOT.MAIN, null);
+    const bare = p.mods(first).damage;
+    if (armed < bare) flat.push(`${h.key}: holding a weapon is worse than nothing`);
+
+    p.equipItem(SLOT.MAIN, h.kit.main);
+    p.affix[h.kit.main] = { granted: 'keen' };
+    const withAffix = p.mods(first);
+    if (withAffix.knock <= 0) flat.push(`${h.key}: keen does nothing to ${first}`);
+  }
+  assert(flat.length === 0, flat.join('; '));
+  return `${HEROES.length} heroes: the slot is live, and affixes reach their own skills`;
+});
+
+check('every hero has something to trade up to, and it costs', () => {
+  // "Weapons are restricted by family" only means something if each family is
+  // a LADDER. Two separate collapses were found by measuring rather than by
+  // reading: the blade family had no heavy end at all (power 0, 0, 1, 1), and
+  // the binder's heaviest focus was free because her recovery is 1 and the
+  // rate is floored at 1, so `regen: -1` bought her nothing.
+  const bad = [];
+  for (const h of HEROES) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: 'ladder', name: 'A', hero: h.key });
+    const p = g.player;
+    const first = h.skills[0];
+    const fam = ITEMS.filter((i) => i.kind === 'weapon' && i.family === h.family);
+    assert(fam.length >= 3, `${h.key}'s family has only ${fam.length} weapons`);
+
+    const rungs = fam.map((it) => {
+      p.equipItem(SLOT.MAIN, it.key);
+      return { key: it.key, dmg: p.mods(first).damage,
+               regen: p.regenRate(true), cost: p.costOf(first) };
+    });
+    const best = rungs.reduce((a, b) => (b.dmg > a.dmg ? b : a));
+    const start = rungs.find((r) => r.key === h.kit.main);
+    if (best.dmg <= start.dmg) bad.push(`${h.key} has nothing better than ${start.key}`);
+    // And the best one must actually charge for it, in one currency or the
+    // other. Otherwise the "choice" is just the biggest number.
+    if (best.regen >= start.regen && best.cost <= start.cost) {
+      bad.push(`${h.key}: ${best.key} is free power (regen ${best.regen} cost ${best.cost})`);
+    }
+  }
+  assert(bad.length === 0, bad.join('; '));
+  return `${HEROES.length} families, each with a costed top rung`;
+});
+
+check('a weapon that is not yours cannot be held', () => {
+  const g = new Game(null);
+  g.ui = new QuietUI();
+  g.newGame({ seed: 'fam', name: 'A', hero: 'knight' });
+  const p = g.player;
+  const off = ITEMS.find((i) => i.kind === 'weapon' && i.family !== 'blade');
+  const r = p.equipItem(SLOT.MAIN, off.key);
+  assert(r.ok === false, `the knight picked up a ${off.name}`);
+  assert(p.item(SLOT.MAIN).family === 'blade', 'the refusal still changed what he holds');
+  // Armour stays unrestricted - the decision worth binding to a person is what
+  // you swing, not what you wear.
+  const plate = ITEMS.find((i) => i.kind === 'armour' && i.key === 'plate');
+  assert(p.equipItem(SLOT.ARMOUR, plate.key).ok !== false, 'armour was restricted too');
+  return `${off.name} refused, plate allowed`;
+});
+
 check('coming back makes you the same person', () => {
   // Reported: leave mid-run, press continue, and you are somebody else with an
   // empty button bar.
@@ -3375,7 +3476,12 @@ check('an area attack hits a big body once, not once per square', () => {
   // count.
   if (g.player.charging) g.resolveCharge();
   const dealt = before - d.hp;
-  const once = SKILL_BY_KEY.rend.damage;
+  // What ONE blow is, asked of the game rather than restated. The bare
+  // `SKILL_BY_KEY.rend.damage` was right until weapons started carrying power
+  // of their own, and then this test failed for a reason that had nothing to
+  // do with what it is about, which is that a body covering two tiles is hit
+  // once and not twice.
+  const once = SKILL_BY_KEY.rend.damage + p.mods('rend').damage;
   assert(dealt === once,
          `a ${covered}-tile overlap dealt ${dealt} damage; one blow is ${once}`);
   return `${covered} squares overlapped, ${dealt} damage dealt once`;

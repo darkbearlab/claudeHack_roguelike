@@ -152,8 +152,36 @@ export class Player {
     return Math.max(0, w);
   }
 
-  /** Which equipped item grants a skill, if any. */
+  /**
+   * Can this person hold that?
+   *
+   * Only weapons are restricted, and only by family. A blade is a blade to the
+   * old knight and a curiosity to anyone else - which is the point: an off-
+   * family drop is not rubbish, it is somebody else's, and the hall is where
+   * it goes. Armour, shields and everything else stay unrestricted, because
+   * the decision that was worth binding to a person is what you SWING.
+   */
+  canEquip(it) {
+    if (!it || it.kind !== 'weapon' || !this.hero) return true;
+    return it.family === this.hero.family;
+  }
+
+  /**
+   * Which equipped item grants a skill, if any.
+   *
+   * With a hero this is no longer a question about the skill's name. Their
+   * verbs come from them, so no weapon lists `pierce2` as its primary and this
+   * returned null for every hero skill - which meant `mods` returned zeros and
+   * an equipped weapon's affixes reached nothing at all. Measured before the
+   * fix: a spear with `keen` gave the squire +5 weight and +0 of everything
+   * else.
+   *
+   * So for a hero, the weapon in hand is the thing that swung.
+   */
   itemGranting(skillKey) {
+    if (this.hero) {
+      return this.hero.skills.includes(skillKey) ? this.item(SLOT.MAIN) : null;
+    }
     for (const s of [SLOT.MAIN, SLOT.OFF]) {
       const it = this.item(s);
       if (!it) continue;
@@ -162,10 +190,40 @@ export class Player {
     return null;
   }
 
-  /** The numeric change this skill's affixes make. Deltas, not a rewritten def. */
+  /**
+   * Which half of an affix a skill counts as.
+   *
+   * Affixes are written as `on: primary | secondary | both`, and that split is
+   * worth keeping for heroes: their first skill IS the basic attack, the one
+   * you throw out repeatedly, and the other two are the committed ones. So the
+   * mapping is by position rather than by the weapon's own skill names.
+   */
+  affixRole(skillKey) {
+    if (this.hero) {
+      const i = this.hero.skills.indexOf(skillKey);
+      return i < 0 ? null : (i === 0 ? 'primary' : 'secondary');
+    }
+    // Without a hero the weapon still names its own two, and this has to
+    // answer for that case as well. An earlier version returned null here, so
+    // weapon power reached heroes and not the bot - which is the mistake
+    // already written down in DESIGN.md under "the bot only ever used a
+    // longsword": a measuring tool playing a different game than the player.
+    const it = this.item(SLOT.MAIN);
+    if (!it) return null;
+    return it.primary === skillKey ? 'primary'
+         : it.secondary === skillKey ? 'secondary' : null;
+  }
+
+  /** The numeric change this skill's weapon makes. Deltas, not a rewritten def. */
   mods(skillKey) {
     const it = this.itemGranting(skillKey);
-    return modsFor(it, it ? this.affix[it.key] : null, skillKey);
+    const role = this.affixRole(skillKey);
+    const m = modsFor(it, it ? this.affix[it.key] : null, skillKey, role);
+    // The weapon's own small edge, on top of whatever is written on it. Folded
+    // in here rather than at the three `def.damage + m.damage` call sites,
+    // because a fourth place to remember is a fourth place to forget.
+    if (it && role) { m.damage += it.power ?? 0; m.stamina += it.cost ?? 0; }
+    return m;
   }
 
   /** Spend one hit off any temporary affix on the weapon that just swung. */
@@ -292,6 +350,9 @@ export class Player {
     const it = key ? ITEM_BY_KEY[key] : null;
     if (key && !it) return { ok: false, why: `no such item: ${key}` };
     if (it && !slotsFor(it).includes(slot)) return { ok: false, why: `${it.name} does not go there` };
+    if (!this.canEquip(it)) {
+      return { ok: false, why: `${this.hero.name}握不慣${it.name}——那不是他的東西。` };
+    }
 
     const displaced = [];
     if (slot === SLOT.MAIN && it?.hands === 2 && this.equip.off) {
@@ -429,7 +490,10 @@ export class Player {
    * level.
    */
   regenRate(inCombat) {
-    const armour = this.item(SLOT.ARMOUR)?.regen ?? 0;
+    // Both of the things you are wearing that say what they cost you. A heavy
+    // weapon slows the bar the same way heavy armour does, and that is what
+    // stops "the biggest one in my family" from being the only answer.
+    const armour = (this.item(SLOT.ARMOUR)?.regen ?? 0) + (this.item(SLOT.MAIN)?.regen ?? 0);
     // The steps are wide on purpose, but they have to be placed so the standard
     // kits do not land on an edge. At -5/6 the heavy kit came to weight 17 -
     // exactly one point past a step - so the one-weight dagger in its off hand

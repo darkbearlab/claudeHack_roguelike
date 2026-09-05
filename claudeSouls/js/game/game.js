@@ -75,7 +75,12 @@ export class Game {
     // property of the armour, so it is something you can change later rather
     // than a decision welded on at the character screen.
     const kit = this.player.hero
-      ? { ...this.player.hero.kit, main: null, off: null, pack: [] }
+      // A hero starts holding their own weapon. They used to start with empty
+      // hands, and that quietly broke the loot loop: the weapon is where
+      // affixes live, so with nothing in the slot every weapon the dungeon
+      // dropped was pure carried weight and picking up a better one made you
+      // worse.
+      ? { off: null, pack: [], ...this.player.hero.kit }
       : (STARTING_KIT[this.vow] ?? STARTING_KIT.light);
     this.player.equipItem(SLOT.ARMOUR, kit.armour);
     this.player.equipItem(SLOT.MAIN, kit.main);
@@ -263,6 +268,10 @@ export class Game {
     // you take the stair rather than finding out on floor one.
     this.player.hero = h;
     this.player.equipItem(SLOT.ARMOUR, h.kit.armour);
+    // Their weapon too, not just their coat. The hall exists to show you who
+    // you would be, and a hero previewed empty-handed shows the wrong damage
+    // and the wrong stamina - the weapon is where power and affixes live.
+    this.player.equipItem(SLOT.MAIN, h.kit.main ?? null);
     this.player.stamina = this.player.staminaMax;
     this.player.hp = this.player.hpMax;
     this.msg(`你成為了${h.name}。`, 'good');

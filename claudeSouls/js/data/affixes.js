@@ -103,11 +103,16 @@ export function canGrant(item, state) {
  * every call site either knowing about affixes or silently using the wrong
  * numbers, and there are a lot of them.
  */
-export function modsFor(item, state, skillKey) {
+export function modsFor(item, state, skillKey, forcedRole = null) {
   const mods = { damage: 0, impact: 0, knock: 0, stamina: 0, cooldown: 0 };
   if (!item) return mods;
-  const role = item.primary === skillKey ? 'primary'
-             : item.secondary === skillKey ? 'secondary' : null;
+  // A hero's verbs are not on the weapon, so their role cannot be worked out
+  // from its primary/secondary and is passed in instead. Without this the
+  // lookup below returned null for every hero skill and every affix in the
+  // game silently did nothing to them.
+  const role = forcedRole
+             ?? (item.primary === skillKey ? 'primary'
+               : item.secondary === skillKey ? 'secondary' : null);
   if (!role) return mods;
 
   for (const { key } of affixesOn(item, state)) {

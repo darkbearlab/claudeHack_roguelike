@@ -30,11 +30,49 @@ const weapon = (key, o) => ({
   kind: 'weapon',
   hands: o.hands ?? 1,
   weight: o.weight,
+  // Which hero can hold it. Skills bind to the person, so a weapon no longer
+  // says what you DO with it - the family is what is left of a weapon's
+  // identity, and it is what makes a found longsword mean something different
+  // to the old knight than to the squire. A weapon outside your family is not
+  // rubbish: it goes back to the hall for whoever it does fit. See docs/META.
+  family: o.family,
+  // A small flat bonus, 0 to 2. Deliberately small: damage lives on the skill,
+  // and the contract this game is built on is that three to five blows kill
+  // you. A weapon ladder steep enough to be exciting is steep enough to break
+  // that.
+  power: o.power ?? 0,
+  // What the heavy end pays. Armour has carried a `regen` field since it
+  // existed and this is the same field for the same reason.
+  //
+  // It is NOT derived from weight, and that was measured rather than assumed:
+  // the load curve steps every 5 points, and across all three heroes' families
+  // exactly one weapon swap - spear to halberd - crosses a step. A trade that
+  // only exists for one item in the game is not a trade, so the cost is
+  // written on the weapon where it can be read and tuned.
+  regen: o.regen ?? 0,
+  // The other way a heavy weapon can charge you: more stamina per swing.
+  //
+  // Two currencies rather than one, because recovery cannot price everything.
+  // The binder's declared recovery is 1 and the rate is floored at 1, so a
+  // `regen: -1` focus cost her exactly nothing and the heaviest one in her
+  // family was free power - the same collapse the whole family system exists
+  // to prevent, hiding in a Math.max.
+  cost: o.cost ?? 0,
   primary: o.primary,
   secondary: o.secondary,
   affixes: o.affixes ?? [],     // innate; two of them means nothing more fits
   desc: o.desc,
 });
+
+/**
+ * What the binder holds instead of a weapon.
+ *
+ * "她不帶武器。她借。" - so she cannot be given a sword, but she still needs
+ * something to carry affixes or a third of the loot table means nothing to
+ * her. A focus is that carrier: no reach, no edge, just the thing the debt is
+ * written on.
+ */
+const focus = (key, o) => weapon(key, { ...o, family: 'focus', hands: 1 });
 
 const shield = (key, o) => ({
   key,
@@ -73,56 +111,81 @@ const armour = (key, o) => ({
 export const ITEMS = [
   // ---- weapons ------------------------------------------------------------
   weapon('sword', {
-    name: 'longsword', weight: 4, primary: 'strike', secondary: 'sweep',
+    name: 'longsword', family: 'blade', power: 1, weight: 4, primary: 'strike', secondary: 'sweep',
     desc: '一手一柄,前方一格,次要技能掃三格。',
   }),
   weapon('dagger', {
-    name: 'dagger', weight: 1, primary: 'lunge', secondary: 'gut',
+    name: 'dagger', family: 'blade', power: 0, weight: 1, primary: 'lunge', secondary: 'gut',
     desc: '很輕。主要技能會前衝兩格,適合追打收招。',
   }),
   weapon('spear', {
-    name: 'spear', weight: 5, primary: 'thrust', secondary: 'skewer',
+    name: 'spear', family: 'polearm', power: 1, weight: 5, primary: 'thrust', secondary: 'skewer',
     desc: '縱深兩格,次要技能打穿一整條直線。',
   }),
   weapon('mace', {
-    name: 'mace', weight: 6, primary: 'crush', secondary: 'smash',
+    name: 'mace', family: 'blunt', power: 1, weight: 6, primary: 'crush', secondary: 'smash',
     desc: '衝擊值極高,是唯一能單招打斷重招的武器。',
   }),
   weapon('greataxe', {
-    name: 'greataxe', hands: 2, weight: 11, primary: 'cleave', secondary: 'rend',
+    name: 'greataxe', hands: 2, family: 'axe', power: 2, regen: -1, weight: 11, primary: 'cleave', secondary: 'rend',
     desc: '雙手。次要技能是你自己的五格牆。',
   }),
   weapon('bow', {
-    name: 'shortbow', hands: 2, weight: 4, primary: 'hurl', secondary: 'pierce',
+    name: 'shortbow', hands: 2, family: 'bow', power: 1, weight: 4, primary: 'hurl', secondary: 'pierce',
     desc: '雙手。箭在你的回合結束後仍然在飛。',
   }),
 
   weapon('halberd', {
-    name: 'halberd', hands: 2, weight: 10, primary: 'hew', secondary: 'backsweep',
+    name: 'halberd', hands: 2, family: 'polearm', power: 2, regen: -1, weight: 10, primary: 'hew', secondary: 'backsweep',
     desc: '雙手。先左掃再右掃——敵人的那套兩段掃,終於在你手上。',
   }),
   // Two innate affixes, so nothing can ever be added: the strong found weapon
   // and the customisable one are different weapons, and that is the trade.
   weapon('warhammer', {
-    name: 'warhammer', hands: 2, weight: 14, primary: 'pound', secondary: 'sunder',
+    name: 'warhammer', hands: 2, family: 'blunt', power: 2, regen: -1, weight: 14, primary: 'pound', secondary: 'sunder',
     affixes: ['tempered', 'frost'],
     desc: '雙手。次要技能清掉你周圍一圈,然後你會站在原地兩回合。',
   }),
   weapon('pike', {
-    name: 'pike', hands: 2, weight: 9, primary: 'brace', secondary: 'impale',
+    name: 'pike', hands: 2, family: 'polearm', power: 2, regen: -1, weight: 9, primary: 'brace', secondary: 'impale',
     desc: '雙手。六格長的一條線,和牛頭人的衝鋒一樣長。',
   }),
   weapon('blades', {
-    name: 'paired blades', weight: 2, primary: 'slice', secondary: 'flurry',
+    name: 'paired blades', family: 'blade', power: 0, weight: 2, primary: 'slice', secondary: 'flurry',
     desc: '很輕、很便宜。一條精力砍十次,配合擊殺退還 CD。',
   }),
   weapon('falchion', {
-    name: 'falchion', weight: 5, primary: 'chop', secondary: 'shove', affixes: ['keen'],
+    name: 'falchion', family: 'blade', power: 1, weight: 5, primary: 'chop', secondary: 'shove', affixes: ['keen'],
     desc: '命中會把東西推開。次要技能幾乎不造成傷害——它是用來搬動敵人的。',
   }),
+  // The blade family's heavy end. Without it the old knight's entire ladder
+  // was power 0, 0, 1, 1 - four weapons and no decision in them.
+  weapon('greatsword', {
+    name: 'greatsword', hands: 2, family: 'blade', power: 2, regen: -1, weight: 10,
+    primary: 'cleave', secondary: 'rend',
+    desc: '雙手。他這輩子只用過一把劍,但這把劍會讓他慢下來。',
+  }),
   weapon('hatchet', {
-    name: 'hatchet', weight: 2, primary: 'sling', secondary: 'bury',
+    name: 'hatchet', family: 'axe', power: 0, weight: 2, primary: 'sling', secondary: 'bury',
     desc: '單手遠程,所以你還留著副手。射程短、傷害低。',
+  }),
+
+  // ---- focuses (the binder's family) --------------------------------------
+  // Light, because she is the one hero whose economy is built on moving and
+  // whose recovery is almost nothing. A heavy focus would not be a trade for
+  // her, it would just be a mistake.
+  focus('tally', {
+    name: 'bone tally', weight: 1, power: 0, primary: 'siphon', secondary: 'unmake',
+    desc: '她借了多少,都刻在上面。輕得像沒有拿東西。',
+  }),
+  focus('reliquary', {
+    name: 'reliquary', weight: 3, power: 1, primary: 'siphon', secondary: 'unmake',
+    affixes: ['keen'],
+    desc: '裡面裝著別人的東西。它讓她拿得更深一點。',
+  }),
+  focus('censer', {
+    name: 'hanging censer', weight: 5, power: 2, cost: 1, primary: 'siphon', secondary: 'unmake',
+    desc: '一直在燒。每一次動作都比較貴,但借得更多。',
   }),
 
   // ---- shields ------------------------------------------------------------
