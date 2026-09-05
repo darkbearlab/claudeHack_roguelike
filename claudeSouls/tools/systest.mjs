@@ -19,14 +19,14 @@ import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
          CONSUMABLES, CONSUMABLE_BY_KEY } from '../js/data/items.js';
 import { TRACKS, soulsFor, priceOf } from '../js/data/souls.js';
 import { AFFIXES, AFFIX_BY_KEY, canGrant, TEMP_HITS } from '../js/data/affixes.js';
-import { attackTiles, snapDir, PATTERNS, spriteRotation, blocksDirection } from '../js/game/patterns.js';
+import { attackTiles, snapDir, PATTERNS, RADIAL, spriteRotation, blocksDirection } from '../js/game/patterns.js';
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
 import { hasLOS } from '../../engine/fov.js';
-import { saveGame, loadGame } from '../js/game/save.js';
+import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
 import { readFileSync, existsSync } from 'node:fs';
@@ -45,6 +45,18 @@ const failed = [];
 function check(name, fn) {
   try {
     const d = fn();
+    // An async test in a synchronous runner is a test that CANNOT FAIL: the
+    // assertions inside become an unhandled rejection and this line reports
+    // PASS anyway. That happened - `a skill fires where the direction key
+    // points` was written async and printed `PASS -- [object Promise]`.
+    //
+    // The rules are synchronous; command() is async only for animation (see
+    // await0). So there is never a reason to need this, and it is refused
+    // rather than supported.
+    if (d && typeof d.then === 'function') {
+      throw new Error('test function is async - the runner is synchronous and '
+                    + 'would report PASS without running your assertions');
+    }
     pass++; console.log(`PASS  ${name}${d ? '  -- ' + d : ''}`);
   } catch (e) {
     fail++; failed.push(name);
@@ -2356,6 +2368,89 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+check('the title screen can read a save it did not write', () => {
+  // `16/undefined HP` was on the title screen of every returning player.
+  //
+  // saveGame deliberately omits hpMax because it is derived from armour, and
+  // says so in a comment; saveSummary read `d.player.hpMax` regardless. The
+  // two sat forty lines apart, agreeing on the rule in prose and breaking it
+  // in code - so this pins the RESULT, every field the screen prints, rather
+  // than the one field that happened to be wrong.
+  const g = new Game();
+  g.newGame({ seed: 'summary', name: 'Ash', hero: 'knight' });
+  saveGame(g);
+  const sum = saveSummary();
+  assert(sum, 'no summary was written');
+  for (const [k, v] of Object.entries(sum)) {
+    assert(v !== undefined && v !== null, `summary.${k} is ${v}`);
+  }
+  assert(sum.hpMax === g.player.hpMax,
+    `summary hpMax ${sum.hpMax} but the player has ${g.player.hpMax}`);
+  return `${sum.hp}/${sum.hpMax} HP, depth ${sum.depth}, no undefined on the screen`;
+});
+
+check('a skill fires where the direction key points', () => {
+  // The bug as the player met it: arm the old knight's thrust, press UP, and
+  // the lunge came out at forty-five degrees. Dragging still worked, because a
+  // drag hands over a real vector and the two straight-up-and-down cases were
+  // the only broken ones.
+  //
+  // The cause was in patterns.js and is pinned there. This pins the SYMPTOM,
+  // through the path a person actually uses - arm a skill, press a key - so
+  // that the guarantee survives a rewrite of how aiming is wired.
+  const g = new Game(null);
+  g.ui = new QuietUI();
+  g.newGame({ seed: 'aimkeys', name: 'Ash', hero: 'knight' });
+  const p = g.player;
+
+  // Stand somewhere with two clear tiles in every direction, rather than
+  // skipping the directions that happen to face a wall. Skipping would have
+  // quietly tested five of the eight and called that a pass - and the two
+  // broken ones were straight up and straight down, exactly the kind of pair a
+  // convenience filter loses.
+  let spot = null;
+  for (let y = 2; y < g.level.h - 2 && !spot; y++) {
+    for (let x = 2; x < g.level.w - 2 && !spot; x++) {
+      let ok = true;
+      for (let dy = -2; dy <= 2 && ok; dy++) {
+        for (let dx = -2; dx <= 2 && ok; dx++) if (!g.level.passable(x + dx, y + dy)) ok = false;
+      }
+      if (ok) spot = { x, y };
+    }
+  }
+  assert(spot, 'no 5x5 of open floor on the first level to test from');
+  p.x = spot.x; p.y = spot.y;
+
+  const missed = [];
+  for (const d of DIRS) {
+    // Two tiles out: the far end of the thrust, so a shape that is merely the
+    // right length in the wrong direction cannot pass by accident.
+    const tx = p.x + d.dx * 2, ty = p.y + d.dy * 2;
+    g.level.enemies.length = 0;
+    const e = new Enemy('husk', g.rng);
+    e.x = tx; e.y = ty; e.hp = 40; e.hpMax = 40;
+    g.level.enemies.push(e);
+    g.level.markEnemiesDirty();
+    // Everything the previous swing left behind. `recover` is the one that
+    // matters and was the one missing: with it set, the next command is spent
+    // finishing the last blow, so seven of eight directions reported a miss
+    // that was really the player still swinging at the one before.
+    p.stamina = p.staminaMax; p.cooldowns = {}; p.hp = p.hpMax;
+    p.forced = null; p.recover = 0; p.charging = null;
+    p.x = spot.x; p.y = spot.y;
+    g.aiming = 'thrust';              // what pressing the skill button sets
+    // doCommand, not command: command() holds a `busy` flag for the whole
+    // async turn, so eight un-awaited calls in a row would run the first and
+    // silently drop seven - which is exactly what this test did until the
+    // aiming state was still set afterwards and gave it away. doCommand is the
+    // function that owns "a skill is armed and a direction arrives".
+    g.doCommand(d.key);
+    if (e.hp === 40) missed.push(d.name);
+  }
+  assert(missed.length === 0, `thrust missed a target dead ahead facing: ${missed.join(', ')}`);
+  return `armed skill + direction key hits at range 2, all ${DIRS.length} ways`;
+});
+
 check('a shape is the same size whichever way you face', () => {
   // A latent bug, found the moment new shapes were added and measured.
   //
@@ -2388,6 +2483,47 @@ check('a shape is the same size whichever way you face', () => {
   }
   assert(wrong.length === 0, `shapes change size when you turn: ${wrong.join('; ')}`);
 
+  // SIZE IS NOT AIM, and checking only the first cost a real bug.
+  //
+  // `Math.sign(dx) || 1` was meant to catch the zero vector. Straight north is
+  // (0, -1), and `0 || 1` is 1 - so every computed shape fired at (1, -1)
+  // instead. Straight up and straight down came out at forty-five degrees, for
+  // the player and for every enemy with a lane, and the count was right the
+  // whole time so this test passed.
+  //
+  // The property is now stated in terms of where the tiles ARE: every tile of
+  // a directional shape has to lie in the half-plane you aimed at, and the
+  // nearest one has to sit on the line you pointed along.
+  const misaimed = [];
+  for (const name of Object.keys(PATTERNS)) {
+    if (RADIAL.has(name)) continue;
+    const seen = new Map();
+    for (const d of DIRS) {
+      const tiles = attackTiles(0, 0, d.dx, d.dy, name);
+      // Nothing may land behind you. (`behind` is the deliberate exception and
+      // is checked the other way round.)
+      const behind = tiles.filter((t) => (t.x * d.dx + t.y * d.dy) < 0);
+      if (name === 'behind') {
+        if (behind.length !== tiles.length) misaimed.push(`${name} facing ${d.name} is not behind you`);
+        continue;
+      }
+      if (behind.length) misaimed.push(`${name} facing ${d.name} puts ${behind.length} tiles behind you`);
+      // And eight different aims must produce eight different shapes. That is
+      // the bug stated exactly: under `|| 1`, north produced the NORTH-EAST
+      // tiles, so the two were identical.
+      //
+      // The first version of this check asserted the shape was centred on the
+      // line you aimed along, which the sweeps promptly failed - a sweep is
+      // off-centre on purpose, that is what makes it a swing. Testing a claim
+      // the design does not make is how you end up bending the design to
+      // satisfy the test, so it was replaced rather than exempted.
+      const key = tiles.map((t) => `${t.x},${t.y}`).sort().join(' ');
+      if (seen.has(key)) misaimed.push(`${name} aimed ${d.name} hits the same tiles as ${seen.get(key)}`);
+      seen.set(key, d.name);
+    }
+  }
+  assert(misaimed.length === 0, misaimed.slice(0, 4).join('; '));
+
   // The sweeps are a designed pair - stepping out of one is meant to walk into
   // the other - so their union has to be whole in every facing too.
   for (const d of DIRS) {
@@ -2395,7 +2531,7 @@ check('a shape is the same size whichever way you face', () => {
                           ...attackTiles(0, 0, d.dx, d.dy, 'sweepR')].map((t) => `${t.x},${t.y}`));
     assert(both.size === 8, `the sweep pair covers ${both.size} tiles facing ${d.name}, not 8`);
   }
-  return `${Object.keys(PATTERNS).length} shapes, none changes size when you turn`;
+  return `${Object.keys(PATTERNS).length} shapes, same size and aimed where you pointed`;
 });
 
 check('every skill can be used in every direction', () => {

@@ -7,15 +7,30 @@ import { ENEMIES } from './data/enemies.js';
 import { ITEMS, CONSUMABLES } from './data/items.js';
 import { NPC_BY_KEY } from './data/npcs.js';
 import { SKILLS } from './data/skills.js';
+import { HEROES } from './data/heroes.js';
 import { saveSummary, loadGame, clearSave, saveGame } from './game/save.js';
 
 const splash = document.getElementById('splash');
 const body = document.getElementById('splash-body');
-let vow = 'light';
 
 function render() {
   const save = saveSummary();
   const seedParam = new URLSearchParams(location.search).get('seed') ?? '';
+
+  // Rendered from HEROES rather than written out, for the same reason the hall
+  // places them from HEROES: two lists of the same people go out of step, and
+  // this one is the list a new player reads first.
+  //
+  // These are not buttons. The vow they replaced WAS a button and had stopped
+  // doing anything at all - `start()` went straight to the hall and never read
+  // the variable - so it was promising a choice the screen could not make and
+  // describing stamina costs that belong to the people below. The choice is a
+  // room now, so this is a cast list.
+  const roster = HEROES.map((h) => `
+      <div class="choice">
+        <b>${escapeHtml(h.name)}</b>
+        <small>${escapeHtml(h.blurb)}</small>
+      </div>`).join('');
 
   body.innerHTML = `
     ${save ? `
@@ -29,18 +44,13 @@ function render() {
         <button class="btn" id="btn-abandon">放棄</button>
       </div>` : ''}
 
-    <h2>誓約</h2>
+    <h2>你是誰,在裡面決定</h2>
+    <div class="note" style="margin-bottom:10px">
+      走下去會先到<b>灰燼之廳</b>。這幾個人站在火邊,走到誰旁邊跟他說話,你就是誰。
+      技能是綁人的,不是綁武器的 —— 換人等於換一整套打法。
+    </div>
     <div class="choice-grid">
-      <button class="choice ${vow === 'light' ? 'sel' : ''}" data-vow="light">
-        <b>輕裝</b>
-        <small>12 點生命,翻滾只要 4 點精力。滿條可以滾五次。
-               打不起,但可以一直閃 —— 新手建議這個。</small>
-      </button>
-      <button class="choice ${vow === 'heavy' ? 'sel' : ''}" data-vow="heavy">
-        <b>重甲</b>
-        <small>16 點生命,受到的傷害 −1,但翻滾要 7 點精力,滿條只能滾兩到三次。
-               你得看得更遠、更早決定。</small>
-      </button>
+${roster}
     </div>
 
     <div class="row">
@@ -62,12 +72,9 @@ function render() {
       <p><b>死了不是結束。</b>你會回到最後的篝火,整層敵人復活 ——
       但樓層是從種子長出來的,永遠一樣。死幾次之後你就記住它了,那就是成長。</p>
       <p>${DUNGEON_DEPTH} 層 &middot; ${ENEMIES.length} 種敵人 &middot;
-      ${SKILLS.length} 個技能 &middot; v${VERSION}</p>
+      ${HEROES.length} 個角色 &middot; ${SKILLS.length} 個技能 &middot; v${VERSION}</p>
     </div>`;
 
-  for (const b of body.querySelectorAll('.choice')) {
-    b.addEventListener('click', () => { vow = b.dataset.vow; render(); });
-  }
   body.querySelector('#btn-start').addEventListener('click', start);
   body.querySelector('#btn-help').addEventListener('click', showHelpEarly);
   body.querySelector('#btn-continue')?.addEventListener('click', resume);

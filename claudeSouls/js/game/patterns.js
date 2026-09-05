@@ -191,7 +191,14 @@ export function attackTiles(x, y, dx, dy, patternName) {
   // A function pattern is already expressed in the attacker's facing, so it is
   // used as-is; a list is written facing east and turned.
   const computed = typeof def === 'function';
-  const pat = computed ? def(Math.sign(dx) || 1, Math.sign(dy) || 0) : def;
+  // The fallback is for the zero vector ONLY. `Math.sign(dx) || 1` looked
+  // equivalent and was not: aiming straight north is (0, -1), and `0 || 1` is
+  // 1, so every computed shape came out as (1, -1) - a diagonal. Straight up
+  // and straight down were the two directions in the game that silently fired
+  // at forty-five degrees, for the player and for every enemy with a lane.
+  let sx = Math.sign(dx), sy = Math.sign(dy);
+  if (!sx && !sy) sx = 1;
+  const pat = computed ? def(sx, sy) : def;
   const spin = !computed && !RADIAL.has(patternName);
   const seen = new Set();
   const out = [];

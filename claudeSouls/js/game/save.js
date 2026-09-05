@@ -11,6 +11,8 @@
 import { RNG } from '../../../engine/rng.js';
 import { Player } from './actors.js';
 import { TRACKS } from '../data/souls.js';
+import { ITEM_BY_KEY } from '../data/items.js';
+import { PLAYER } from '../data/skills.js';
 
 // v2: the player carries equipment and a pack now, and health and damage
 // reduction are read off the armour rather than stored. A v1 save cannot be
@@ -84,7 +86,12 @@ export function saveSummary() {
     return {
       name: d.player.name, depth: d.player.depth, maxDepth: d.player.maxDepth,
       deaths: d.player.deaths, turn: d.turn, seed: d.seed, vow: d.vow,
-      hp: d.player.hp, hpMax: d.player.hpMax,
+      // Derived, not read. `hpMax` is deliberately absent from the blob (see
+      // the note in saveGame), and this line used to fetch it anyway - so the
+      // title screen has been reading `16/undefined HP` to every returning
+      // player. Deriving it the way the Player does keeps the one rule the
+      // save file has: store what was decided, compute what follows from it.
+      hp: d.player.hp, hpMax: ITEM_BY_KEY[d.player.equip?.armour]?.hp ?? PLAYER.hpMax,
     };
   } catch { return null; }
 }

@@ -369,9 +369,12 @@ body { overflow: hidden; }
 .choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
 .choice {
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 10px 11px; cursor: pointer; text-align: left; color: var(--fg); font: inherit;
+  padding: 10px 11px; text-align: left; color: var(--fg); font: inherit;
 }
-.choice.sel, .choice:active { border-color: var(--ember); background: var(--panel-2); }
+/* A card, not a control. The one thing that used to be selectable here was the
+   vow, and choosing is done by walking up to somebody now, so the hand cursor
+   and the selected state went with it rather than sitting here suggesting the
+   title screen can still decide something. */
 .choice b { display: block; color: var(--ember); font-size: 13.5px; }
 .choice small { color: var(--dim); font-size: 11.5px; line-height: 1.45; display: block; margin-top: 4px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
