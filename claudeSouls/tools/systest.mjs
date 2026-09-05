@@ -2411,6 +2411,47 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+check('nothing else lives in the dragon hall', () => {
+  // Reported from a winning run: bonfire, keeper, dragon and a crowd all in
+  // the same room. Measured over 60 bottom floors, that was the MAJORITY -
+  // 55% had a bonfire in the boss room, 28% the keeper, 60% other enemies, and
+  // 75% had escorts standing inside a sanctuary.
+  //
+  // Two causes, both of them a rule that existed elsewhere and not here.
+  // Bonfires are placed first and `randomFreeSpot` picks uniformly over tiles,
+  // so the biggest room is the likeliest to have one - and "the boss takes the
+  // biggest room" walked into it. And the escort loop was the only spawn call
+  // in populate.js that did not pass avoidBonfires/avoidChambers.
+  const bad = [];
+  const N = 30;
+  let escortTotal = 0;
+  for (let i = 0; i < N; i++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `sanctum${i}`, name: 'A', hero: 'knight' });
+    const lvl = g.levelAt(DUNGEON_DEPTH);
+    const boss = lvl.enemies.find((e) => e.spec.boss);
+    if (!boss) { bad.push(`seed ${i}: no boss on the bottom floor`); continue; }
+    const room = lvl.roomAt(boss.x, boss.y);
+    if (!room) { bad.push(`seed ${i}: the boss is not in a room`); continue; }
+    const inArena = (x, y) => lvl.roomAt(x, y)?.id === room.id;
+
+    if (lvl.bonfires.some((b) => inArena(b.x, b.y))) bad.push(`seed ${i}: a bonfire in the arena`);
+    if (lvl.npcs.some((n) => inArena(n.x, n.y))) bad.push(`seed ${i}: an NPC in the arena`);
+    const others = lvl.enemies.filter((e) => e !== boss && e.alive);
+    if (others.some((e) => inArena(e.x, e.y))) bad.push(`seed ${i}: company in the arena`);
+    if (others.some((e) => lvl.isSanctuary(e.x, e.y))) bad.push(`seed ${i}: an escort in a sanctuary`);
+
+    // And the floor is still a floor: a fire to come back to, and an approach
+    // that costs something. Zero escorts is as wrong as five in the arena.
+    if (!lvl.bonfires.length) bad.push(`seed ${i}: nowhere to rest on the bottom floor`);
+    if (!others.length) bad.push(`seed ${i}: the approach is free`);
+    escortTotal += others.length;
+  }
+  assert(bad.length === 0, `${bad.length} faults, first few: ${bad.slice(0, 3).join('; ')}`);
+  return `${N} bottom floors: the hall is the dragon's alone, ${(escortTotal / N).toFixed(1)} escorts on the way in`;
+});
+
 check('walking into something attacks it, whoever you are', () => {
   // Two of the three heroes could not attack by walking into things, and the
   // regression arrived with a feature: `meleeSkill()` preferred the main
@@ -3624,7 +3665,7 @@ check('a big body cannot be shoved, and can always be broken away from', () => {
   return `immovable; every one of ${floors} floors has ground it cannot reach`;
 });
 
-check('the dragon gets a hall to itself', () => {
+check('the ground the dragon stands on is clear', () => {
   // Reported from play: the boss room was also the bridge chamber, with the
   // drop starting one tile off the span. Two separate mistakes met there.
   //
@@ -3644,7 +3685,13 @@ check('the dragon gets a hall to itself', () => {
 
     const boss = lvl.enemies.find((e) => e.spec.boss);
     assert(boss, `seed ${s}: no boss`);
-    const room = [...lvl.rooms].sort((a, b) => b.w * b.h - a.w * a.h)[0];
+    // The room the dragon is actually IN, not "the largest room". Those were
+    // the same thing until the boss started skipping rooms that already have a
+    // bonfire in them, and then this test began clearing its throat about a
+    // hall the dragon had never been in. The claim is about the ground under
+    // the fight, so it has to be found from the fight.
+    const room = lvl.roomAt(boss.x, boss.y);
+    assert(room, `seed ${s}: the boss is not in a room`);
     let open = 0;
     for (let y = room.y; y < room.y + room.h; y++) {
       for (let x = room.x; x < room.x + room.w; x++) {
