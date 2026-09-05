@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
-  "name": "face_squire",
+  "name": "face_squire_v3",
   "style": "topdown-flat",
   "kind": "portrait",
-  "desc": "a very young man's face, dirt on one cheek, frightened but with a set jaw, a banner pole resting against his shoulder",
-  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a very young man's face, dirt on one cheek, frightened but with a set jaw, a banner pole resting against his shoulder, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "desc": "a tired young man with a heavy dark bowl haircut, a blunt fringe straight across his eyebrows, heavy half-closed eyelids and a flat unsmiling mouth, dull grey-brown skin, one plain dark smudge on his cheek, drab worn collar",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a tired young man with a heavy dark bowl haircut, a blunt fringe straight across his eyebrows, heavy half-closed eyelids and a flat unsmiling mouth, dull grey-brown skin, one plain dark smudge on his cheek, drab worn collar, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
   "backend": "gpt-image",
   "generation": {
     "size": "768x1024",
     "quality": "low",
     "seed": 0,
-    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_squire.src.png",
-    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-face_squire_20260905_102509_01.png",
-    "source_sha256": "26174c772461b13ea336cca57b10dc677e6303aaf32ab0382377fabe20c3f417",
-    "cost_usd": 0.00464,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_squire_v3.src.png",
+    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-face_squire_v3_20260905_103023_01.png",
+    "source_sha256": "0eaa6fb7fb7e48b80419070921fbd09323c4289c42d843d005f47e354bfd1e0c",
+    "cost_usd": 0.00477,
     "meta": {
       "model": "gpt-image-2",
       "size": "768x1024",
@@ -24,74 +24,74 @@
   "quantise": {
     "target_size": 64,
     "colors": 15,
-    "palette_set": "set_07.gpl",
-    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
-    "palette_sha256": "e871e6d9fbc2effc4cb88c193a29d7b411d01f7571308038e3739ae3f116fd82",
+    "palette_set": "set_05.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+    "palette_sha256": "d77531b17df5047eee60de3057ff6af3a8af6814336793c87b0e7ac2a0c8888e",
     "palette_choice_scores": [
       {
         "set": "set_00",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
-        "estimated_delta_e76": 26.8037
+        "estimated_delta_e76": 29.5781
       },
       {
         "set": "set_01",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
-        "estimated_delta_e76": 29.1403
+        "estimated_delta_e76": 34.0558
       },
       {
         "set": "set_02",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
-        "estimated_delta_e76": 12.6848
+        "estimated_delta_e76": 11.5929
       },
       {
         "set": "set_03",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
-        "estimated_delta_e76": 16.6941
+        "estimated_delta_e76": 10.396
       },
       {
         "set": "set_04",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
-        "estimated_delta_e76": 18.422
+        "estimated_delta_e76": 8.1528
       },
       {
         "set": "set_05",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
-        "estimated_delta_e76": 13.8952
+        "estimated_delta_e76": 5.113
       },
       {
         "set": "set_06",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
-        "estimated_delta_e76": 34.6629
+        "estimated_delta_e76": 43.6514
       },
       {
         "set": "set_07",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
-        "estimated_delta_e76": 9.2857
+        "estimated_delta_e76": 12.5879
       },
       {
         "set": "set_08",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
-        "estimated_delta_e76": 20.369
+        "estimated_delta_e76": 24.3257
       },
       {
         "set": "set_09",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
-        "estimated_delta_e76": 17.5048
+        "estimated_delta_e76": 11.3715
       },
       {
         "set": "set_10",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
-        "estimated_delta_e76": 13.5441
+        "estimated_delta_e76": 8.3167
       },
       {
         "set": "set_11",
         "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
-        "estimated_delta_e76": 23.9886
+        "estimated_delta_e76": 20.1124
       }
     ],
     "palette_mode": "fixed",
     "bg": "keep",
-    "params_sha256": "1d52bf3e549b94198c383ab84ceffbcd979a8878e76f4d30559f15704ff30f38"
+    "params_sha256": "024278c60ee0faf427688ac4e43a26014bb1ae6166dff6037ddbbfd20e7c25c4"
   },
   "versions": {
     "make_asset": "2.0.0",
@@ -99,21 +99,20 @@
     "python": "3.14.3"
   },
   "result": {
-    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_squire.png",
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_squire_v3.png",
     "size": [
       48,
       64
     ],
     "colours": 15,
-    "mean_delta_e_2000": 6.0346,
-    "palette_fit_delta_e76": 11.2469,
+    "mean_delta_e_2000": 5.4719,
+    "palette_fit_delta_e76": 6.0577,
     "warnings": [
-      "HIGH_QUANT_ERROR",
       "BACKDROP_COLOUR_IN_PALETTE"
     ],
-    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\face_squire.qa.json"
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\face_squire_v3.qa.json"
   },
-  "created": "20260905_102511",
+  "created": "20260905_103024",
   "host": "DESKTOP-E0J5QFE",
-  "elapsed_s": 21.52
+  "elapsed_s": 20.28
 }
