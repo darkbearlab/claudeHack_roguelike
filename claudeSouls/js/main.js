@@ -36,7 +36,7 @@ function render() {
     ${save ? `
       <h2>繼續</h2>
       <div class="note" style="margin-bottom:8px">
-        ${escapeHtml(save.name)}・第 ${save.depth} 層(最深 ${save.maxDepth})・
+        ${escapeHtml(save.name)}${save.hero ? `(${escapeHtml(save.hero)})` : ''}・第 ${save.depth} 層(最深 ${save.maxDepth})・
         死亡 ${save.deaths} 次・${save.hp}/${save.hpMax} HP・回合 ${save.turn}
       </div>
       <div class="row" style="margin-top:0">

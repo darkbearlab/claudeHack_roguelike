@@ -2368,6 +2368,68 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+check('coming back makes you the same person', () => {
+  // Reported: leave mid-run, press continue, and you are somebody else with an
+  // empty button bar.
+  //
+  // saveGame had written `hero` since heroes existed. loadGame's field list
+  // never read it back, so every resume produced a null hero - and because
+  // skills bind to the person now, that is not a cosmetic loss: the three
+  // combat verbs collapsed to `roll` alone (the empty bar, which reads as lost
+  // equipment), the stamina economy fell back to the old global constants, and
+  // the map figure reverted to the armour sprite, which is the pre-hero
+  // character showing through.
+  //
+  // So this compares what the PLAYER would notice, not which keys are in the
+  // blob - a field list is what was already wrong in two places.
+  const g = new Game(null);
+  g.ui = new QuietUI();
+  g.newGame({ seed: 'ident', name: 'Ash', hero: 'squire' });
+  const before = {
+    hero: g.player.hero?.key, skills: g.player.activeSkills().join(','),
+    staminaMax: g.player.staminaMax, staminaRegen: g.player.staminaRegen,
+    rollCost: g.player.rollCost(), rollDistance: g.player.rollDistance(),
+    sprite: g.player.sprite, armour: g.player.equip.armour, hpMax: g.player.hpMax,
+  };
+  assert(saveGame(g), 'a run refused to save');
+
+  const g2 = new Game(null);
+  g2.ui = new QuietUI();
+  g2.newGame({ seed: 'unrelated', name: 'Nobody' });
+  assert(loadGame(g2), 'the save would not load');
+  const after = {
+    hero: g2.player.hero?.key, skills: g2.player.activeSkills().join(','),
+    staminaMax: g2.player.staminaMax, staminaRegen: g2.player.staminaRegen,
+    rollCost: g2.player.rollCost(), rollDistance: g2.player.rollDistance(),
+    sprite: g2.player.sprite, armour: g2.player.equip.armour, hpMax: g2.player.hpMax,
+  };
+  for (const k of Object.keys(before)) {
+    assert(before[k] === after[k], `${k}: was ${before[k]}, came back ${after[k]}`);
+  }
+  assert(g2.hero === g2.player.hero, 'the game and the player disagree about who you are');
+  return `${before.hero}: ${g2.player.activeSkills().length} skills, ${before.staminaMax} stamina, still ${before.sprite}`;
+});
+
+check('the hall cannot overwrite a run', () => {
+  // pagehide saves, and "walk down" from the title screen goes to the hall -
+  // so with this unguarded, opening the hall while a real run was saved would
+  // replace it with a depth-0 non-run and offer to continue THAT. Resuming it
+  // would build floor 0 out of the dungeon generator with nobody chosen.
+  const g = new Game(null);
+  g.ui = new QuietUI();
+  g.newGame({ seed: 'ident', name: 'Ash', hero: 'squire' });
+  saveGame(g);
+  const run = saveSummary();
+
+  g.enterHub();
+  assert(g.inHub, 'enterHub did not put us in the hall');
+  assert(saveGame(g) === false, 'the hall was allowed to save');
+  const still = saveSummary();
+  assert(still.depth === run.depth && still.hero === run.hero,
+    `the hall overwrote the run: ${JSON.stringify(still)}`);
+  return `hall save refused; the saved run is still ${run.hero} on floor ${run.depth}`;
+});
+
 check('the title screen can read a save it did not write', () => {
   // `16/undefined HP` was on the title screen of every returning player.
   //

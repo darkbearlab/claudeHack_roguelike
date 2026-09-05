@@ -11,6 +11,7 @@
 import { RNG } from '../../../engine/rng.js';
 import { Player } from './actors.js';
 import { TRACKS } from '../data/souls.js';
+import { HERO_BY_KEY } from '../data/heroes.js';
 import { ITEM_BY_KEY } from '../data/items.js';
 import { PLAYER } from '../data/skills.js';
 
@@ -34,6 +35,15 @@ function unb64(str) {
 }
 
 export function saveGame(game) {
+  // The hall is not a run, and writing it is destructive twice over.
+  //
+  // It has no state worth keeping - you have not gone anywhere, and which
+  // person you are standing next to is not progress. Worse, `pagehide` saves,
+  // and the title screen's "walk down" goes to the hall, so opening the hall
+  // with a run already saved would overwrite that run with a depth-0 non-run
+  // and then offer to continue it. Resuming that rebuilds floor 0 from the
+  // dungeon generator and drops you into it with nobody chosen.
+  if (game.inHub) return false;
   try {
     const p = game.player;
     const data = {
@@ -92,6 +102,9 @@ export function saveSummary() {
       // player. Deriving it the way the Player does keeps the one rule the
       // save file has: store what was decided, compute what follows from it.
       hp: d.player.hp, hpMax: ITEM_BY_KEY[d.player.equip?.armour]?.hp ?? PLAYER.hpMax,
+      // On the title screen, so that losing your identity on resume would be
+      // visible before you press the button rather than after.
+      hero: HERO_BY_KEY[d.player.hero]?.name ?? null,
     };
   } catch { return null; }
 }
@@ -120,6 +133,15 @@ export function loadGame(game) {
     hp: d.player.hp,
     stamina: d.player.stamina, staminaBonus: d.player.staminaBonus ?? 0,
     facing: d.player.facing,
+    // Who you are. The writer has stored this since heroes existed; this list
+    // never read it back, so every resume handed you a null hero - and a null
+    // hero is not a small loss. Skills bind to the person now, so they
+    // collapsed to `roll` alone and the three combat buttons came up empty;
+    // the stamina economy fell back to the old global constants; and the map
+    // figure reverted to the armour sprite, which is the earlier character
+    // showing through. A save written before heroes existed has no key here
+    // and correctly resolves to null.
+    hero: HERO_BY_KEY[d.player.hero] ?? null,
     skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
@@ -134,6 +156,8 @@ export function loadGame(game) {
   });
   p.hp = Math.min(p.hp, p.hpMax);
   game.player = p;
+  game.hero = p.hero;
+  game.inHub = false;
   // Ranks change derived numbers (stamina max), so re-apply them after loading
   // rather than storing what they produced.
   for (const t of TRACKS) t.apply(p, p.ranks[t.key] ?? 0);
