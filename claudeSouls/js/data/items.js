@@ -227,6 +227,7 @@ const consumable = (key, o) => ({
   stamina: o.stamina ?? 0,
   directional: o.directional ?? false,
   heal: o.heal ?? 0,
+  restore: o.restore ?? 0,      // stamina given back, for the squire's banner
   damage: o.damage ?? 0,
   impact: o.impact ?? 0,
   knock: o.knock ?? 0,
@@ -241,6 +242,15 @@ const consumable = (key, o) => ({
 });
 
 export const CONSUMABLES = [
+  // The squire's answer to being slow at everything. Not healing and not
+  // damage: the one thing he cannot get any other way is a turn's worth of
+  // breath, and the flavour and the mechanic are the same sentence - he lifts
+  // the banner and it costs him the turn to do it.
+  consumable('rally', {
+    name: 'rally', kind: 'magic', charges: 2, weight: 0, stamina: 0,
+    restore: 8,
+    desc: '舉起軍旗:立刻回復 8 點精力。',
+  }),
   // The one that fixes a measured problem rather than adding a new one: health
   // only came back at a bonfire, so a run was a slow slide from full to dead
   // with nothing you could do about it mid-floor. Limited, prepared in advance,

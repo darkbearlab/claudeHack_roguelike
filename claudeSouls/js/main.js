@@ -5,6 +5,7 @@ import { UI } from './ui/ui.js';
 import { RNG, makeSeedPhrase } from '../../engine/rng.js';
 import { ENEMIES } from './data/enemies.js';
 import { ITEMS, CONSUMABLES } from './data/items.js';
+import { NPC_BY_KEY } from './data/npcs.js';
 import { SKILLS } from './data/skills.js';
 import { saveSummary, loadGame, clearSave, saveGame } from './game/save.js';
 
@@ -115,9 +116,17 @@ function start() {
   const seed = body.querySelector('#seed').value.trim() ||
                makeSeedPhrase(new RNG(Date.now() ^ Math.floor(performance.now() * 1000)));
   launch((game) => {
-    game.newGame({ seed, name, vow });
-    const params = new URLSearchParams(location.search);
-    if (TEST_ALL_GEAR && params.get('gear') !== 'kit') stockEverything(game);
+    // Into the hall, not into the dungeon. Which person you are is decided by
+    // walking up to one of them, and the run starts when you take the stair -
+    // so there is no character-select screen to keep in step with the roster,
+    // because the room IS the roster.
+    game.pendingSeed = seed;
+    game.onRunStart = (g) => {
+      const params = new URLSearchParams(location.search);
+      if (TEST_ALL_GEAR && params.get('gear') !== 'kit') stockEverything(g);
+    };
+    game.enterHub();
+    game.player.name = name;
     return true;
   });
 }
@@ -142,6 +151,10 @@ function launch(setup) {
   // Warm what is on this floor so the first frames are not a mosaic.
   const names = new Set([game.player.sprite, 'feat_stairs_down', 'feat_stairs_up', 'feat_door']);
   for (const e of game.level.enemies) if (e.sprite) names.add(e.sprite);
+  for (const n of game.level.npcs ?? []) {
+    const spec = NPC_BY_KEY[n.key];
+    if (spec?.sprite) names.add(spec.sprite);
+  }
   ui.renderer.preload(names);
 
   let lastSaved = 0;

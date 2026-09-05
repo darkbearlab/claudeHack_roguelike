@@ -62,6 +62,12 @@ export class Player {
     // wind-up, resolved on your next turn, and lost entirely if something
     // hits you first - the same deal every enemy in the game is offered.
     this.charging = null;             // { key, dx, dy, tiles }
+    // A third kind of unfree turn. `charging` is "you have declared something
+    // and it has not happened"; `recover` is "you cannot act"; this is **you
+    // may only do this one thing**. The squire's charge goes out at once and
+    // then carries him a second time whether he wants it or not - the price is
+    // not that it can be interrupted, it is that he cannot stop.
+    this.forced = null;               // { key, dx, dy, left }
     this.warded = 0;                  // blows a ward will still absorb
     this.souls = 0;                   // unbanked; dropped where you die
     this.ranks = {};                  // track key -> rank bought
@@ -592,6 +598,30 @@ export class Enemy {
    * Poise refills when the wind-up ends, so it is per-attack rather than a
    * second health bar to grind down.
    */
+  /**
+   * Take the blow away entirely, rather than pushing it back a turn.
+   *
+   * `stagger` only ever did `timer++` - the attack still arrived, one turn
+   * later. Two of the three heroes are built on actually cancelling one, and
+   * "delayed" and "gone" are different promises: one buys you a turn, the
+   * other makes them start over.
+   */
+  cancelAttack() {
+    if (this.state !== STATE.WINDUP) return false;
+    this.state = STATE.READY;
+    this.attack = null;
+    this.attackTiles = null;
+    this.timer = 0;
+    this.poiseLeft = this.poise;
+    return true;
+  }
+
+  /** Skip turns. The same field an enemy's own recovery uses. */
+  stun(turns) {
+    this.state = STATE.RECOVER;
+    this.timer = Math.max(this.timer ?? 0, turns);
+  }
+
   stagger(impact = 1) {
     if (this.state !== STATE.WINDUP) return false;
     this.poiseLeft -= impact;

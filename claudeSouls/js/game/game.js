@@ -37,6 +37,8 @@ import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
 import { populate, spawnBoss } from './populate.js';
 import { FxLog } from './fx.js';
+import { buildHub } from '../map/hub.js';
+import { HERO_BY_KEY } from '../data/heroes.js';
 import { NPC_BY_KEY } from '../data/npcs.js';
 import { saveGame, clearSave } from './save.js';
 
@@ -54,19 +56,27 @@ export class Game {
   // lifecycle
   // =========================================================================
 
-  newGame({ seed, name, vow }) {
+  newGame({ seed, name, vow, hero }) {
     resetUids(1);
     resetProjectileIds(1);
     this.seed = seed || makeSeedPhrase(new RNG(Date.now()));
     this.rng = new RNG(this.seed);
     this.player = new Player(name);
+    this.inHub = false;
+    // A hero brings their own skills and their own stamina economy; the vow is
+    // what the game had before people existed, and still drives the bot and
+    // the tests.
+    this.player.hero = HERO_BY_KEY[hero] ?? null;
+    this.hero = this.player.hero;
     this.vow = vow ?? 'light';
 
     // The vow is now just the kit you start in. Everything it used to set
     // directly - health, damage reduction, how expensive a roll is - is a
     // property of the armour, so it is something you can change later rather
     // than a decision welded on at the character screen.
-    const kit = STARTING_KIT[this.vow] ?? STARTING_KIT.light;
+    const kit = this.player.hero
+      ? { ...this.player.hero.kit, main: null, off: null, pack: [] }
+      : (STARTING_KIT[this.vow] ?? STARTING_KIT.light);
     this.player.equipItem(SLOT.ARMOUR, kit.armour);
     this.player.equipItem(SLOT.MAIN, kit.main);
     this.player.equipItem(SLOT.OFF, kit.off);
@@ -198,6 +208,11 @@ export class Game {
         this.worldTurn();
         return;
       }
+      if (this.player.forced) {
+        this.resolveForced();
+        this.worldTurn();
+        return;
+      }
       this.fx.clear();
       this.fx.begin(0, this);
       const spent = await this.doCommand(key);
@@ -212,7 +227,53 @@ export class Game {
     }
   }
 
+  /**
+   * The hall you leave from.
+   *
+   * A real level with real people on it rather than a menu screen, so it
+   * reuses movement, rendering, conversation and the bonfire - and so there is
+   * somewhere to put the rest of docs/META.md later. Nothing acts here: it is
+   * the one place in the game with no turn pressure.
+   */
+  enterHub() {
+    const { level, start } = buildHub();
+    this.running = true;
+    this.inHub = true;
+    this.hero = null;
+    this.player = new Player(this.player?.name ?? 'Ashen');
+    this.level = level;
+    this.levels = new Map();
+    this.player.x = start.x; this.player.y = start.y;
+    this.player.depth = 0;
+    this.turn = 0;
+    this.messages = [];
+    this.msg('灰燼之廳。火還亮著。', 'good');
+    this.msg('走向一個人來選擇他。準備好了就走下階梯。');
+    this.afterMove();
+  }
+
+  /** Take up one of them. Nothing else in the hall changes. */
+  chooseHero(key) {
+    const h = HERO_BY_KEY[key];
+    if (!h) return false;
+    this.hero = h;
+    // Put it on the player too, not just the game. In the hall that is what
+    // makes the choice legible: the buttons fill with their verbs and the bar
+    // shrinks or grows to their pool, so you can see who you would be before
+    // you take the stair rather than finding out on floor one.
+    this.player.hero = h;
+    this.player.equipItem(SLOT.ARMOUR, h.kit.armour);
+    this.player.stamina = this.player.staminaMax;
+    this.player.hp = this.player.hpMax;
+    this.msg(`你成為了${h.name}。`, 'good');
+    this.ui?.render?.();
+    return true;
+  }
+
   worldTurn() {
+    // The hall has no clock. Standing in it costs nothing, which is the
+    // difference between a place to decide and a place to hurry.
+    if (this.inHub) return;
     this.fx.begin(1, this);
     this.turn++;
     this.player.turns++;
@@ -325,6 +386,7 @@ export class Game {
   talkTo(npc) {
     const spec = NPC_BY_KEY[npc.key];
     if (!spec) return;
+    if (spec.hero) { this.chooseHero(spec.hero); this.ui?.showConversation?.(spec); return; }
     this.ui?.showConversation?.(spec);
   }
 
@@ -744,6 +806,11 @@ export class Game {
     if (c.directional && !dir) { this.msg(`${c.name}: pick a direction.`, 'warn'); return false; }
 
     p.charges[c.key] = p.chargesOf(c.key) - 1;
+    if (c.restore) {
+      const before = p.stamina;
+      p.stamina = Math.min(p.staminaMax, p.stamina + c.restore);
+      this.msg(`You lift the banner. (+${p.stamina - before})`, 'good');
+    }
     if (c.stamina) p.spend(c.stamina);
     if (dir) p.face(dir.dx, dir.dy);
 
@@ -897,6 +964,9 @@ export class Game {
     // Whatever you pressed, the swing you already committed to is what happens.
     // You cannot cancel it any more than a brute can cancel its overhead.
     if (this.player.charging && !opts.resolving) return this.resolveCharge();
+    // And a charge already under way carries you whether or not this is where
+    // you wanted to go.
+    if (this.player.forced && !opts.forced) return this.resolveForced();
     if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir);
     const p = this.player;
     const def = SKILL_BY_KEY[key];
@@ -912,7 +982,17 @@ export class Game {
     // lands. Charging this twice would refuse the blow *because* you had
     // already bought it, and the bar is usually below the price by then.
     const cost = p.costOf(key);
-    if (!opts.resolving && !p.canAfford(cost)) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+    // Some skills may be paid for in health. The soulbinder's big ones are the
+    // reason it exists: her recovery is one a turn, so without a way to spend
+    // something else she would simply stand still for ten turns to afford a
+    // lance. Health is the only other pool she has, which is why armour is a
+    // stamina reserve for her and for nobody else.
+    let bleed = 0;
+    if (!opts.resolving && !opts.forced && !p.canAfford(cost)) {
+      if (!def.bleed) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+      bleed = cost - p.stamina;
+      if (p.hp <= bleed) { this.msg('That would kill you.', 'warn'); return false; }
+    }
 
     if (def.defend) {
       const shield = p.shield;
@@ -959,7 +1039,22 @@ export class Game {
     }
 
     const m = p.mods(key);
-    if (!opts.resolving) p.spend(cost);
+    if (!opts.resolving && !opts.forced) {
+      p.spend(cost);
+      if (bleed > 0) {
+        p.hp -= bleed;
+        this.msg(`You spend ${bleed} of yourself.`, 'bad');
+      }
+    }
+
+    // ---- a charge: goes out at once, and carries you again next turn ------
+    if (def.rush) {
+      this.playerRush(def, dir, m);
+      if (def.forced && !opts.forced) {
+        p.forced = { key, dx: dir.dx, dy: dir.dy, left: def.forced.times };
+      }
+      return true;
+    }
     if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
     // Recovery is set AFTER the blow lands, and counts down in tick() - so the
     // turn you swung is yours and the turns after it are not.
@@ -981,6 +1076,7 @@ export class Game {
 
     const tiles = attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern);
     let hit = 0;
+    let undone = 0;
     for (const e of this.bodiesIn(tiles)) {
       {
         const wasWindup = e.state === STATE.WINDUP;
@@ -989,7 +1085,8 @@ export class Game {
         const push = (def.knock ?? 0) + m.knock;
         if (push && e.alive) this.knockBack(e, dir, push);
         hit++;
-        if (wasWindup && e.alive) {
+        if (def.disrupt && e.alive) undone += this.disrupt(e, def.disrupt, dir) ? 1 : 0;
+        else if (wasWindup && e.alive) {
           if (e.poiseLeft === e.poise && poiseBefore !== e.poise) {
             this.msg(`You stagger the ${e.name}; its attack is delayed.`, 'good');
           } else {
@@ -1004,9 +1101,113 @@ export class Game {
     if (hit) {
       const spent = p.wearAffix(key);
       if (spent) this.msg(`The ${AFFIX_BY_KEY[spent].name} wears off.`, 'warn');
+      // Landing it feeds you. The soulbinder has almost no passive recovery,
+      // so this is her whole engine: standing off and dodging is starving.
+      if (def.refund) {
+        const before = p.stamina;
+        p.stamina = Math.min(p.staminaMax, p.stamina + def.refund);
+        if (p.stamina > before) this.msg(`You draw ${p.stamina - before} back.`, 'good');
+      }
     }
     this.animateTrail(tiles, '/', '#ffd75f');
     if (!hit) this.msg(`${def.name} hits nothing.`);
+    return true;
+  }
+
+  /**
+   * The player's charge: hit the ground ahead, move into it.
+   *
+   * Same idea as the horned one's, and deliberately not the same code path -
+   * the bull telegraphs its whole route and resolves every stride at once,
+   * while this goes out immediately and is spread across turns by `forced`.
+   * Stopping at a wall is stopping, not damage: the blow still lands on
+   * whatever was in the way.
+   */
+  playerRush(def, dir, m) {
+    const p = this.player;
+    const { advance } = def.rush;
+    const nx = p.x + dir.dx * advance, ny = p.y + dir.dy * advance;
+    const tiles = [];
+    for (let i = 1; i <= advance; i++) tiles.push({ x: p.x + dir.dx * i, y: p.y + dir.dy * i });
+
+    let hit = 0;
+    for (const e of this.bodiesIn(tiles)) {
+      this.hurtEnemy(e, def.damage + m.damage, true, (def.impact ?? 0) + m.impact);
+      hit++;
+    }
+    this.animateTrail(tiles, '/', '#ffd75f');
+
+    // Move as far along as the ground allows.
+    let moved = 0;
+    for (let i = 0; i < advance; i++) {
+      const tx = p.x + dir.dx, ty = p.y + dir.dy;
+      if (!this.level.passable(tx, ty)) break;
+      if (this.level.enemyAt(tx, ty)) break;
+      if (!this.level.diagonalOk(p.x, p.y, tx, ty)) break;
+      p.x = tx; p.y = ty; moved++;
+    }
+    p.face(dir.dx, dir.dy);
+    if (moved) this.afterMove();
+    if (!moved) this.msg('You slam to a halt.', 'warn');
+    else if (!hit) this.msg(`${def.name}!`);
+    return hit;
+  }
+
+  /** Spend the turn on the charge you cannot stop. */
+  resolveForced() {
+    const p = this.player;
+    const f = p.forced;
+    if (!f) return false;
+    f.left -= 1;
+    const dir = { dx: f.dx, dy: f.dy };
+    if (f.left <= 0) p.forced = null;
+    this.useSkill(f.key, dir, { forced: true });
+    return true;
+  }
+
+  /**
+   * Take an attack away from something that was about to make it.
+   *
+   * The verb two of the heroes share, with different grammar. The knight's
+   * version has to MOVE what it interrupts - turning a blade aside is the same
+   * motion as shoving its owner off their line - so against anything that
+   * cannot be pushed there is nothing to turn, and it fails. That makes his
+   * signature useless against the largest things in the game, which is his
+   * shape. The soulbinder simply unmakes the attack, so hers reaches what his
+   * cannot.
+   */
+  disrupt(e, rule, dir) {
+    if (e.state !== STATE.WINDUP) {
+      this.msg(`The ${e.name} was not winding up.`);
+      return false;
+    }
+    if (rule.needsPush) {
+      if (e.immovable) {
+        this.msg(`The ${e.name} does not move for you.`, 'warn');
+        return false;
+      }
+      // Sideways, either way. The randomness is the price of the counter, and
+      // it means the tile it ends on is not yours to choose.
+      const side = this.rng.oneIn(2) ? 1 : -1;
+      const away = { dx: -dir.dy * side, dy: dir.dx * side };
+      const from = { x: e.x, y: e.y };
+      if (!this.knockBack(e, away, rule.shove ?? 1)) {
+        // Nothing to turn it into. A blade you cannot displace is a blade you
+        // cannot turn aside - so the attack stands.
+        this.msg(`The ${e.name} has nowhere to go; the blow comes anyway.`, 'warn');
+        return false;
+      }
+      e.cancelAttack();
+      this.msg(`You turn the ${e.name} aside.`, 'good');
+      if (rule.advance) {
+        const p = this.player;
+        if (!this.level.occupant(from.x, from.y)) { p.x = from.x; p.y = from.y; this.afterMove(); }
+      }
+      return true;
+    }
+    e.cancelAttack();
+    if (rule.stun) e.stun(rule.stun);
+    this.msg(`The ${e.name}'s attack comes apart.`, 'good');
     return true;
   }
 
@@ -1066,6 +1267,17 @@ export class Game {
   }
 
   descend() {
+    // The stair out of the hall is where a run begins. Choosing a hero is
+    // therefore something you do by walking up to one, not by ticking a box -
+    // and refusing here rather than defaulting means nobody starts a run as
+    // somebody they did not pick.
+    if (this.inHub) {
+      if (!this.hero) { this.msg('先去跟他們其中一個說話。', 'warn'); return false; }
+      this.inHub = false;
+      this.newGame({ seed: this.pendingSeed, name: this.player.name, hero: this.hero.key });
+      this.onRunStart?.(this);
+      return true;
+    }
     if (this.level.at(this.player.x, this.player.y) !== T.STAIRS_DOWN) {
       this.msg('No stairs down here.'); return false;
     }

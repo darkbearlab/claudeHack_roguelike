@@ -151,10 +151,14 @@ export class UI {
     const main = p?.item(SLOT.MAIN) ?? null;
     const off = p?.item(SLOT.OFF) ?? null;
     const offIsWeapon = off && off.kind === 'weapon';
+    // A hero's three verbs sit in the three combat slots. The positions are
+    // fixed either way - which is the point of the grid - so the bar reads the
+    // same whether the skills came from a person or from what is in your hands.
+    const own = p?.hero?.skills ?? null;
     return [
-      { kind: 'skill', key: main ? main.primary : null, label: 'Main' },
-      { kind: 'skill', key: main ? main.secondary : null, label: 'Main 2' },
-      { kind: 'skill', key: offIsWeapon ? off.primary : null, label: 'Off' },
+      { kind: 'skill', key: own ? own[0] : (main ? main.primary : null), label: 'Main' },
+      { kind: 'skill', key: own ? own[1] : (main ? main.secondary : null), label: 'Main 2' },
+      { kind: 'skill', key: own ? own[2] : (offIsWeapon ? off.primary : null), label: 'Off' },
       { kind: 'prep', slot: 'magic', label: 'Magic' },
       { kind: 'prep', slot: 'item', label: 'Item' },
       { kind: 'skill', key: p?.shield ? 'block' : null, label: 'Block' },
@@ -174,8 +178,10 @@ export class UI {
    */
   layoutSignature() {
     const arc = this.game.player?.shield?.block?.arc ?? 0;
+    const who = this.game.player?.hero?.key ?? '-';
     const prep = ['item', 'magic'].map((k) => this.game.player?.prep?.[k] ?? '-').join(',');
-    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|') + `#${arc}#${prep}`;
+    return this.buttonLayout().map((c) => `${c.kind}:${c.key ?? c.label ?? ''}`).join('|') +
+           `#${arc}#${prep}#${who}`;
   }
 
   buildSkillBar() {
@@ -701,6 +707,19 @@ export class UI {
 
     const lvl = this.game.level;
     const alive = lvl ? lvl.livingEnemies().length : 0;
+
+    // The hall is not a floor and has no clock. Showing "Floor 0/10" and a
+    // turn counter there says the run has started, which is the one thing the
+    // room is for denying.
+    if (this.game.inHub) {
+      this.el.status.innerHTML =
+        `<span class="lo">${escapeHtml(lvl?.name ?? '')}</span>` +
+        (this.game.hero
+          ? `　<b>${escapeHtml(this.game.hero.name)}</b>`
+          : `　<span class="lo">尚未選擇</span>`);
+      return;
+    }
+
     this.el.status.innerHTML =
       `<span class="lo">Floor</span> <b>${p.depth}</b>/${DUNGEON_DEPTH}` +
       `　<span class="lo">Souls</span> <b>${p.souls}</b>` +

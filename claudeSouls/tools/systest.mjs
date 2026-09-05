@@ -1373,7 +1373,7 @@ check('every consumable is reachable and does something', () => {
     assert(c.charges > 0, `${c.key} has no charges`);
     assert(c.kind === 'item' || c.kind === 'magic', `${c.key} is neither item nor magic`);
     assert(c.heal || c.damage || c.pattern || c.projectile || c.shield || c.teleport ||
-           c.grants || c.tempAffix,
+           c.grants || c.tempAffix || c.restore,
            `${c.key} does nothing at all`);
     if (c.directional) {
       assert(c.pattern || c.projectile || c.teleport, `${c.key} is aimed but has no shape`);
@@ -2147,6 +2147,146 @@ check('every enemy can be built and fought', () => {
     observe(g, e, 40, () => false);
   }
   return `${ENEMIES.length} species x 40 turns`;
+});
+
+check('the hall holds every hero, and you cannot leave as nobody', () => {
+  // The room IS the character select, so it is built from the roster rather
+  // than written out - a hero added to heroes.js turns up in the hall without
+  // anyone remembering to put them there. A menu that can disagree with the
+  // roster eventually will.
+  const g = freshGame('hall');
+  g.enterHub();
+  assert(g.inHub, 'enterHub did not put us in the hall');
+  for (const h of HEROES) {
+    assert(g.level.npcs.some((n) => n.key === `hero:${h.key}`),
+           `${h.key} is in the roster but not in the hall`);
+    assert(NPC_BY_KEY[`hero:${h.key}`], `${h.key} has no one to talk to`);
+  }
+  assert(g.level.bonfires.length, 'no fire in the hall');
+  assert(g.level.downStair, 'no way out of the hall');
+
+  // Leaving without choosing would start a run as nobody.
+  assert(g.descend() === false, 'you can start a run without being anybody');
+  assert(g.inHub, 'a refused descent left the hall anyway');
+  return `${HEROES.length} heroes, a fire and a stair`;
+});
+
+check('walking up to someone is how you become them', () => {
+  for (const h of HEROES) {
+    const g = freshGame(`take-${h.key}`);
+    g.ui = Object.assign(new QuietUI(), { showConversation() {} });
+    g.enterHub();
+    const npc = g.level.npcs.find((n) => n.key === `hero:${h.key}`);
+    g.player.x = npc.x - 1; g.player.y = npc.y;
+    g.step(1, 0);
+    assert(g.hero?.key === h.key, `walking into ${h.key} did not take them up`);
+    // You can see who you would be before you commit: their verbs and their
+    // pool, in the hall, before the stair.
+    for (const k of h.skills) assert(g.player.hasSkill(k), `${h.key}'s ${k} is not on the bar`);
+    assert(g.player.staminaMax === h.stamina.max, `${h.key}'s pool is not shown in the hall`);
+
+    assert(g.descend() === true, `could not start a run as ${h.key}`);
+    assert(!g.inHub && g.player.depth === 1, 'the stair did not start a run');
+    assert(g.player.hero?.key === h.key, 'the run started as somebody else');
+    for (const k of h.skills) assert(g.player.hasSkill(k), `${h.key} lost ${k} on the way down`);
+  }
+  return `${HEROES.length} heroes taken up and taken down`;
+});
+
+check('nothing acts in the hall', () => {
+  // It is the one place with no clock. A room to decide in stops being that
+  // the moment standing in it costs anything.
+  const g = freshGame('hall-clock');
+  g.enterHub();
+  const t = g.turn;
+  for (let i = 0; i < 20; i++) g.worldTurn();
+  assert(g.turn === t, `the hall advanced ${g.turn - t} turns`);
+  return 'no turn pressure';
+});
+
+check('turning a blade aside takes it away, and needs somewhere to put it', () => {
+  // The knight's whole shape. It is the first ability that READS a telegraph
+  // and spends it, which turns the thing the game is built on from information
+  // into a resource - and the existing stagger only ever delayed a blow by a
+  // turn, so cancellation had to be built.
+  const { g, e } = arena('aside', 'husk', 1);
+  g.player.hero = HERO_BY_KEY.knight;
+  g.player.stamina = g.player.staminaMax;
+  for (let i = 0; i < 12 && e.state !== STATE.WINDUP; i++) { g.player.hp = g.player.hpMax; g.worldTurn(); }
+  assert(e.state === STATE.WINDUP, 'could not get anything to wind up');
+
+  const was = { x: e.x, y: e.y };
+  const dir = { dx: Math.sign(e.x - g.player.x), dy: Math.sign(e.y - g.player.y) };
+  g.useSkill('turnaside', dir);
+  assert(e.state !== STATE.WINDUP, 'the attack was not cancelled - only delayed?');
+  assert(e.x !== was.x || e.y !== was.y, 'nothing was displaced');
+  assert(g.player.x === was.x && g.player.y === was.y,
+         'the knight did not take the ground it gave up');
+
+  // And it does nothing to what it cannot move, which is why the largest
+  // things in the game are his blind spot.
+  const { g: g2 } = arena('aside-big', 'husk', 3);
+  g2.player.hero = HERO_BY_KEY.knight;
+  g2.level.enemies.length = 0; g2.level.markEnemiesDirty();
+  const big = new Enemy('minotaur', g2.rng);
+  g2.level.addEnemy(big, g2.player.x + 1, g2.player.y);
+  big.aware = true;
+  for (let i = 0; i < 20 && big.state !== STATE.WINDUP; i++) { g2.player.hp = g2.player.hpMax; g2.worldTurn(); }
+  if (big.state === STATE.WINDUP) {
+    g2.player.stamina = g2.player.staminaMax;
+    g2.useSkill('turnaside', { dx: 1, dy: 0 });
+    assert(big.state === STATE.WINDUP, 'a 2x2 was turned aside; it should not move for anyone');
+  }
+  return 'cancels and displaces, and bounces off anything immovable';
+});
+
+check('the soulbinder feeds on hitting things, and can spend herself', () => {
+  const { g } = arena('binder', 'husk', 1);
+  const p = g.player;
+  p.hero = HERO_BY_KEY.binder;
+
+  // Her basic attack is her only real recovery: one a turn otherwise.
+  assert(p.staminaRegen === 1, 'her recovery is not the constraint it is meant to be');
+  p.stamina = 3;
+  const before = p.stamina;
+  g.useSkill('siphon', { dx: 1, dy: 0 });
+  assert(p.stamina > before, `siphon left her poorer (${before} -> ${p.stamina})`);
+
+  // And when the bar cannot pay, she can.
+  p.stamina = 1;
+  const hp = p.hp;
+  const ok = g.useSkill('lance', { dx: 1, dy: 0 });
+  assert(ok, 'she could not pay for a lance at all');
+  assert(p.hp < hp, 'the shortfall was not paid in health');
+  assert(p.stamina === 0, 'she kept stamina she should have spent first');
+
+  // But it will not kill her.
+  p.stamina = 0; p.hp = 1;
+  assert(g.useSkill('lance', { dx: 1, dy: 0 }) === false, 'bleeding for a skill killed her');
+  return 'siphon feeds, lance bleeds, and it stops short of killing her';
+});
+
+check('the squire cannot stop once he has started', () => {
+  // No wind-up, so nothing can interrupt it - the price is not risk, it is
+  // that next turn is spent going the same way whether or not that is where
+  // he wants to be.
+  const { g } = arena('onward', 'husk', 6);
+  const p = g.player;
+  p.hero = HERO_BY_KEY.squire;
+  p.stamina = p.staminaMax;
+  const x0 = p.x;
+  g.useSkill('onward', { dx: 1, dy: 0 });
+  assert(p.x > x0, 'the charge did not move him');
+  assert(p.forced, 'the charge did not commit him to a second stride');
+
+  // Whatever he presses next, he charges again the same way.
+  const x1 = p.x;
+  const stam = p.stamina;
+  g.useSkill('roll', { dx: -1, dy: 0 });
+  assert(p.x > x1, 'he turned round mid-charge');
+  assert(!p.forced, 'the second stride did not clear the commitment');
+  assert(p.stamina === stam, 'the forced stride charged him twice');
+  return 'goes out at once, and carries him again whether he likes it or not';
 });
 
 check('each hero pays differently, and that is what distinguishes them', () => {

@@ -20,6 +20,8 @@
 // being unlucky with seeds, which is the failure mode a story told through
 // random encounters usually dies of.
 
+import { HEROES } from './heroes.js';
+
 export const NPCS = [
   {
     key: 'firekeeper',
@@ -42,4 +44,31 @@ export const NPCS = [
   },
 ];
 
-export const NPC_BY_KEY = Object.fromEntries(NPCS.map((n) => [n.key, n]));
+/**
+ * The heroes, standing in the hall as people you can talk to.
+ *
+ * Built from the roster rather than written out, so a hero added to
+ * heroes.js turns up in the hall without anybody remembering to put them
+ * there - the layout of the room IS the character select, and a menu that can
+ * disagree with the roster is a menu that eventually will.
+ *
+ * They wear their own kit's armour, so no new art was needed: the knight is
+ * the figure in mail, the binder the one in leathers.
+ */
+const ARMOUR_SPRITE = {
+  rags: 'hero_rags', leathers: 'hero_leathers', brigandine: 'hero_brigandine',
+  mail: 'hero_mail', plate: 'hero_plate',
+};
+
+export const HERO_NPCS = HEROES.map((h) => ({
+  key: `hero:${h.key}`,
+  hero: h.key,
+  name: h.name,
+  sprite: ARMOUR_SPRITE[h.kit.armour] ?? 'hero_leathers',
+  glyph: '@',
+  colour: '#e8dcb8',
+  greeting: [h.blurb],
+}));
+
+export const NPC_BY_KEY = Object.fromEntries(
+  [...NPCS, ...HERO_NPCS].map((n) => [n.key, n]));
