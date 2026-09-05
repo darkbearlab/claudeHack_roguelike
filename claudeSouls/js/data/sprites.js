@@ -35,6 +35,10 @@ export const ART_FACING = {
   // She is drawn seated and is never rotated (NPCS[].still), so this value is
   // recorded for completeness rather than used.
   npc_firekeeper: 'S',
+  // The roster. Same as everything else the generator makes: a front view.
+  hero_knight: 'S',
+  hero_binder: 'S',
+  hero_squire: 'S',
   hero_rags: 'S',
   hero_leathers: 'S',
   hero_brigandine: 'S',

@@ -1030,11 +1030,19 @@ export class UI {
         name: spec.name,
         sprite: spec.face ?? spec.sprite,
         lines,
-        choices: [
-          { id: 'stats', label: '1  這一趟走了多遠?' },
-          { id: 'who', label: '2  你是誰?' },
-          { id: 'leave', label: '3  離開 (Esc)' },
-        ],
+        // A person in the hall has nothing to say about how far a run went -
+        // there is no run. The keeper keeps the reckoning; the heroes talk
+        // about themselves.
+        choices: spec.hero
+          ? [
+              { id: 'who', label: '1  跟我說說你自己' },
+              { id: 'leave', label: '2  就這樣吧 (Esc)' },
+            ]
+          : [
+              { id: 'stats', label: '1  這一趟走了多遠?' },
+              { id: 'who', label: '2  你是誰?' },
+              { id: 'leave', label: '3  離開 (Esc)' },
+            ],
       });
       if (choice === 'leave') { this.render(); return; }
       lines = choice === 'stats' ? this.runReport() : spec.about ?? [

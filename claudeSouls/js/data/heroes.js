@@ -17,9 +17,15 @@
 // stamina economy is therefore a property of the person rather than a global
 // constant - which is what `PLAYER` in skills.js used to be for everybody.
 
+// Each of them has their own art now rather than borrowing their kit's armour.
+// Two pieces: a top-down figure for the map and the hall, and a flat front
+// portrait for conversation - the map sprite is a shape seen from overhead and
+// shrinking it into a dialogue box shows you the top of a head.
 export const HEROES = [
   {
     key: 'knight',
+    sprite: 'hero_knight',       // on the map, and standing in the hall
+    face: 'face_knight',         // in conversation
     name: '老騎士',
     blurb: '一把長劍,一套用了四十年的動作。他不快,但他知道那一刀要往哪裡去。',
 
@@ -32,10 +38,14 @@ export const HEROES = [
 
     skills: ['thrust', 'sweep', 'turnaside'],
     kit: { armour: 'mail', item: 'flask', magic: null },
+    about: ['我學會的第一件事,是不要跟比你快的東西比快。',
+            '看它舉手。看它要往哪裡去。然後把它推到別的地方去。'],
   },
 
   {
     key: 'binder',
+    sprite: 'hero_binder',       // on the map, and standing in the hall
+    face: 'face_binder',         // in conversation
     name: '攝魂師',
     blurb: '她不帶武器。她借。',
 
@@ -48,10 +58,14 @@ export const HEROES = [
 
     skills: ['siphon', 'unmake', 'lance'],
     kit: { armour: 'leathers', item: 'flask', magic: null },
+    about: ['我身上沒有多的東西。要用,就得先拿。',
+            '所以不要停下來。停下來的人會發現自己什麼都沒有。'],
   },
 
   {
     key: 'squire',
+    sprite: 'hero_squire',       // on the map, and standing in the hall
+    face: 'face_squire',         // in conversation
     name: '執旗侍從',
     blurb: '旗手死了。旗還在,所以他還在。',
 
@@ -64,6 +78,8 @@ export const HEROES = [
 
     skills: ['pierce2', 'bannersweep', 'onward'],
     kit: { armour: 'brigandine', item: 'flask', magic: 'rally' },
+    about: ['他倒下的時候旗還舉著。我只是把它接住而已。',
+            '我跑起來就停不下來。師傅說那總有一天會害死我。'],
   },
 ];
 

@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "name": "face_binder",
+  "style": "topdown-flat",
+  "kind": "portrait",
+  "desc": "a pale woman's face with colourless eyes and a deep dark hood, faint cold light along one cheekbone",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a pale woman's face with colourless eyes and a deep dark hood, faint cold light along one cheekbone, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_binder.src.png",
+    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-face_binder_20260905_102448_01.png",
+    "source_sha256": "d6f9170ba889c75dbf356ed60f2b804d5c49d55b27677695e451f87ee5fe8c73",
+    "cost_usd": 0.00462,
+    "meta": {
+      "model": "gpt-image-2",
+      "size": "768x1024",
+      "quality": "low",
+      "background": "transparent"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_04.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+    "palette_sha256": "f67bbfb372a4300fda46e98f89f460f76ec9dda4c389391958218f501eaa4f77",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 43.4866
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 38.23
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 12.6232
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 10.9014
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 6.5743
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 9.2989
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 52.4141
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 14.9044
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 32.9533
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 17.0725
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 12.6844
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 22.9181
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "eeb0cec09229bece3499030dd9a1d1fbb93d397c13c92d784db7411ae87f19d7"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_binder.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 5.9108,
+    "palette_fit_delta_e76": 6.7089,
+    "warnings": [
+      "BACKDROP_COLOUR_IN_PALETTE"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\face_binder.qa.json"
+  },
+  "created": "20260905_102449",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 19.15
+}

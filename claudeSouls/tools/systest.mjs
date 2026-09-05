@@ -2149,6 +2149,22 @@ check('every enemy can be built and fought', () => {
   return `${ENEMIES.length} species x 40 turns`;
 });
 
+check('every hero has a face and a figure', () => {
+  // Two pieces each, and they are not interchangeable: the map sprite is a
+  // shape seen from directly overhead, so shrinking it into a dialogue box
+  // shows you the top of a head. Same split as the Fire Keeper's.
+  const dir = new URL('../../assets/', import.meta.url);
+  for (const h of HEROES) {
+    assert(h.sprite && h.face, `${h.key} is missing art`);
+    assert(existsSync(new URL(`${h.sprite}.png`, dir)), `${h.key} has no figure`);
+    assert(existsSync(new URL(`${h.face}.png`, dir)), `${h.key} has no portrait`);
+    // And the person standing in the hall is drawn as the same person.
+    assert(NPC_BY_KEY[`hero:${h.key}`].sprite === h.sprite,
+           `${h.key} looks like somebody else in the hall`);
+  }
+  return `${HEROES.length} heroes, ${HEROES.length * 2} pieces of art`;
+});
+
 check('the hall holds every hero, and you cannot leave as nobody', () => {
   // The room IS the character select, so it is built from the roster rather
   // than written out - a hero added to heroes.js turns up in the hall without

@@ -129,7 +129,12 @@ export class Player {
    * `weight`), and the one that was not is the one that went stale. Derived
    * cannot drift.
    */
-  get sprite() { return this.item(SLOT.ARMOUR)?.sprite ?? 'hero_rags'; }
+  get sprite() {
+    // A hero is drawn as themselves. Without one - the bot, the tests, an old
+    // save - it falls back to what you are wearing, which is what it was
+    // before people existed.
+    return this.hero?.sprite ?? this.item(SLOT.ARMOUR)?.sprite ?? 'hero_rags';
+  }
 
   /** Heavy armour is a property of what you are wearing, not of who you are. */
   get heavyArmour() { return !!this.item(SLOT.ARMOUR)?.heavy; }

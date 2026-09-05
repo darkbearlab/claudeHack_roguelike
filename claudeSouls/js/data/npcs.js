@@ -55,19 +55,18 @@ export const NPCS = [
  * They wear their own kit's armour, so no new art was needed: the knight is
  * the figure in mail, the binder the one in leathers.
  */
-const ARMOUR_SPRITE = {
-  rags: 'hero_rags', leathers: 'hero_leathers', brigandine: 'hero_brigandine',
-  mail: 'hero_mail', plate: 'hero_plate',
-};
-
 export const HERO_NPCS = HEROES.map((h) => ({
   key: `hero:${h.key}`,
   hero: h.key,
   name: h.name,
-  sprite: ARMOUR_SPRITE[h.kit.armour] ?? 'hero_leathers',
+  sprite: h.sprite,
+  face: h.face,
   glyph: '@',
   colour: '#e8dcb8',
+  // Standing, not seated - they are waiting to go, not tending anything.
+  still: true,
   greeting: [h.blurb],
+  about: h.about,
 }));
 
 export const NPC_BY_KEY = Object.fromEntries(
