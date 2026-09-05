@@ -3629,6 +3629,118 @@ check('every person has art and a way to be drawn', () => {
   return `${NPCS.length} people, ${faces} portraits, all present`;
 });
 
+check('nobody stands where somebody else already is', () => {
+  // The standing audit. Every entry here was a real defect found by measuring
+  // the finished floor rather than by reading the placement code, and each one
+  // was the same shape: a feature is added, every OTHER feature has to be told
+  // to avoid it, and one of them is not.
+  //
+  // Measured over 400 floors before the claim registry existed:
+  //   23.8%  down stair in a bonfire room
+  //   16.3%  a stair standing inside a situation
+  //   11.5%  two bonfires in one room
+  //    5.3%  two bonfires within three tiles
+  //    0.8%  the keeper plugging a doorway
+  //
+  // This is checked as a CONSEQUENCE over real floors, not by asserting that
+  // each placement was passed the right flag - the flags were the thing that
+  // kept being wrong.
+  const faults = {};
+  const bump = (k) => { faults[k] = (faults[k] ?? 0) + 1; };
+  const RUNS = 8;
+  let floors = 0;
+  for (let i = 0; i < RUNS; i++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `claims${i}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d <= DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      floors++;
+      const roomOf = (x, y) => lvl.roomAt(x, y)?.id ?? null;
+
+      const rooms = new Set();
+      for (const b of lvl.bonfires) {
+        const r = roomOf(b.x, b.y);
+        if (r != null && rooms.has(r)) bump('two bonfires in one room');
+        if (r != null) rooms.add(r);
+        if (lvl.inChamber(b.x, b.y)) bump('bonfire inside a situation');
+      }
+      for (let a = 0; a < lvl.bonfires.length; a++) {
+        for (let b = a + 1; b < lvl.bonfires.length; b++) {
+          const A = lvl.bonfires[a], B = lvl.bonfires[b];
+          if (Math.max(Math.abs(A.x - B.x), Math.abs(A.y - B.y)) <= 3) {
+            bump('two bonfires within three tiles');
+          }
+        }
+      }
+      for (const st of [lvl.upStair, lvl.downStair].filter(Boolean)) {
+        if (lvl.inChamber(st.x, st.y)) bump('a stair inside a situation');
+      }
+      if (lvl.downStair && lvl.isSanctuary(lvl.downStair.x, lvl.downStair.y)) {
+        bump('the way down is inside a sanctuary');
+      }
+      if (lvl.store && lvl.inChamber(lvl.store.x, lvl.store.y)) bump('the chest is inside a situation');
+      for (const n of lvl.npcs) {
+        if (lvl.inChamber(n.x, n.y)) bump('somebody is standing in a situation');
+        // A person cannot be killed or pushed, so one standing on a tile with
+        // two ways out or fewer is a plug in a doorway.
+        let open = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (lvl.walkable(n.x + dx, n.y + dy)) open++;
+        }
+        if (open <= 2) bump('somebody is plugging a doorway');
+      }
+      for (const e of lvl.livingEnemies()) {
+        if (lvl.isSanctuary(e.x, e.y)) bump('an enemy is in a sanctuary');
+      }
+    }
+  }
+  const found = Object.entries(faults).sort((a, b) => b[1] - a[1]);
+  assert(found.length === 0,
+    `${floors} floors: ${found.map(([k, v]) => `${v}x ${k}`).join('; ')}`);
+  return `${floors} floors, nothing standing on anybody else`;
+});
+
+check('a situation is built on ground it owns', () => {
+  // scatterCover runs first and drops rubble and pits into any room big enough
+  // to hold them, and every chamber's `build` skips tiles that are not plain
+  // floor - so a span came out with rubble in its bridge and a pit in the
+  // middle of its chasm. Neither a corridor nor a drop.
+  //
+  // The span case is guarded by the span's own test, which fails when the
+  // clearing is removed - checked. This one is deliberately broader and
+  // weaker, and it exists because nothing else looked at anchors at all.
+  //
+  // Its first version asserted no rubble anywhere in a chamber's room, and the
+  // broken floor failed it 285 times - correctly. Its whole design IS a rubble
+  // mound. "Cover the chamber placed" and "cover left lying there" cannot be
+  // told apart by tile type, so the property has to be stated somewhere they
+  // differ: an ANCHOR is a named place something stands or walks, and every
+  // one of them must actually be standable.
+  const bad = [];
+  let anchors = 0;
+  for (let i = 0; i < 20; i++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `own${i}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const ch of lvl.chambers ?? []) {
+        for (const [name, tiles] of Object.entries(ch.anchors ?? {})) {
+          for (const t of tiles) {
+            anchors++;
+            if (!lvl.walkable(t.x, t.y)) {
+              bad.push(`${ch.key}'s ${name} anchor at ${t.x},${t.y} is ${tileName(lvl.at(t.x, t.y))}`);
+            }
+          }
+        }
+      }
+    }
+  }
+  assert(bad.length === 0, `${bad.length} of ${anchors} bad, e.g. ${bad[0]}`);
+  return `${anchors} anchors across 20 runs, every one standable`;
+});
+
 check('nothing spawns in the room with the fire in it', () => {
   // You respawn at a bonfire, and resting is refused while anything is hunting
   // you - so a pack spawned around the fire means the first thing a death buys

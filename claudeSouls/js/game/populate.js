@@ -40,13 +40,13 @@ export function populate(game, lvl, rng) {
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
 
   const place = (key) => {
-    // avoidChambers: a situation's composition is the situation. Letting the
-    // ordinary random placement top it up turned a colonnade of two archers
-    // and one blocker into a room with six things in it, which is not a
-    // decision, it is a crowd.
+    // Shares nothing. A situation's composition IS the situation - letting the
+    // ordinary fill top it up turned a colonnade of two archers and one
+    // blocker into a room with six things in it, which is not a decision, it
+    // is a crowd - and the same is true of the fire, the stair and the store.
+    // Naming no shares is the whole rule, in one word.
     const spot = lvl.randomFreeSpot(rng, {
-      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7,
-      avoidBonfires: true, avoidChambers: true });
+      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7 });
     if (!spot) return 0;
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
@@ -170,12 +170,14 @@ export function spawnBoss(game, lvl) {
   //
   // This is the same exclusion `placeChambers` already does, four lines of it,
   // for the same reason. The sanctum should be somewhere you walk INTO.
-  const spoken = new Set();
-  for (const b of lvl.bonfires) spoken.add(lvl.roomAt(b.x, b.y)?.id);
-  for (const n of lvl.npcs) spoken.add(lvl.roomAt(n.x, n.y)?.id);
+  // Another hand-rolled exclusion list, replaced by the registry. NPCs are
+  // still checked directly because they are people rather than a room-level
+  // feature - nobody claims a room by standing in it.
   const bySize = [...lvl.rooms].sort((a, b) => b.w * b.h - a.w * a.h);
-  const room = bySize.find((r) => !spoken.has(r.id)) ?? bySize[0];
+  const hasNpc = (r) => lvl.npcs.some((n) => lvl.roomAt(n.x, n.y)?.id === r.id);
+  const room = bySize.find((r) => !lvl.claims.has(r.id) && !hasNpc(r)) ?? bySize[0];
   if (!room) return;
+  lvl.claimRoom('arena', room.id);
 
   // The boss is four squares of dragon, so "the middle of the biggest room"
   // is no longer guaranteed to be somewhere it can stand - and the old
@@ -236,8 +238,7 @@ export function spawnBoss(game, lvl) {
   let placed = 0;
   for (let guard = 0; placed < WANT && guard < WANT * 12; guard++) {
     const s = lvl.randomFreeSpot(rng, {
-      roomsOnly: true, awayFrom: lvl.upStair, minDist: 8,
-      avoidBonfires: true, avoidChambers: true });
+      roomsOnly: true, awayFrom: lvl.upStair, minDist: 8 });
     if (!s) continue;
     if (arena && lvl.roomAt(s.x, s.y)?.id === arena.id) continue;
     placed += spawn(game, lvl, pickEnemy(rng, DUNGEON_DEPTH - 1).key, s.x, s.y, rng, true);
@@ -298,7 +299,9 @@ export function placeGuards(game, lvl, rng) {
   if (placed && lvl.depth >= 5) {
     // avoidBonfires here too: the box below is "roughly the storeroom" rather
     // than the storeroom, so it reaches into whatever is next door.
-    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, avoidBonfires: true });
+    // Shares the store: this is the storeroom's own second guard, so the one
+    // room it must be allowed into is the one nobody else may enter.
+    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, share: ['store'] });
     if (spot && Math.abs(spot.x - store.x) <= room.w && Math.abs(spot.y - store.y) <= room.h) {
       const e = new Enemy(key, rng);
       e.aware = true; e.guarding = true;
@@ -372,7 +375,6 @@ const PACKS = [
 function placePack(game, lvl, rng, pack) {
   const anchor = lvl.randomFreeSpot(rng, {
     roomsOnly: true, awayFrom: lvl.upStair, minDist: 9,
-    avoidBonfires: true, avoidChambers: true,
   });
   if (!anchor) return 0;
 
@@ -456,7 +458,7 @@ export function placeElite(game, lvl, rng, depth) {
 
   const spot = lvl.randomFreeSpot(rng, {
     roomsOnly: true, awayFrom: lvl.upStair, minDist: 10,
-    avoidBonfires: true, avoidChambers: true });
+  });
   if (!spot) return 0;
 
   const key = pickFrom(ELITES, depth, rng);

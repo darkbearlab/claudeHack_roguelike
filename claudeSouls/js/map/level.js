@@ -33,6 +33,8 @@ export class Level {
     this.enemies     = [];
     this.projectiles = [];
     this.bonfires    = [];      // {x, y, id}
+    // room id -> Set of what has been done with it. See the claims section.
+    this.claims      = new Map();
     // People. A separate list from `enemies` on purpose: every attack in the
     // game resolves through `enemyAt`, so anything that is not in that list
     // cannot be hit by anything, ever, without a single special case being
@@ -264,6 +266,52 @@ export class Level {
     return false;
   }
 
+  // =========================================================================
+  // claims: who has already spoken for a room
+  // =========================================================================
+  //
+  // Every placement in the generator used to carry its own opt-in list of
+  // things to avoid - `avoidBonfires`, `avoidChambers`, and whatever the last
+  // person remembered. That is O(n^2) coupling with a silent failure mode, and
+  // it failed repeatedly and always the same way: a feature is added, every
+  // OTHER feature has to be told about it, and one of them is not.
+  //
+  // Measured over 400 floors before this existed: 16.3% had a stair inside a
+  // situation (placeChambers excluded the up stair, bonfires and the store -
+  // nobody added the down stair), 11.5% had two bonfires in one room, and 5.3%
+  // had two within three tiles of each other.
+  //
+  // So: whoever takes a room says so, and asking for space avoids every
+  // claimed room BY DEFAULT. Sharing is opt-in and named. The failure mode is
+  // inverted - forget to declare something and placement gets more
+  // conservative, never broken.
+
+  /** Mark a room as spoken for. */
+  claimRoom(kind, roomId) {
+    if (roomId == null) return;
+    if (!this.claims.has(roomId)) this.claims.set(roomId, new Set());
+    this.claims.get(roomId).add(kind);
+  }
+
+  /** What has been done with the room this tile is in. */
+  claimsAt(x, y) {
+    const r = this.roomAt(x, y);
+    return (r && this.claims.get(r.id)) || null;
+  }
+
+  /**
+   * May something be placed here, given what it is willing to share with?
+   *
+   * A corridor belongs to nobody and is always free. A room is free if every
+   * claim on it is one the caller named.
+   */
+  freeFor(x, y, share) {
+    const c = this.claimsAt(x, y);
+    if (!c) return true;
+    for (const kind of c) if (!share.includes(kind)) return false;
+    return true;
+  }
+
   /** Rooms a situation has been stamped into, which random spawns must skip. */
   inChamber(x, y) {
     if (!this.chambers?.length) return false;
@@ -272,8 +320,11 @@ export class Level {
   }
 
   randomFreeSpot(rng, opts = {}) {
+    // `share` is the whole exclusion story now. Naming what you are willing to
+    // stand beside is a decision the caller has to make on purpose; the two
+    // booleans this replaced were a decision the caller could forget to make.
     const { roomsOnly = false, awayFrom = null, minDist = 0, avoidFeatures = true,
-            avoidBonfires = false, avoidChambers = false } = opts;
+            share = [] } = opts;
     const taken = new Set();
     // Every tile of every body, not just its anchor. A creature that covers
     // four squares had three of them look empty here, so ordinary enemies were
@@ -292,8 +343,7 @@ export class Level {
         if (!isWalkable(t)) continue;
         if (taken.has(i)) continue;
         if (avoidFeatures && (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE)) continue;
-        if (avoidBonfires && this.isSanctuary(x, y)) continue;
-        if (avoidChambers && this.inChamber(x, y)) continue;
+        if (!this.freeFor(x, y, share)) continue;
         if (roomsOnly && !this.roomAt(x, y)) continue;
         if (awayFrom && Math.max(Math.abs(x - awayFrom.x), Math.abs(y - awayFrom.y)) < minDist) continue;
         spots.push({ x, y });

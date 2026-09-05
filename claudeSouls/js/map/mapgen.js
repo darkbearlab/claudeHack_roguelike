@@ -40,7 +40,6 @@ export function generateLevel(depth, rng) {
   ensureConnected(lvl, rng);
   placeStairs(lvl, rng, depth);
   placeBonfires(lvl, rng);
-  placeKeeper(lvl);
   scatterCover(lvl, rng);
   placeStoreroom(lvl, rng, depth);
   placeChambers(lvl, rng, depth);
@@ -49,6 +48,19 @@ export function generateLevel(depth, rng) {
   // movement - so widening before it runs lets it narrow the map straight back
   // down again. The guarantee has to be established against the finished floor.
   openAlcoves(lvl, rng);
+  // Last, against the FINISHED floor.
+  //
+  // She used to go down before scatterCover and openAlcoves, and picked the
+  // most open tile she could see - on a map that was still being built. Rubble
+  // dropped around her and corridors widened elsewhere afterwards, so the tile
+  // she chose as open could be a doorway by the time anybody walked through
+  // it. That is how she still ended up plugging a passage on three floors in
+  // four hundred after being taught to avoid exactly that.
+  //
+  // Still inside mapgen, so the guarantee that matters is intact: she exists
+  // before `populate` runs, and every spawn asks the level what is standing on
+  // a tile.
+  placeKeeper(lvl);
   return lvl;
 }
 
@@ -319,6 +331,11 @@ function placeStairs(lvl, rng, depth) {
     }
     down = down || lvl.randomFreeSpot(rng, { roomsOnly: true }) || lvl.randomFreeSpot(rng);
     if (down) { lvl.set(down.x, down.y, T.STAIRS_DOWN); lvl.downStair = down; }
+    // Both ends claim their room. The down stair not doing so is what put a
+    // stair inside a situation on 16% of floors - chambers excluded the up
+    // stair, the fires and the store, and nobody added this one.
+    lvl.claimRoom('stair', roomAt(lvl, lvl.upStair?.x, lvl.upStair?.y)?.id);
+    lvl.claimRoom('stair', roomAt(lvl, down?.x, down?.y)?.id);
   }
 }
 
@@ -336,8 +353,14 @@ function placeBonfires(lvl, rng) {
   const put = (x, y) => {
     lvl.set(x, y, T.BONFIRE);
     lvl.bonfires.push({ x, y, id: id++ });
+    // So the next one cannot land in the same room. Two fires in one room was
+    // 11.5% of floors, and two within three tiles 5.3% - the extras had a
+    // minimum distance from the UP STAIR and none at all from each other.
+    lvl.claimRoom('fire', roomAt(lvl, x, y)?.id);
   };
 
+  // One is always beside the way in - deliberately in the stair's own room, so
+  // this is the one place 'fire' and 'stair' share.
   if (lvl.upStair) {
     const near = adjacentFloor(lvl, lvl.upStair.x, lvl.upStair.y, rng);
     if (near) put(near.x, near.y);
@@ -377,18 +400,55 @@ function placeChambers(lvl, rng, depth) {
   const pool = CHAMBERS.filter((c) => depth >= c.minDepth);
   if (!pool.length) return;
 
-  const taken = new Set();
-  for (const b of lvl.bonfires) taken.add(roomAt(lvl, b.x, b.y)?.id);
-  if (lvl.upStair) taken.add(roomAt(lvl, lvl.upStair.x, lvl.upStair.y)?.id);
-  if (lvl.store) taken.add(lvl.store.room);
-
-  const spec = rng.pick(pool);
-  const options = lvl.rooms.filter((r) => !taken.has(r.id) && spec.fits(r));
-  if (!options.length) return;
+  // This used to be three hand-listed exclusions - the fires, the up stair,
+  // the store. It was missing the DOWN stair, which is how 16% of floors got a
+  // stair standing inside a colonnade or on a bridge over a chasm. A list that
+  // has to be kept in step with every other feature is a list that will fall
+  // out of step; the registry answers "has anyone taken this room" instead.
+  // Try the whole pool, not one draw from it.
+  //
+  // This picked ONE spec and gave up if no free room fitted it, and the three
+  // specs want different rooms - a colonnade needs 9x5, a span 10x6, a broken
+  // floor only 8x5. So a floor with a perfectly good 8x5 going spare produced
+  // nothing at all whenever the die said "span".
+  //
+  // It mattered more once the exclusions were correct: adding the down stair
+  // to them dropped situations from 54% of floors to 42%, and shuffling the
+  // pool instead of drawing from it puts that back without letting a stair
+  // stand in a colonnade again.
+  const order = [...pool];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = rng.rn2(i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  let spec = null, options = [];
+  for (const cand of order) {
+    const fit = lvl.rooms.filter((r) => !lvl.claims.has(r.id) && cand.fits(r));
+    if (fit.length) { spec = cand; options = fit; break; }
+  }
+  if (!spec) return;
 
   const room = rng.pick(options);
+  // Clear the room of scattered cover first.
+  //
+  // scatterCover runs before this and drops rubble and pits into any room big
+  // enough to hold them, and every chamber's `build` skips tiles that are not
+  // plain floor - so a situation stamped over them kept the holes: a span with
+  // rubble in its bridge and a pit in the middle of its chasm, which is
+  // neither a corridor nor a drop but a mess.
+  //
+  // A situation's composition IS the room. Random cover topping it up is the
+  // same mistake as random enemies topping up its cast, one layer down, and
+  // spawnBoss has cleared its arena for this reason since it was written.
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) {
+      const t = lvl.at(x, y);
+      if (t === T.RUBBLE || t === T.PIT) lvl.set(x, y, T.FLOOR);
+    }
+  }
   const anchors = spec.build(lvl, room);
   lvl.chambers.push({ key: spec.key, room: room.id, anchors });
+  lvl.claimRoom('chamber', room.id);
 }
 
 /**
@@ -426,6 +486,20 @@ function placeKeeper(lvl) {
     }
     return n;
   };
+  // ...and separately the four that decide whether a tile is a doorway.
+  //
+  // Openness alone was measured over eight neighbours, and a tile can be wide
+  // open diagonally while still being the one square a corridor passes
+  // through. Three floors in four hundred put her on exactly that tile. The
+  // orthogonal count is what "is this a passage" actually means, so it leads
+  // and the eight-way count breaks ties.
+  const orthNeighbours = (x, y) => {
+    let n = 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (lvl.walkable(x + dx, y + dy)) n++;
+    }
+    return n;
+  };
   // Two tiles out, not one. The ring immediately around the fire is the ground
   // you back into when something followed you home, and she cannot be killed
   // or pushed off it - measured, standing in it cost the light kit 36% more
@@ -438,13 +512,32 @@ function placeKeeper(lvl) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = fire.x + dx, y = fire.y + dy;
         if (lvl.at(x, y) !== T.FLOOR) continue;
-        out.push({ x, y, open: walkableNeighbours(x, y) });
+        out.push({ x, y, open: walkableNeighbours(x, y), orth: orthNeighbours(x, y) });
       }
     }
     return out;
   };
-  const cands = ring(2).length ? ring(2) : ring(1);
-  if (!cands.length) return;
+  // Rings 2, then 3, then 1, and the first ring that offers a tile which is
+  // not a doorway wins.
+  //
+  // Ranking by openness was not enough: on three floors in four hundred every
+  // tile in reach of the fire had two orthogonal exits or fewer, so the best
+  // candidate was still a plug. There is nothing to rank when the whole
+  // neighbourhood is corridor - the answer is to look further out.
+  //
+  // Order is deliberate. Two is where she reads as sitting at the fire without
+  // taking a square you back into; three is further but still hers; one is the
+  // ring the player needs and is the last resort. Falling through all three
+  // places her anyway, because every seed has someone at the fire - that rule
+  // is decided, and a floor with nobody at it is worse than a tight squeeze.
+  const OPEN_ENOUGH = 3;
+  let cands = null;
+  for (const r of [2, 3, 1]) {
+    const tiles = ring(r);
+    if (tiles.some((t) => t.orth >= OPEN_ENOUGH)) { cands = tiles.filter((t) => t.orth >= OPEN_ENOUGH); break; }
+    if (!cands && tiles.length) cands = tiles;      // remember the first non-empty
+  }
+  if (!cands?.length) return;
   // Chosen without touching the rng, and that is not tidiness.
   //
   // Drawing a random number here consumes one from the stream every other
@@ -454,9 +547,8 @@ function placeKeeper(lvl) {
   // moved by more than a floor in both directions for that reason alone.
   // Deterministic tie-break, so the level is the same level with or without
   // her and the comparison means what it says.
-  const most = Math.max(...cands.map((c) => c.open));
-  const spot = cands.filter((c) => c.open === most)
-                    .sort((a, b) => (a.y - b.y) || (a.x - b.x))[0];
+  const spot = [...cands].sort((a, b) =>
+    (b.orth - a.orth) || (b.open - a.open) || (a.y - b.y) || (a.x - b.x))[0];
   lvl.npcs.push({ key: 'firekeeper', x: spot.x, y: spot.y });
 }
 
@@ -665,6 +757,7 @@ export function placeStoreroom(lvl, rng, depth) {
   const spot = rng.pick(corners);
   lvl.set(spot.x, spot.y, T.CHEST);
   lvl.store = { x: spot.x, y: spot.y, loot: lootFor(depth, rng), room: room.id };
+  lvl.claimRoom('store', room.id);
 }
 
 function roomAt(lvl, x, y) {
