@@ -935,6 +935,23 @@ export class Game {
       this.level.moveEnemy(e, nx, ny);
       moved++;
     }
+    // The telegraph travels with the body.
+    //
+    // `attackTiles` is resolved once, in absolute coordinates, when the
+    // wind-up starts - so shoving something mid-swing left its marked squares
+    // behind, and a long wind-up then landed a blow from a place its owner was
+    // no longer standing in. Read as: the red tiles are somewhere over there,
+    // and the thing hitting you is here.
+    //
+    // This does not break the rule at the top of ai.js. The shape and its
+    // geometry relative to the attacker are untouched; only the attacker
+    // moved, and the tiles follow it the way its own body did. It also makes
+    // shoving a winding-up enemy do the obvious thing - the swing goes where
+    // the swinger went, so pushing it off your square works.
+    if (moved && e.attackTiles) {
+      const ddx = dir.dx * moved, ddy = dir.dy * moved;
+      e.attackTiles = e.attackTiles.map((t) => ({ x: t.x + ddx, y: t.y + ddy }));
+    }
     return moved;
   }
 

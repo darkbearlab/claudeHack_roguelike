@@ -722,6 +722,10 @@ export class Enemy {
     this.state = STATE.READY;
     this.attack = null;
     this.attackTiles = null;
+    // Strides still owed die with the wind-up that would have carried them.
+    // Without this a broken charge leaves a stale counter behind and the NEXT
+    // charge starts partway through.
+    this.rushLeft = null;
     this.timer = 0;
     this.poiseLeft = this.poise;
     return true;

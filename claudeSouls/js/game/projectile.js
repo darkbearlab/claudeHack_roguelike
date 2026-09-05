@@ -31,6 +31,12 @@ export function makeProjectile(o) {
     speed: o.speed ?? 3,
     damage: o.damage,
     fromPlayer: !!o.fromPlayer,
+    // Who fired it. An enemy arrow hitting ANOTHER enemy is deliberate; one
+    // hitting the thing that fired it is not, and for a body more than one
+    // tile across that is the default outcome rather than an edge case - it
+    // launches inside itself. Carried as a uid so the check is identity, the
+    // same way melee already avoids friendly-firing its own squares.
+    owner: o.owner ?? null,
     impact: o.impact ?? 0,
     glyph: o.glyph ?? '*',
     colour: o.colour ?? '#e0d0a0',
@@ -75,6 +81,7 @@ export function stepProjectiles(game) {
 
       // Anything else standing there - including, deliberately, other enemies.
       const e = lvl.enemyAt(nx, ny);
+      if (e && e.alive && e.uid === p.owner) continue;   // never your own body
       if (e && e.alive) {
         if (!p.fromPlayer) {
           game.msg(`The ${p.glyph === '*' ? 'cinder' : 'arrow'} strikes the ${e.name}!`, 'good');

@@ -13,8 +13,20 @@
 //
 // Two things it must never do, because both would break the contract the player
 // is reading against:
-//   * change which tiles it will hit after the wind-up has started
+//   * change the SHAPE it will hit after the wind-up has started
 //   * attack on a turn it did not telegraph
+//
+// "Shape", not "tiles". The marked squares travel with the body if the body is
+// moved - shove something mid-swing and its swing goes with it - because the
+// alternative is a blow landing from a square its owner is no longer standing
+// in. What may never change is the shape itself or its geometry relative to
+// the attacker. See knockBack.
+//
+// A multi-stage charge obeys the second rule one stride at a time: it swings,
+// advances, and immediately announces the next stride, which lands on the
+// following turn. It used to telegraph the whole run and then resolve every
+// stop inside a single turn, which is one decision offered against a
+// three-part attack.
 
 import { dist } from '../../../engine/util.js';
 import { astar } from '../../../engine/path.js';
@@ -260,9 +272,21 @@ function beginWindup(game, e, attack, dir) {
     ? { x: e.x, y: e.y }
     : origin(game.level, e, dir, attack, game);
   e.attackTiles = attack.rush
-    // The whole path, every stop of it. A charge that only telegraphed its
-    // first stride would be three unannounced blows wearing one announcement.
-    ? rushStops(game.level, e, dir, attack).flatMap((s) => s.hit)
+    // ONE stride, the one that is about to happen.
+    //
+    // This used to be the whole path flattened, on the argument that a charge
+    // telegraphing only its first stride would be "three unannounced blows
+    // wearing one announcement". That argument was right about the danger and
+    // wrong about the fix: the answer is not to announce three blows at once,
+    // it is to announce them one at a time. The whole run also RESOLVED in a
+    // single turn, so the player got one decision against a three-part attack
+    // and the middle of it could not be reacted to at all.
+    //
+    // Now each stride is its own wind-up: swing, advance, re-telegraph, and
+    // the next one lands next turn. Every blow is still announced before it
+    // falls - and now each announcement is one you can actually answer, by
+    // stepping out of the lane or by breaking the wind-up.
+    ? (rushStops(game.level, e, dir, attack)[0]?.hit ?? [])
     : attack.kind === 'ranged'
       ? rayTiles(game.level, e.x, e.y, dir, attack.range)
       : attackTiles(from.x, from.y, dir.dx, dir.dy, attack.pattern);
@@ -304,7 +328,11 @@ function resolveAttack(game, e) {
     const dir = e.attackDir;
     const struck = new Set();
     let landed = 0, moved = 0;
-    for (const stop of rushStops(game.level, e, dir, a)) {
+    // One stride per turn. `rushLeft` counts the strides still owed; it is set
+    // when the charge is first declared and cleared whenever the wind-up is
+    // broken, so cancelling mid-charge really does stop it.
+    if (e.rushLeft == null) e.rushLeft = a.rush.times;
+    for (const stop of rushStops(game.level, e, dir, a).slice(0, 1)) {
       for (const t of stop.hit) {
         if (t.x === game.player.x && t.y === game.player.y && !struck.has(game.player)) {
           struck.add(game.player);
@@ -334,6 +362,20 @@ function resolveAttack(game, e) {
     if (moved === 0 && game.level.isVisible(e.x, e.y)) {
       game.msg(`The ${e.name} slams into the wall.`, 'good');
     }
+
+    e.rushLeft--;
+    // Another stride owed, and somewhere to put it: announce it now and land
+    // it next turn. A wall ends the charge - it has already taken the hit for
+    // running into one.
+    if (e.rushLeft > 0 && moved > 0) {
+      // The same attack with a shorter announcement. Everything the next
+      // stride reads - rush, damage, recovery - is identical, so there is
+      // nothing to restore afterwards.
+      e.attack = null;
+      beginWindup(game, e, { ...a, windup: a.rush.windup ?? 1 }, dir);
+      return;
+    }
+    e.rushLeft = null;
     if (a.next) {
       let d2 = dir;
       if (a.next.reaim) {
@@ -356,8 +398,14 @@ function resolveAttack(game, e) {
   }
 
   if (a.kind === 'ranged') {
+    // Out of the part of it that is facing you - the same rule the melee
+    // branch four lines above has always used. This launched from the ANCHOR,
+    // so a 2x2 dragon firing east put its cinder on its own shoulder and shot
+    // itself for 4 every time.
+    const muzzle = e.nearestTileTo(game.player.x, game.player.y);
     game.level.projectiles.push(makeProjectile({
-      x: e.x, y: e.y, dx: e.attackDir.dx, dy: e.attackDir.dy,
+      x: muzzle.x, y: muzzle.y, dx: e.attackDir.dx, dy: e.attackDir.dy,
+      owner: e.uid,
       speed: a.projectile.speed, damage: a.damage,
       glyph: a.projectile.glyph, colour: a.projectile.colour,
       fromPlayer: false, life: a.range + 2,

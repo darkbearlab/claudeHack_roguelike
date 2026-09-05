@@ -2411,6 +2411,131 @@ check('the wind track adds to who you are, it does not replace it', () => {
   return 'growth stacks on the person rather than overwriting them';
 });
 
+/** A stretch of open floor `len` wide and 2 tall, hunted across seeds. */
+function lane(len, hero = 'knight') {
+  for (let seed = 0; seed < 60; seed++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `lane${len}-${seed}`, name: 'A', hero });
+    for (const lvl of [g.level, g.levelAt(DUNGEON_DEPTH)]) {
+      for (let y = 2; y < lvl.h - 3; y++) {
+        for (let x = 2; x < lvl.w - len - 1; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++) {
+            for (let dx = 0; dx < len && ok; dx++) if (!lvl.passable(x + dx, y + dy)) ok = false;
+          }
+          if (ok) { g.level = lvl; lvl.enemies.length = 0; return { g, lvl, x, y }; }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+check('a big creature does not shoot itself', () => {
+  // Reported from play, and the player's diagnosis was exactly right: if it
+  // can hit itself then the shot is not coming from the square nearest you.
+  //
+  // It launched from the ANCHOR. For a 2x2 firing east the very next tile is
+  // its own shoulder, so the dragon shot itself for 4 every time. The melee
+  // branch four lines above has always used `origin()`/`nearestTileTo` for
+  // precisely this reason.
+  const found = lane(11);
+  assert(found, 'no open lane to test in');
+  const { g, lvl, x, y } = found;
+  const d = new Enemy('firstflame', g.rng);
+  lvl.addEnemy(d, x, y);
+  d.aware = true;
+  g.player.x = x + 9; g.player.y = y;
+
+  let selfHit = false, playerHit = false;
+  for (let t = 0; t < 25; t++) {
+    const dh = d.hp, ph = g.player.hp;
+    g.worldTurn();
+    if (d.hp < dh) selfHit = true;
+    if (g.player.hp < ph) playerHit = true;
+    g.player.hp = g.player.hpMax;      // this is about hits, not about dying
+  }
+  assert(!selfHit, 'the dragon damaged itself with its own ranged attack');
+  // And the fix must not simply have made it miss - that looks identical.
+  assert(playerHit, 'the dragon never hit the player either, so this proves nothing');
+  return 'fires from the square nearest you, and still connects';
+});
+
+check('a charge lands one stride per turn, each one announced', () => {
+  // Reported from play: the whole three-part charge resolved in a single turn.
+  // It telegraphed all three stops at once and then ran the entire loop, so
+  // the player got one decision against a three-part attack and could not
+  // react to the middle of it at all.
+  //
+  // The old comment argued that telegraphing only the first stride would be
+  // "three unannounced blows wearing one announcement". Right about the
+  // danger, wrong about the fix: announce them one at a time.
+  const found = lane(11);
+  assert(found, 'no open lane to test in');
+  const { g, lvl, x, y } = found;
+  const m = new Enemy('minotaur', g.rng);
+  lvl.addEnemy(m, x, y);
+  m.aware = true;
+  g.player.x = x + 9; g.player.y = y;
+
+  const strides = [];
+  let last = { x: m.x, y: m.y };
+  for (let t = 0; t < 16; t++) {
+    const telegraph = (m.attackTiles ?? []).map((v) => `${v.x},${v.y}`);
+    g.worldTurn();
+    g.player.hp = g.player.hpMax;
+    if (m.x !== last.x || m.y !== last.y) {
+      strides.push({ telegraph, movedTo: { x: m.x, y: m.y } });
+      last = { x: m.x, y: m.y };
+    }
+  }
+  const charges = strides.filter((s) => s.telegraph.length);
+  assert(charges.length >= 2, `only ${charges.length} announced strides - the charge is not staged`);
+  // Every stride must have been shown before it happened, and shown as ONE
+  // stop: a 2x2 body strikes a 2x2 area, never the whole run at once.
+  for (const s of charges) {
+    assert(s.telegraph.length <= m.size * m.size,
+      `a stride telegraphed ${s.telegraph.length} tiles - that is the whole run, not one stop`);
+  }
+  return `${charges.length} strides, each announced as ${m.size}x${m.size} the turn before`;
+});
+
+check('shoving something mid-swing moves its telegraph too', () => {
+  // Reported from play. `attackTiles` is resolved once, in absolute
+  // coordinates, when the wind-up starts - so a long wind-up that got shoved
+  // left its marked squares behind and then landed a blow from a place its
+  // owner was no longer standing in.
+  const found = lane(8);
+  assert(found, 'no open lane to test in');
+  const { g, lvl, x, y } = found;
+  const e = new Enemy('sentinel', g.rng);
+  lvl.addEnemy(e, x + 3, y);
+  e.aware = true;
+  g.player.x = x + 1; g.player.y = y;
+  for (let t = 0; t < 10 && e.state !== STATE.WINDUP; t++) {
+    g.worldTurn();
+    g.player.hp = g.player.hpMax;
+  }
+  assert(e.state === STATE.WINDUP, 'the sentinel never wound up');
+  assert(e.attackTiles?.length, 'it wound up without a telegraph');
+
+  const before = e.attackTiles.map((t) => `${t.x},${t.y}`);
+  const at = { x: e.x, y: e.y };
+  const moved = g.knockBack(e, { dx: 1, dy: 0 }, 2);
+  assert(moved > 0, 'the sentinel would not be pushed, so this proves nothing');
+
+  const shift = { dx: e.x - at.x, dy: e.y - at.y };
+  const want = before.map((k) => {
+    const [bx, by] = k.split(',').map(Number);
+    return `${bx + shift.dx},${by + shift.dy}`;
+  });
+  const after = e.attackTiles.map((t) => `${t.x},${t.y}`);
+  assert(after.join(' ') === want.join(' '),
+    `telegraph did not follow the body: ${after.join(' ')} vs expected ${want.join(' ')}`);
+  return `pushed ${moved}, and all ${after.length} marked tiles came with it`;
+});
+
 check('nothing else lives in the dragon hall', () => {
   // Reported from a winning run: bonfire, keeper, dragon and a crowd all in
   // the same room. Measured over 60 bottom floors, that was the MAJORITY -
