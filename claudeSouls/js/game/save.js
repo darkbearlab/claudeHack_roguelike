@@ -48,7 +48,8 @@ export function saveGame(game) {
       elapsed: (game.elapsedBefore ?? 0) + (Date.now() - game.startedAt),
       player: {
         name: p.name, x: p.x, y: p.y, depth: p.depth, maxDepth: p.maxDepth,
-        hp: p.hp, stamina: p.stamina, staminaMax: p.staminaMax,
+        hp: p.hp, stamina: p.stamina, staminaBonus: p.staminaBonus,
+        hero: p.hero?.key ?? null,
         facing: p.facing,
         // hpMax, damage reduction and the sprite are not stored: they are read
         // off the armour, and storing a derived value is how a save and a rules
@@ -110,7 +111,7 @@ export function loadGame(game) {
   Object.assign(p, {
     x: d.player.x, y: d.player.y, depth: d.player.depth, maxDepth: d.player.maxDepth,
     hp: d.player.hp,
-    stamina: d.player.stamina, staminaMax: d.player.staminaMax,
+    stamina: d.player.stamina, staminaBonus: d.player.staminaBonus ?? 0,
     facing: d.player.facing,
     skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },

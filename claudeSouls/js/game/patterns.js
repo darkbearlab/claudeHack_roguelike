@@ -129,6 +129,18 @@ export const PATTERNS = {
              [-2,  1],                             [2,  1],
              [-2,  2], [-1,  2], [0,  2], [1,  2], [2,  2]],
 
+  // arc3, one tile further out - and nothing at all where you are standing.
+  // The squire's banner sweep: his best attack wants a range his one-tile roll
+  // is bad at making, so he spends the fight trying to hold a band rather than
+  // trying to close.
+  arcfar: (dx, dy) => {
+    const [px, py] = [-dy, dx];
+    return [-1, 0, 1].map((k) => [dx * 2 + px * k, dy * 2 + py * k]);
+  },
+
+  // Five deep. line3 and line6 existed; the gap between them did not.
+  line5:    lane(5),
+
   // Two tiles wide and two deep. Shallow, but nothing steps round the side of
   // it - and paired with a shove it moves two bodies at once, which against a
   // drop is the difference between a push and an execution.

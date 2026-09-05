@@ -24,6 +24,7 @@ import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
+import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
 import { hasLOS } from '../../engine/fov.js';
 import { saveGame, loadGame } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
@@ -564,12 +565,31 @@ check('commitment is priced by the rule, not by feel', () => {
     if (sk.move || sk.defend) continue;
     const want = band(sk);
     if (want === null) continue;
-    // The band says HOW MUCH commitment; wind-up and recovery say how it is
-    // split around the blow. impale and rend spend one of their two turns
-    // before the hit rather than after, which is a different gamble at the
-    // same price - the declared half can be taken away from you.
-    const got = (sk.windup ?? 0) + (sk.recovery ?? 0);
-    if (got !== want) wrong.push(`${sk.key}: windup+recovery ${got}, rule says ${want}`);
+    // The band says HOW MUCH commitment. Wind-up and recovery say how it is
+    // split around the blow - impale and rend spend one of their two turns
+    // before the hit rather than after, a different gamble at the same price.
+    //
+    // Stamina counts too, and that is not a loophole. The rule exists because
+    // **a cost you can pay by waiting is not a cost**; whether waiting is cheap
+    // depends on who is waiting. The soulbinder recovers one stamina a turn, so
+    // her ten-point lance is ten turns of standing still - far more commitment
+    // than the two the shape asks for. The same skill on a character who
+    // recovers five a turn would be two turns and would need recovery on top.
+    //
+    // So: turns of commitment, plus turns of recovery the cost represents, for
+    // whoever actually owns the skill.
+    const owner = HEROES.find((h) => h.skills.includes(sk.key));
+    const regen = owner ? owner.stamina.regen : PLAYER.staminaRegen + 2;
+    const asTurns = Math.floor((sk.stamina ?? 0) / Math.max(1, regen));
+    const got = (sk.windup ?? 0) + (sk.recovery ?? 0) + (owner ? asTurns : 0);
+    if (got < want) {
+      wrong.push(`${sk.key}: costs ${got} turns of commitment, shape asks ${want}`);
+    }
+    // And a weapon skill, which has no owner to price it for, still has to
+    // match exactly - otherwise the rule stops meaning anything for them.
+    if (!owner && (sk.windup ?? 0) + (sk.recovery ?? 0) !== want) {
+      wrong.push(`${sk.key}: windup+recovery ${(sk.windup ?? 0) + (sk.recovery ?? 0)}, rule says ${want}`);
+    }
     // No stacking: recovery replaces the cooldown, it does not sit on top of
     // it. Stamina AND cooldown AND recovery is three taxes for one swing.
     if (want > 0 && (sk.cooldown ?? 0) > 0) wrong.push(`${sk.key}: recovery ${want} AND cooldown ${sk.cooldown}`);
@@ -1108,7 +1128,12 @@ check('every weapon grants two real skills, and every skill has an owner', () =>
       assert(ITEMS.some((i) => i.kind === 'shield'), `${s.key} needs a shield and there are none`);
       continue;
     }
-    assert(owned.has(s.key), `${s.key} is defined but nothing grants it`);
+    // A skill belongs to a weapon or to a person. Skills bind to people now -
+    // see js/data/heroes.js - so "nothing grants it" has to look in both
+    // places or every hero skill reads as orphaned.
+    const heroHas = HEROES.some((h) => h.skills.includes(s.key));
+    assert(owned.has(s.key) || heroHas,
+           `${s.key} is defined but neither a weapon nor a hero grants it`);
   }
   return `${ITEMS.filter((i) => i.kind === 'weapon').length} weapons`;
 });
@@ -2124,6 +2149,57 @@ check('every enemy can be built and fought', () => {
   return `${ENEMIES.length} species x 40 turns`;
 });
 
+check('each hero pays differently, and that is what distinguishes them', () => {
+  // Skills bind to a person now rather than a weapon, and the reason is
+  // measured: twelve weapons produced only NINE distinct shape pairs, `front`
+  // carried nine of twenty-four attacks, and longsword, mace and paired blades
+  // were the same weapon mechanically. The variety was in the numbers.
+  //
+  // So what has to be genuinely distinct is the ECONOMY, not the shapes. It
+  // checks the three engines really are three, in the terms that matter: how
+  // much you can chain, how fast it comes back, and what a dodge costs.
+  const seen = new Set();
+  for (const h of HEROES) {
+    const g = freshGame(`hero-${h.key}`);
+    g.player.hero = h;
+    assert(g.player.staminaMax === h.stamina.max, `${h.key} does not get its own pool`);
+    assert(g.player.staminaRegen === h.stamina.regen, `${h.key} does not get its own recovery`);
+    assert(g.player.rollDistance() === h.roll.distance, `${h.key} does not get its own roll`);
+
+    // Every skill it names exists and is actually reachable as that person.
+    for (const k of h.skills) {
+      assert(SKILL_BY_KEY[k], `${h.key} knows a skill that does not exist: ${k}`);
+      assert(g.player.hasSkill(k), `${h.key} cannot use its own ${k}`);
+    }
+    // Three combat skills, because the button grid has three combat slots.
+    assert(h.skills.length === 3, `${h.key} has ${h.skills.length} skills, the bar holds 3`);
+
+    // The signature: how many turns of standing still one dodge costs you.
+    const turnsPerRoll = (h.roll.cost / h.stamina.regen).toFixed(2);
+    const chain = Math.floor(h.stamina.max / h.roll.cost);
+    seen.add(`${turnsPerRoll}/${chain}`);
+  }
+  assert(seen.size === HEROES.length,
+         `${HEROES.length} heroes share only ${seen.size} economies - they are reskins`);
+  return `${HEROES.length} heroes, ${seen.size} distinct economies`;
+});
+
+check('the wind track adds to who you are, it does not replace it', () => {
+  // The souls track used to assign staminaMax outright from the global
+  // constant, which would have silently erased a hero's whole identity the
+  // first time you spent souls on it - the soulbinder's small deliberate pool
+  // becoming everybody's pool.
+  const g = freshGame('wind-hero');
+  g.player.hero = HERO_BY_KEY.knight;
+  const base = g.player.staminaMax;
+  g.player.staminaBonus = 4;
+  assert(g.player.staminaMax === base + 4, 'growth does not add to the hero');
+  g.player.hero = HERO_BY_KEY.binder;
+  assert(g.player.staminaMax === HERO_BY_KEY.binder.stamina.max + 4,
+         'growth was welded to one hero instead of being carried');
+  return 'growth stacks on the person rather than overwriting them';
+});
+
 check('a shape is the same size whichever way you face', () => {
   // A latent bug, found the moment new shapes were added and measured.
   //
@@ -2173,10 +2249,18 @@ check('every skill can be used in every direction', () => {
   for (const s of SKILLS) {
     const owner = s.always || s.needsShield
       ? null : ITEMS.find((i) => i.primary === s.key || i.secondary === s.key);
-    assert(s.always || s.needsShield || owner, `no weapon grants ${s.key}`);
+    // A skill is reached by equipping the weapon that grants it, or by BEING
+    // the person who has it. Both routes are exercised, which also proves
+    // every weapon can be wielded and every hero can use everything they own.
+    const hero = HEROES.find((h) => h.skills.includes(s.key));
+    assert(s.always || s.needsShield || owner || hero,
+           `nothing grants ${s.key}: no weapon has it and no hero knows it`);
     for (const d of DIRS) {
       const { g } = arena(`skill:${s.key}:${d.key}`, 'husk', 2);
-      if (owner) {
+      if (hero) {
+        g.player.hero = hero;
+        assert(g.player.hasSkill(s.key), `${hero.key} does not have their own ${s.key}`);
+      } else if (owner) {
         g.player.equipItem(SLOT.MAIN, owner.key);
         assert(g.player.hasSkill(s.key), `${owner.key} in the main hand does not grant ${s.key}`);
       }

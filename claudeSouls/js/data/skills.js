@@ -65,6 +65,124 @@ export const SKILLS = [
     needsShield: true,
   },
 
+  // =========================================================================
+  // The roster. Skills belong to a person - see js/data/heroes.js.
+  //
+  // Three new payment rules live here rather than in the code that reads them,
+  // so a skill's whole cost is visible in one place:
+  //
+  //   refund      landing this gives stamina back. The binder's engine.
+  //   bleed       may be paid for in health when stamina runs out.
+  //   disrupt     CANCELS a wind-up rather than delaying it. The existing
+  //               stagger only did `timer++` - the blow still arrived, one
+  //               turn later - and both the knight and the binder want it
+  //               actually gone.
+  // =========================================================================
+
+  // ---- the old knight -----------------------------------------------------
+  {
+    key: 'turnaside',
+    name: 'Turn Aside',
+    hint: '化解一個正在舉手的鄰敵:取消那一擊,把它推開一格,你補上它的位置',
+    // Not a block and not a parry-on-timing. It reads the telegraph and spends
+    // it, which makes the thing the whole game is built on into a resource
+    // rather than only information. Legal on 35% of melee turns, measured.
+    //
+    // It cannot be used on anything that cannot be pushed, so a 2x2 is immune -
+    // the old knight's signature move does nothing to the largest things in
+    // the game, and that is his shape.
+    pattern: 'front',
+    damage: 0,
+    impact: 0,
+    stamina: 5,
+    cooldown: 0,
+    advancesTurn: true,
+    disrupt: { needsPush: true, shove: 1, advance: true, random: true },
+  },
+
+  // ---- the soulbinder -----------------------------------------------------
+  {
+    key: 'siphon',
+    name: 'Siphon',
+    hint: '普通攻擊,但命中會把精力抽回來——她沒有別的回復方式',
+    pattern: 'front',
+    damage: 2,
+    impact: 1,
+    stamina: 2,
+    refund: 5,             // on a hit. Missing feeds you nothing.
+    cooldown: 0,
+    advancesTurn: true,
+  },
+  {
+    key: 'unmake',
+    name: 'Unmake',
+    hint: '前方三格:傷害,而且取消它們正在準備的攻擊、讓它們停一回合',
+    pattern: 'arc3',
+    damage: 3,
+    impact: 2,
+    stamina: 9,
+    bleed: true,
+    cooldown: 0,
+    advancesTurn: true,
+    // No push needed, so unlike Turn Aside this works on anything - the two
+    // characters cancel by different grammar, and hers reaches what his
+    // cannot.
+    disrupt: { needsPush: false, stun: 1 },
+  },
+  {
+    key: 'lance',
+    name: 'Soul Lance',
+    hint: '五格貫穿',
+    pattern: 'line5',
+    damage: 4,
+    impact: 2,
+    stamina: 10,
+    bleed: true,
+    cooldown: 0,
+    advancesTurn: true,
+  },
+
+  // ---- the squire ---------------------------------------------------------
+  {
+    key: 'pierce2',
+    name: 'Level Spear',
+    hint: '長矛前刺兩格',
+    pattern: 'reach2',
+    damage: 3,
+    impact: 2,
+    stamina: 4,
+    cooldown: 0,
+    advancesTurn: true,
+  },
+  {
+    key: 'bannersweep',
+    name: 'Banner Sweep',
+    hint: '揮出去打第二格的三格——貼身的反而打不到',
+    pattern: 'arcfar',
+    damage: 4,
+    impact: 3,
+    stamina: 6,
+    cooldown: 0,
+    recovery: 1,
+    advancesTurn: true,
+  },
+  {
+    key: 'onward',
+    name: 'Onward',
+    hint: '立刻衝出去,而且下一回合只能朝同一個方向再衝一次',
+    // No wind-up: it goes at once. The price is not that it can be interrupted
+    // (it cannot), it is that **you cannot stop** - next turn is spent going
+    // the same way whether or not that is where you want to be. Escaping the
+    // dragon's pyre with it works; escaping into a wall also works.
+    rush: { times: 1, advance: 2 },
+    forced: { times: 1 },
+    damage: 4,
+    impact: 4,
+    stamina: 6,
+    cooldown: 0,
+    advancesTurn: true,
+  },
+
   // ---- sword --------------------------------------------------------------
   {
     key: 'strike',

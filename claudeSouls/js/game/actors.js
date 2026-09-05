@@ -39,9 +39,17 @@ export class Player {
     this.maxDepth = 1;
 
     this.hp = PLAYER.hpMax;
-    this.staminaMax = PLAYER.staminaMax;
+    // Who you are. Null means the old weapon-driven build, which the tests and
+    // the bot still use; a hero overrides the whole stamina economy, because
+    // **how each of them pays is the thing that distinguishes them** far more
+    // than which shapes they swing. See js/data/heroes.js.
+    this.hero = null;
+    // What the wind track has bought. Kept apart from the base so growth adds
+    // to whoever you are rather than overwriting them - the track used to
+    // assign staminaMax outright, which would have quietly erased a hero's
+    // whole identity the first time you spent souls on it.
+    this.staminaBonus = 0;
     this.stamina = this.staminaMax;
-    this.staminaRegen = PLAYER.staminaRegen;
     this.speed = PLAYER.speed;
 
     // Equipment, and the backpack it comes out of.
@@ -77,6 +85,29 @@ export class Player {
     this.bonfire = null;              // {depth, id, x, y} - where death returns you
     this.alive = true;
   }
+
+  /**
+   * The pool, the recovery and the roll, from the person rather than a global.
+   *
+   * These were three constants in skills.js shared by everybody. They cannot
+   * be: one hero has a pool too small to chain anything, one has almost no
+   * recovery and refuels by hitting things, one is slow at all of it and
+   * carries a spell that buys some back. Derived rather than stored, so a save
+   * written before a rebalance cannot contradict the character it names.
+   */
+  get staminaMax() {
+    return (this.hero?.stamina.max ?? PLAYER.staminaMax) + this.staminaBonus;
+  }
+
+  /**
+   * Recovery per turn before armour and combat are taken into account.
+   *
+   * A plain field until heroes arrived, and it has to be derived now for the
+   * same reason as the pool: the soulbinder recovers one a turn where everyone
+   * else recovers five, and that single number is most of what makes her a
+   * different game to play.
+   */
+  get staminaRegen() { return this.hero?.stamina.regen ?? PLAYER.staminaRegen; }
 
   skill(key) { return this.skills.find((s) => s.key === key) ?? null; }
 
@@ -144,6 +175,13 @@ export class Player {
    */
   activeSkills() {
     const out = [];
+    // A hero's verbs come from the hero. The weapon is a carrier for affixes.
+    if (this.hero) {
+      for (const k of this.hero.skills) out.push(k);
+      if (this.shield) out.push('block');
+      for (const s of SKILLS) if (s.always && !out.includes(s.key)) out.push(s.key);
+      return out;
+    }
     for (const k of skillsFrom(this.item(SLOT.MAIN), SLOT.MAIN)) out.push(k);
     for (const k of skillsFrom(this.item(SLOT.OFF), SLOT.OFF)) out.push(k);
     if (this.shield) out.push('block');
@@ -307,7 +345,7 @@ export class Player {
   get loadSurcharge() { return this.encumbered ? 2 : 0; }
 
   rollCost() {
-    return SKILL_BY_KEY.roll.stamina + this.loadSurcharge;
+    return (this.hero?.roll.cost ?? SKILL_BY_KEY.roll.stamina) + this.loadSurcharge;
   }
 
   /**
@@ -338,7 +376,7 @@ export class Player {
    * (The first attempt at that measurement said 100% for around2 as well,
    * because the probe let you escape onto the attacker's own square.)
    */
-  rollDistance() { return SKILL_BY_KEY.roll.dash; }
+  rollDistance() { return this.hero?.roll.distance ?? SKILL_BY_KEY.roll.dash; }
 
   /**
    * Carrying a shield makes every action cost more, whether or not you block.
@@ -395,6 +433,12 @@ export class Player {
     //
     // Measured against the realistic range (kits run 1 to 42): leathers 4,
     // buckler 3, tower shield 2, mail 2, plate 1.
+    if (this.hero) {
+      // A hero's recovery is the hero's, and armour still nudges it - the rags
+      // that give everyone their stamina back give it to her too.
+      const h = Math.max(1, this.hero.stamina.regen + armour);
+      return inCombat ? h : h * 4;
+    }
     const base = Math.max(1, PLAYER.staminaRegen + 2 + armour
                              - Math.floor(Math.max(0, this.weight - this.allowance) / 5));
     return inCombat ? base : base * 4;

@@ -48,7 +48,7 @@ export const TRACKS = [
     hint: '精力上限 +2',
     max: 6,
     cost: (rank) => 40 + rank * 55,
-    apply: (p, rank) => { p.staminaMax = PLAYER.staminaMax + rank * 2; },
+    apply: (p, rank) => { p.staminaBonus = rank * 2; },
   },
   {
     key: 'bearing',
