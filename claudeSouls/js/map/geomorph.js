@@ -51,16 +51,21 @@ function piece(name, rot) {
   const g = rotate(GEOMORPHS[name].art.map((r) => r.split('')), rot);
   const H = g.length, W = g[0].length;
   const cw = W / U, ch = H / U;
+  // `+` is a socket; `^` is the ARROW socket, the one the tile must be
+  // entered by. It rotates with the art like everything else.
   const socks = [];
+  const isSock = (c) => c === '+' || c === '^';
   for (let cx = 0; cx < cw; cx++) {
-    if (g[0][cx * U + 4] === '+') socks.push({ cx, cy: 0, e: 0 });
-    if (g[H - 1][cx * U + 4] === '+') socks.push({ cx, cy: ch - 1, e: 2 });
+    const t = g[0][cx * U + 4], b = g[H - 1][cx * U + 4];
+    if (isSock(t)) socks.push({ cx, cy: 0, e: 0, arrow: t === '^' });
+    if (isSock(b)) socks.push({ cx, cy: ch - 1, e: 2, arrow: b === '^' });
   }
   for (let cy = 0; cy < ch; cy++) {
-    if (g[cy * U + 4][W - 1] === '+') socks.push({ cx: cw - 1, cy, e: 1 });
-    if (g[cy * U + 4][0] === '+') socks.push({ cx: 0, cy, e: 3 });
+    const r = g[cy * U + 4][W - 1], l = g[cy * U + 4][0];
+    if (isSock(r)) socks.push({ cx: cw - 1, cy, e: 1, arrow: r === '^' });
+    if (isSock(l)) socks.push({ cx: 0, cy, e: 3, arrow: l === '^' });
   }
-  return { name, g, cw, ch, socks };
+  return { name, g, cw, ch, socks, arrow: socks.some((s) => s.arrow), rot: ((rot % 4) + 4) % 4 };
 }
 
 // The two characters a socket occupies, in piece-local coordinates.
@@ -231,11 +236,21 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     return true;
   };
 
+  // A special that was drawn and has not fitted yet. Half the floors start
+  // with one already on top of the deck, and that is for the span: its banks
+  // need a neighbour to the north and to the south, so on a three-row grid it
+  // can only ever sit in the middle row, and with an arrow it has one
+  // rotation per approach. It fits while the middle row is still empty and
+  // hardly ever after - measured at 1.7% of eligible floors when it was only
+  // ever rolled for mid-growth, 7% once a miss kept it pending, and the rest
+  // of the way here. The per-socket roll below still adds a second one.
+  let pendingSpecial = (specialNames.length && rng.rn2(2) === 0) ? pick(specialNames) : null;
   while (frontier.length || (filledCells() < MIN_FILL && (reopen() || unstick()))) {
     if (!frontier.length) continue;
     const { pl, s } = frontier.splice(rng.rn2(frontier.length), 1)[0];
     const sc = socketCells(s);
-    if (pl.p.g[sc[0][1]][sc[0][0]] !== '+') continue;            // resolved already
+    const mark = pl.p.g[sc[0][1]][sc[0][0]];
+    if (mark !== '+' && mark !== '^') continue;                  // resolved already
     const wx = pl.ox + s.cx + DX[s.e], wy = pl.oy + s.cy + DY[s.e];
 
     if (!inBounds(wx, wy)) { trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> off map`); wallAt(pl, s); stats.deadEnds++; continue; }
@@ -262,6 +277,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
         const p = piece(name, rot);
         for (const q of p.socks) {
           if (q.e !== opp(s.e)) continue;
+          // A tile with an arrow is entered by the arrow, full stop. The
+          // rotations where some other socket faces back are not placements.
+          if (p.arrow && !q.arrow) continue;
           const ox = wx - q.cx, oy = wy - q.cy;
           if (canPlace(p, ox, oy)) out.push({ p, ox, oy, q });
         }
@@ -291,11 +309,24 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     // special could not be placed, which killed two good sockets on one floor
     // because the die had said "span" twice, and that floor starved at three
     // pieces.
+    // A special that did not fit stays on top of the stack and is tried at
+    // the next socket, while the pile supplies this one - what a card that
+    // does not fit does in the board game. It matters more than it sounds: a
+    // tile with an arrow has exactly one rotation per approach, and the span
+    // also needs a 2x1 footprint with all four ends connectable, so rolling
+    // the die afresh on every miss took it from common to 1.7% of the floors
+    // deep enough for it.
     let name = null, options = [];
-    if (specialNames.length && stats.specials < maxSpecials && rng.rn2(4) === 0) {
-      name = pick(specialNames);
-      options = optionsFor(name);
-      trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) special ${name}: ${options.length} placements`);
+    if (pendingSpecial) {
+      options = optionsFor(pendingSpecial);
+      if (options.length) { name = pendingSpecial; pendingSpecial = null; }
+      trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) pending ${name ?? pendingSpecial}: ${options.length} placements`);
+    }
+    if (!name && specialNames.length && stats.specials < maxSpecials && rng.rn2(4) === 0) {
+      const drawn = pick(specialNames);
+      options = optionsFor(drawn);
+      if (options.length) name = drawn; else pendingSpecial = drawn;
+      trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) special ${drawn}: ${options.length} placements`);
     }
     if (!options.length) {
       const pool = stats.pieces < 5 ? weighted.filter((n) => n !== 'nook') : weighted;
@@ -308,6 +339,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     trace?.(`   placed ${name} at ${chosen.ox},${chosen.oy}`);
 
     const placed = place(chosen.p, chosen.ox, chosen.oy);
+    // Which socket it was entered by - recorded, so the arrow rule can be
+    // checked against what actually happened rather than inferred later.
+    placed.entry = chosen.q;
     if (GEOMORPHS[name].special) stats.specials++;
     openAt(pl, s); doorAt(placed, chosen.q);
     for (const q of placed.p.socks) if (q !== chosen.q) frontier.push({ pl: placed, s: q });
@@ -356,6 +390,15 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     setCells(a.p, socketCells({ cx: wx - a.ox, cy: wy - a.oy, e }), ch);
     setCells(b.p, socketCells({ cx: wx + DX[e] - b.ox, cy: wy + DY[e] - b.oy, e: opp(e) }), ch);
   };
+  // Is the door between these two cells somebody's arrow? Closing it would
+  // leave that tile entered from somewhere else, which is the one thing an
+  // arrow says may not happen.
+  const isArrowDoor = (wx, wy, e) => {
+    const a = pieces[cells[wy][wx]], b = pieces[cells[wy + DY[e]][wx + DX[e]]];
+    const sa = a.p.socks.find((q) => q.cx === wx - a.ox && q.cy === wy - a.oy && q.e === e);
+    const sb = b.p.socks.find((q) => q.cx === wx + DX[e] - b.ox && q.cy === wy + DY[e] - b.oy && q.e === opp(e));
+    return !!(sa?.arrow || sb?.arrow);
+  };
   const MAX_RUN = 3;
   for (const [axisE, major, minor] of [[1, cols, rows], [2, rows, cols]]) {
     for (let m = 0; m < minor; m++) {
@@ -368,16 +411,22 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
         if (continues) { run.push([wx, wy]); continue; }
         let ids = [...new Set(run.map(([x, y]) => cells[y][x]))];
         while (ids.length > MAX_RUN) {
+          // The door nearest the middle that is not an arrow's door.
           const mid = Math.floor(ids.length / 2);
-          const k = run.findIndex(([x, y], j) => cells[y][x] === ids[mid - 1] &&
-                                                  run[j + 1] && cells[run[j + 1][1]][run[j + 1][0]] === ids[mid]);
+          let k = -1;
+          for (const m of [mid, mid - 1, mid + 1, mid - 2, mid + 2]) {
+            if (m < 1 || m >= ids.length) continue;
+            const kk = run.findIndex(([x, y], j) => cells[y][x] === ids[m - 1] &&
+                                                     run[j + 1] && cells[run[j + 1][1]][run[j + 1][0]] === ids[m]);
+            if (kk >= 0 && !isArrowDoor(run[kk][0], run[kk][1], axisE)) { k = kk; break; }
+          }
           if (k < 0) break;
           const [cx, cy] = run[k];
           const before = reachCount();
           setDoor(cx, cy, axisE, '#');
           if (reachCount() < before) { setDoor(cx, cy, axisE, '.'); break; }
           stats.runsBroken++;
-          ids = ids.slice(0, mid);
+          ids = ids.slice(0, ids.findIndex((id) => id === cells[cy][cx]) + 1);
         }
         run = [];
       }
@@ -615,7 +664,8 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     const spec = GEOMORPHS[pl.p.name];
     const room = {
       x: pl.ox * U + 1, y: pl.oy * U + 1, w: pl.p.cw * U - 2, h: pl.p.ch * U - 2,
-      id: lvl.rooms.length, type: 'ordinary', lit: true, tile: pl.p.name,
+      id: lvl.rooms.length, type: 'ordinary', lit: true, tile: pl.p.name, rot: pl.p.rot,
+      entry: pl.entry ? { e: pl.entry.e, cx: pl.entry.cx, cy: pl.entry.cy, arrow: !!pl.entry.arrow } : null,
     };
     lvl.rooms.push(room);
     const anchors = {};
@@ -623,7 +673,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       for (let x = 0; x < pl.p.g[0].length; x++) {
         const wx = pl.ox * U + x, wy = pl.oy * U + y;
         let ch = pl.p.g[y][x];
-        if (ch === '+') ch = '#';
+        if (ch === '+' || ch === '^') ch = '#';
         if (/[a-z]/.test(ch)) {
           const a = spec.anchors?.[ch];
           const name = typeof a === 'string' ? a : a?.name;

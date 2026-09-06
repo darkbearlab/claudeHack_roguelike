@@ -12,6 +12,7 @@ import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
 import { Level } from '../js/map/level.js';
+import * as geomorphsModule from '../js/data/geomorphs.js';
 import { T, isWalkable, isChest, isCorpse, flyable, tileName } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
@@ -3753,6 +3754,65 @@ check('a doorway is one door, two leaves wide, on the side you enter - or nothin
   lvl.openDoor(pair.x, pair.y);
   assert(lvl.at(pair.x + 1, pair.y) === T.DOOR_OPEN, 'the other leaf stayed shut');
   return `${doubles} double doors, ${arches} archways, ${singles} single leaves, none two thick; leaves open together`;
+});
+
+check('a tile with an arrow is only ever entered by it', () => {
+  // The board game's marked entrance. The span wants one: entered from the
+  // west end you arrive on the bridge with the head at the far end; entered
+  // from a bank the same drawing is a stroll behind two archers. So a tile
+  // may mark one socket `^^`, and the assembler refuses every rotation in
+  // which any other socket would be the one facing back.
+  //
+  // Checked against the assembler's own record of which socket each tile
+  // was placed through (`room.entry`). A first version only checked that the
+  // arrow socket was not walled over, and that passed with the rule disabled:
+  // a span entered from a bank has its arrow connected LATER, as an exit, and
+  // "not walled" cannot tell the two apart.
+  const { validateTile, GEOMORPHS } = geomorphsModule;
+  // 1. the rules the drawing has to obey
+  const two = { art: ['####^^####', '#........#', '#........#', '#........#', '^........#', '^........#', '#........#', '#........#', '#........#', '##########'] };
+  assert(validateTile('two', two).some((m) => /arrow sockets/.test(m)), 'two arrows were allowed');
+  const half = { art: ['####^+####', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '##########'] };
+  assert(validateTile('half', half).some((m) => /one cell wide/.test(m)), 'a one-cell arrow was allowed');
+  const onFixed = { fixed: true, art: ['####^^####', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '##########'] };
+  assert(validateTile('onFixed', onFixed).some((m) => /fixed piece/.test(m)), 'an arrow on a fixed piece was allowed');
+  assert(validateTile('span', GEOMORPHS.span).length === 0, `the span does not validate: ${validateTile('span', GEOMORPHS.span)}`);
+
+  // 2. the floors honour it
+  const arrowed = new Set(Object.keys(GEOMORPHS).filter((n) => GEOMORPHS[n].art.some((r) => r.includes('^'))));
+  assert(arrowed.size >= 1, 'no tile in the catalogue has an arrow - nothing to test');
+  let seen = 0, wrong = [];
+  for (let sd = 0; sd < 12; sd++) for (let d = 1; d < DUNGEON_DEPTH; d++) {
+    const lvl = generateLevel(d, new RNG(`arrow:${sd}:${d}`));
+    for (const room of lvl.rooms) {
+      if (!arrowed.has(room.tile)) continue;
+      seen++;
+      if (!room.entry) { wrong.push(`${room.tile} at ${room.x},${room.y}: no record of how it was entered`); continue; }
+      if (!room.entry.arrow) wrong.push(`${room.tile} at ${room.x},${room.y}: entered by socket e${room.entry.e}, not its arrow`);
+      // The assembler records the rotation it used on the room, so the arrow
+      // can be found exactly. (A first version inferred the rotation by
+      // matching walls, which is ambiguous for art symmetric under 180
+      // degrees - the span is - and reported the far end as a walled arrow.)
+      const x0 = room.x - 1, y0 = room.y - 1, w = room.w + 2, h = room.h + 2;
+      let matched = GEOMORPHS[room.tile].art.map((r) => r.split(''));
+      for (let t = 0; t < (room.rot ?? 0); t++) {
+        const H = matched.length, W = matched[0].length;
+        const o = Array.from({ length: W }, () => Array(H).fill(' '));
+        for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) o[xx][H - 1 - yy] = matched[yy][xx];
+        matched = o;
+      }
+      assert(matched.length === h && matched[0].length === w, `${room.tile}: rotated art is ${matched[0].length}x${matched.length}, room ring is ${w}x${h}`);
+      // the arrow cells, in world space, must not be wall
+      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+        if (matched[yy][xx] !== '^') continue;
+        const t = lvl.at(x0 + xx, y0 + yy);
+        if (t === T.WALL) wrong.push(`${room.tile} at ${room.x},${room.y}: its arrow was walled over - it was entered elsewhere`);
+      }
+    }
+  }
+  assert(seen > 0, 'no arrowed tile was placed on 108 floors');
+  assert(wrong.length === 0, `${wrong.length} of ${seen}: ${wrong.slice(0, 3).join('; ')}`);
+  return `${seen} arrowed tiles placed, every one entered by its arrow`;
 });
 
 check('nobody stands where somebody else already is', () => {

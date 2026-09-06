@@ -58,7 +58,8 @@
   </div>
   <div class="palette" id="palette"></div>
   <div class="row hint">
-    點/拖曳 = 畫(手機也一樣);要擦掉就用「牆」筆刷。點邊界的接口位置(每邊第 4–5 格)自動放兩格 <code>+</code>。
+    點/拖曳 = 畫(手機也一樣);要擦掉就用「牆」筆刷。點邊界的接口位置(每邊第 4–5 格)自動放兩格 <code>+</code>;
+    用「箭頭」筆刷點同一個位置就是入口 <code>^^</code>,一張只能有一個,沒有箭頭的板塊哪一邊都能進。
     鍵盤 <kbd>1</kbd>–<kbd>9</kbd> 切換筆刷。
   </div>
   <canvas id="grid"></canvas>
@@ -118,6 +119,7 @@ const BRUSHES = [
   { ch: '=', name: '橋',     tile: T.BRIDGE },
   { ch: 'D', name: '單葉門', tile: T.DOOR_CLOSED },
   { ch: '+', name: '接口',   tile: null, colour: '#ff9a3c' },
+  { ch: '^', name: '箭頭(入口)', tile: null, colour: '#8fd18a' },
   { ch: '<', name: '上樓梯', tile: T.STAIRS_UP },
   { ch: '*', name: '篝火',   tile: T.BONFIRE },
   { ch: 'a', name: '錨點字母', tile: null, colour: '#7fb7ff', letter: true },
@@ -168,7 +170,7 @@ function drawCell(c, x, y, cell, ch) {
   c.strokeStyle = '#0006'; c.lineWidth = 1;
   c.strokeRect(x * cell + 0.5, y * cell + 0.5, cell - 1, cell - 1);
   if (ch !== '#' && ch !== '.') {
-    c.fillStyle = ch === '+' ? '#1a1208' : '#f4eee2';
+    c.fillStyle = (ch === '+' || ch === '^') ? '#1a1208' : '#f4eee2';
     c.font = `${Math.floor(cell * 0.6)}px ui-monospace, monospace`;
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(ch, x * cell + cell / 2, y * cell + cell / 2 + 1);
@@ -231,15 +233,19 @@ function paint(x, y, ch) {
   if (edge) {
     // Only wall or a socket may sit on the border; a socket is placed as a pair.
     const pair = socketAt(x, y);
-    if (ch === '+' && pair) { for (const [px, py] of pair) art[py][px] = '+'; }
-    else if (ch === '#' || ch === '+') {
+    const isSock = (c) => c === '+' || c === '^';
+    if ((ch === '+' || ch === '^') && pair) {
+      // One arrow per tile: painting a new one demotes the old one to a plain socket.
+      if (ch === '^') for (const row of art) for (let i = 0; i < row.length; i++) if (row[i] === '^') row[i] = '+';
+      for (const [px, py] of pair) art[py][px] = ch;
+    } else if (ch === '#' || isSock(ch)) {
       // erasing a socket erases the pair
-      if (pair && art[y][x] === '+') for (const [px, py] of pair) art[py][px] = '#';
+      if (pair && isSock(art[y][x])) for (const [px, py] of pair) art[py][px] = '#';
       else art[y][x] = '#';
     }
     return;
   }
-  art[y][x] = ch === '+' ? '.' : ch;   // a socket only makes sense on the border
+  art[y][x] = (ch === '+' || ch === '^') ? '.' : ch;   // a socket only makes sense on the border
 }
 let down = false, erasing = false;
 const cellFrom = (ev) => {

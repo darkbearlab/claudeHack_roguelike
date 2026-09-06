@@ -9,6 +9,12 @@
 //     20x10 is two, 20x20 is four.
 //   - Anchors for a situation are lowercase letters, mapped to names in the
 //     tile's `anchors` table. The letter is floor (or whatever `tile` says).
+//   - A socket drawn `^^` instead of `++` is the ARROW: the board game's
+//     marked entrance. A tile with an arrow can only be placed with the arrow
+//     facing the tile it is placed from, so it is always entered there; its
+//     other sockets are exits. A tile without one may be entered by any
+//     socket. Most tiles want none. The span wants one, because entering it
+//     from the far bank puts you behind the archers instead of under them.
 //
 // Why tiles at all: see docs/DESIGN.md, "the map is assembled from tiles".
 // Short version - the rooms-and-corridors generator produced geometry, and
@@ -20,7 +26,7 @@
 //
 // Legend:  # wall   . floor   I pillar   % rubble   O pit   ~ chasm
 //          (terrain glyphs are never lowercase letters - those are anchors)
-//          = bridge  < stairs up  * bonfire   D door   + socket   a-z anchor
+//          = bridge  < stairs up  * bonfire   D door   + socket   ^ arrow socket   a-z anchor
 
 export const GEOMORPHS = {
   // ==== the random pile ====================================================
@@ -239,6 +245,9 @@ export const GEOMORPHS = {
   // bank nothing can reach is not a bank, it is a wall you can see over, and
   // the whole point of the situation is that the far side is somewhere the
   // archers stand and you can eventually get to.
+  // `^` on the west end: you arrive ON the bridge, and the head - where the
+  // blocker stands - is at the far end. Placed the other way round the same
+  // drawing is a walk along a bank behind two archers, which is not a span.
   span: { special: 'gauntlet', allEnds: true,
           anchors: { s: { name: 'span', tile: 'BRIDGE' }, h: { name: 'head', tile: 'BRIDGE' }, d: 'ledge' },
           art: [
@@ -246,8 +255,8 @@ export const GEOMORPHS = {
     '#dddddddddddddddddd#',
     '#dddddddddddddddddd#',
     '#~~~~~~~~~~~~~~~~~~#',
-    '+sssssssssssssssssh+',
-    '+sssssssssssssssssh+',
+    '^sssssssssssssssssh+',
+    '^sssssssssssssssssh+',
     '#~~~~~~~~~~~~~~~~~~#',
     '#dddddddddddddddddd#',
     '#dddddddddddddddddd#',
@@ -316,11 +325,12 @@ export function validateTile(name, t) {
   if (!h || !w) { bad.push(`${name}: empty`); return bad; }
   if (h % 10 || w % 10) bad.push(`${name}: ${w}x${h} is not a multiple of 10`);
   if (art.some((r) => r.length !== w)) bad.push(`${name}: ragged rows`);
-  let sockets = 0;
+  let sockets = 0, arrows = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const c = art[y][x];
-    if (c === '+') {
+    if (c === '+' || c === '^') {
       sockets++;
+      if (c === '^') arrows++;
       const onEdge = x === 0 || y === 0 || x === w - 1 || y === h - 1;
       const at = (x === 0 || x === w - 1) ? y % 10 : x % 10;
       if (!onEdge || (at !== 4 && at !== 5)) bad.push(`${name}: socket at ${x},${y} is not at 4-5 of an edge`);
@@ -328,23 +338,27 @@ export function validateTile(name, t) {
         // its partner cell must be a socket too
         const px = (x === 0 || x === w - 1) ? x : (at === 4 ? x + 1 : x - 1);
         const py = (x === 0 || x === w - 1) ? (at === 4 ? y + 1 : y - 1) : y;
-        if (art[py]?.[px] !== '+') bad.push(`${name}: socket at ${x},${y} is one cell wide - both 4 and 5 must be +`);
+        if (art[py]?.[px] !== c) bad.push(`${name}: socket at ${x},${y} is one cell wide - both 4 and 5 must be ${c}`);
       }
     } else if (/[a-z]/.test(c) && !t.anchors?.[c]) {
       bad.push(`${name}: anchor letter '${c}' has no name`);
-    } else if (!/[#.I%O~=<>*D+ ]/.test(c) && !/[a-z]/.test(c)) {
+    } else if (!/[#.I%O~=<>*D+^ ]/.test(c) && !/[a-z]/.test(c)) {
       bad.push(`${name}: unknown character '${c}' at ${x},${y}`);
     }
   }
   if (!sockets && !t.fixed) bad.push(`${name}: no sockets - nothing could ever be placed next to it`);
+  // Two cells make one arrow socket; more than that is two entrances, and a
+  // tile with two entrances has none.
+  if (arrows > 2) bad.push(`${name}: ${arrows / 2} arrow sockets - a tile has one entrance or none`);
+  if (arrows && t.fixed) bad.push(`${name}: an arrow on a fixed piece - fixed pieces are placed by hand and are not entered`);
   // every edge cell that is not a socket must be wall, or the tile leaks
   for (let x = 0; x < w; x++) for (const y of [0, h - 1]) {
     const c = art[y][x];
-    if (c !== '#' && c !== '+') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
+    if (c !== '#' && c !== '+' && c !== '^') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
   }
   for (let y = 1; y < h - 1; y++) for (const x of [0, w - 1]) {
     const c = art[y][x];
-    if (c !== '#' && c !== '+') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
+    if (c !== '#' && c !== '+' && c !== '^') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
   }
   return bad;
 }
