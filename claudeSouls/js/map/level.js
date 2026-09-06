@@ -55,6 +55,14 @@ export class Level {
     this.name = null;
   }
 
+  /** Back to an empty map, for a generator that wants another go. */
+  reset() {
+    this.tiles.fill(0); this.lit.fill(0); this.seen.fill(0); this.visible.fill(0);
+    this.rooms = []; this.enemies = []; this.projectiles = []; this.bonfires = [];
+    this.claims = new Map(); this.npcs = []; this.chambers = [];
+    this.upStair = null; this.downStair = null; this.store = null; this._idx = null;
+  }
+
   idx(x, y) { return y * this.w + x; }
   inBounds(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
 
@@ -353,6 +361,23 @@ export class Level {
       }
     }
     return spots.length ? rng.pick(spots) : null;
+  }
+
+  /**
+   * Open a door - and its other leaf.
+   *
+   * A doorway on an assembled floor is one door two tiles wide, drawn as one
+   * piece. Opening one leaf and leaving the other shut would look like the
+   * door had been sawn in half, so the closed door beside this one opens
+   * with it. A single-leaf door (the slot) has no partner and behaves as it
+   * always did.
+   */
+  openDoor(x, y) {
+    if (this.at(x, y) !== T.DOOR_CLOSED) return;
+    this.set(x, y, T.DOOR_OPEN);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (this.at(x + dx, y + dy) === T.DOOR_CLOSED) { this.set(x + dx, y + dy, T.DOOR_OPEN); break; }
+    }
   }
 
   describeTile(x, y) { return TILE[this.at(x, y)].name; }

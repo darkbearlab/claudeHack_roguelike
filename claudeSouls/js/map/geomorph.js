@@ -115,11 +115,16 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     setCells(pl.p, socketCells(s), '#');
     pl.p.socks = pl.p.socks.filter((q) => q !== s);
   };
-  // A connected socket is a DOOR, two leaves wide, not a gap. Doors are what
-  // make a lit room something you cannot see into until you are at it, and
-  // they are the thing the double-door rules (rolling through, the diagonal
-  // rule) were written for.
-  const openAt = (pl, s) => setCells(pl.p, socketCells(s), 'D');
+  // A connection is two socket rows, one on each tile. The DOOR goes on the
+  // tile you ENTER - the side the board game's arrow points at - and the
+  // other side is plain floor, so a doorway is one row of two leaves rather
+  // than four leaves in a clump. And some of the time there is no door at
+  // all: an open archway, which is the difference between a floor of rooms
+  // and a floor of cells. `openAt` is the open side, `doorAt` the door side.
+  const openAt = (pl, s) => setCells(pl.p, socketCells(s), '.');
+  const doorAt = (pl, s) => setCells(pl.p, socketCells(s), rng.rn2(4) === 0 ? '.' : 'D');
+  // Either side of a connection reads as one, whichever character it got.
+  const isOpening = (c) => c === 'D' || c === '.';
 
   const frontier = [];
   const pushSockets = (pl) => { for (const s of pl.p.socks) frontier.push({ pl, s }); };
@@ -217,9 +222,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       const bs = { cx: tx - there.ox, cy: ty - there.oy, e: opp(q.e) };
       const back = socketAt(tx, ty, opp(q.e));
       const bc = socketCells(bs);
-      if (back) { openAt(np, q); openAt(back.pl, back.s); }
-      else if (there.p.g[bc[0][1]][bc[0][0]] === 'D') openAt(np, q);        // was connected to the old piece
-      else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); setCells(there.p, socketCells(bs), 'D'); }
+      if (back) { openAt(np, q); doorAt(back.pl, back.s); }
+      else if (isOpening(there.p.g[bc[0][1]][bc[0][0]]) && isFloorAt(there.p, behindCells(bs))) openAt(np, q);   // was connected to the old piece
+      else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); doorAt(there, bs); }
       else wallAt(np, q);
     }
     stats.unstuck = (stats.unstuck ?? 0) + 1;
@@ -237,14 +242,14 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
 
     if (cells[wy][wx] != null) {
       const back = socketAt(wx, wy, opp(s.e));
-      if (back) { openAt(pl, s); openAt(back.pl, back.s); stats.loops++; continue; }
+      if (back) { openAt(pl, s); doorAt(back.pl, back.s); stats.loops++; continue; }
       const there = pieces[cells[wy][wx]];
       const bs = { cx: wx - there.ox, cy: wy - there.oy, e: opp(s.e) };
       // A piece that needs every socket connected always cuts through if it
       // can; anything else, some of the time.
       const must = GEOMORPHS[pl.p.name].allEnds || GEOMORPHS[there.p.name].fixed;
       if (isFloorAt(there.p, behindCells(bs)) && (must || rng.rn2(10) < 4)) {
-        openAt(pl, s); setCells(there.p, socketCells(bs), 'D');
+        openAt(pl, s); doorAt(there, bs);
         stats.loops++; stats.cut++;
       } else { wallAt(pl, s); stats.deadEnds++; }
       continue;
@@ -304,7 +309,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
 
     const placed = place(chosen.p, chosen.ox, chosen.oy);
     if (GEOMORPHS[name].special) stats.specials++;
-    openAt(pl, s); openAt(placed, chosen.q);
+    openAt(pl, s); doorAt(placed, chosen.q);
     for (const q of placed.p.socks) if (q !== chosen.q) frontier.push({ pl: placed, s: q });
   }
 
@@ -312,8 +317,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   const doorOpen = (wx, wy, e) => {
     const id = cells[wy]?.[wx]; if (id == null) return false;
     const pl = pieces[id];
-    const sc = socketCells({ cx: wx - pl.ox, cy: wy - pl.oy, e });
-    return pl.p.g[sc[0][1]][sc[0][0]] === 'D';
+    const sq = { cx: wx - pl.ox, cy: wy - pl.oy, e };
+    const sc = socketCells(sq);
+    return isOpening(pl.p.g[sc[0][1]][sc[0][0]]) && isFloorAt(pl.p, behindCells(sq));
   };
   for (let wy = 0; wy < rows; wy++) for (let wx = 0; wx < cols; wx++) {
     const id = cells[wy][wx]; if (id == null) continue;
@@ -325,7 +331,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       const a = pieces[id], b = pieces[nid];
       const sa = { cx: wx - a.ox, cy: wy - a.oy, e }, sb = { cx: nx - b.ox, cy: ny - b.oy, e: opp(e) };
       if (isFloorAt(a.p, behindCells(sa)) && isFloorAt(b.p, behindCells(sb)) && rng.rn2(10) < 3) {
-        setCells(a.p, socketCells(sa), 'D'); setCells(b.p, socketCells(sb), 'D');
+        openAt(a, sa); doorAt(b, sb);
         stats.loops++; stats.cut++;
       }
     }
@@ -369,7 +375,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
           const [cx, cy] = run[k];
           const before = reachCount();
           setDoor(cx, cy, axisE, '#');
-          if (reachCount() < before) { setDoor(cx, cy, axisE, 'D'); break; }
+          if (reachCount() < before) { setDoor(cx, cy, axisE, '.'); break; }
           stats.runsBroken++;
           ids = ids.slice(0, mid);
         }
@@ -446,7 +452,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       }
       if (cands.length) {
         const { a, sa, b, sb } = pick(cands);
-        setCells(a.p, socketCells(sa), 'D'); setCells(b.p, socketCells(sb), 'D');
+        openAt(a, sa); doorAt(b, sb);
         stats.loops++; stats.cut++; stats.rejoined = (stats.rejoined ?? 0) + 1;
         continue;
       }
@@ -481,21 +487,29 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
           }
           return false;
         };
+        // ON THE BOUNDARY, and nowhere else. The first version swapped any
+        // unreached piece that could be swapped, which on one floor was
+        // twenty pieces deep inside the unreached cluster - each swap joined
+        // it to other unreached pieces and never to the reached side, and
+        // then 640 tiles were buried. A swap can only help where the two
+        // regions touch: an unreached piece with a reached neighbour, or the
+        // reached neighbour itself.
         const unreachedPieces = pieces.filter((pl) => !reachedPiece(pl));
         let target = null;
         for (const up of unreachedPieces) {
-          if (swappable(up)) { target = up; break; }
+          let reachedNb = null;
           // Every cell of the piece, not just its top-left: a 2x2 hall has
-          // twelve neighbours, and the first version looked at four.
-          for (let cy = 0; cy < up.p.ch && !target; cy++) for (let cx = 0; cx < up.p.cw && !target; cx++) {
-            for (let e = 0; e < 4 && !target; e++) {
+          // twelve neighbours.
+          for (let cy = 0; cy < up.p.ch && !reachedNb; cy++) for (let cx = 0; cx < up.p.cw && !reachedNb; cx++) {
+            for (let e = 0; e < 4 && !reachedNb; e++) {
               const nid = cells[up.oy + cy + DY[e]]?.[up.ox + cx + DX[e]];
               if (nid == null || nid === up.id) continue;
-              const nb = pieces[nid];
-              if (swappable(nb) && reachedPiece(nb)) target = nb;
+              if (reachedPiece(pieces[nid])) reachedNb = pieces[nid];
             }
           }
-          if (target) break;
+          if (!reachedNb) continue;                    // not on the boundary
+          if (swappable(up)) { target = up; break; }
+          if (swappable(reachedNb)) { target = reachedNb; break; }
         }
         if (!target) break;
         const np = { id: target.id, p: piece('cross', 0), ox: target.ox, oy: target.oy };
@@ -506,13 +520,13 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
           const there = pieces[cells[ty][tx]];
           const bs = { cx: tx - there.ox, cy: ty - there.oy, e: opp(q.e) };
           const back = socketAt(tx, ty, opp(q.e));
-          if (back) { openAt(np, q); openAt(back.pl, back.s); }
-          else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); setCells(there.p, socketCells(bs), 'D'); }
+          if (back) { openAt(np, q); doorAt(back.pl, back.s); }
+          else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); doorAt(there, bs); }
           else {
-            // The neighbour may already have an open door on this edge (it
-            // was connected to the piece we just replaced). Keep it.
+            // The neighbour may already have an opening on this edge (it was
+            // connected to the piece we just replaced). Keep it.
             const bc = socketCells(bs);
-            if (there.p.g[bc[0][1]][bc[0][0]] === 'D') openAt(np, q); else wallAt(np, q);
+            if (isOpening(there.p.g[bc[0][1]][bc[0][0]]) && isFloorAt(there.p, behindCells(bs))) openAt(np, q); else wallAt(np, q);
           }
         }
         stats.swapped = (stats.swapped ?? 0) + 1;
@@ -535,7 +549,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
         if (!opts.length) continue;
         const ch = pick(opts);
         const np = place(ch.p, ch.ox, ch.oy);
-        setCells(pl.p, socketCells(sq), 'D'); openAt(np, ch.q);
+        openAt(pl, sq); doorAt(np, ch.q);
         // resolve its other sockets now
         for (const q of np.p.socks) {
           if (q === ch.q) continue;
@@ -546,8 +560,8 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
           const back = socketAt(tx, ty, opp(q.e));
           const there = pieces[tid];
           const bs = { cx: tx - there.ox, cy: ty - there.oy, e: opp(q.e) };
-          if (back) { openAt(np, q); openAt(back.pl, back.s); stats.loops++; }
-          else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); setCells(there.p, socketCells(bs), 'D'); stats.loops++; stats.cut++; }
+          if (back) { openAt(np, q); doorAt(back.pl, back.s); stats.loops++; }
+          else if (isFloorAt(there.p, behindCells(bs))) { openAt(np, q); doorAt(there, bs); stats.loops++; stats.cut++; }
           else wallAt(np, q);
         }
         stats.grown = (stats.grown ?? 0) + 1;

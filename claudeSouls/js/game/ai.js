@@ -526,7 +526,7 @@ function tryStep(game, e, nx, ny) {
   const t = lvl.at(nx, ny);
   if (t === T.DOOR_CLOSED) {
     if (!e.spec.opensDoors) return false;
-    lvl.set(nx, ny, T.DOOR_OPEN);
+    lvl.openDoor(nx, ny);
     e.face(nx - e.x, ny - e.y);
     return true;                       // opening the door spends the move
   }

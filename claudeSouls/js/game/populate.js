@@ -39,14 +39,20 @@ export function populate(game, lvl, rng) {
   // Grows slowly. Doubling the count is not how this game gets harder.
   const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
 
-  const place = (key) => {
+  const place = (key, relax = false) => {
     // Shares nothing. A situation's composition IS the situation - letting the
     // ordinary fill top it up turned a colonnade of two archers and one
     // blocker into a room with six things in it, which is not a decision, it
     // is a crowd - and the same is true of the fire, the stair and the store.
     // Naming no shares is the whole rule, in one word.
-    const spot = lvl.randomFreeSpot(rng, {
-      roomsOnly: true, awayFrom: lvl.upStair, minDist: 7 });
+    //
+    // `relax`: the two guarantees at the bottom of populate must not fail
+    // quietly. If there is no spot seven tiles from the stair, one nearer
+    // will do; a floor with nothing slow on it is worse than a slow thing a
+    // little close to where you arrive.
+    const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 7 })
+             ?? (relax ? lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 3 }) : null)
+             ?? (relax ? lvl.randomFreeSpot(rng, { roomsOnly: true }) : null);
     if (!spot) return 0;
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
@@ -65,8 +71,8 @@ export function populate(game, lvl, rng) {
   // running past stops being a decision and the walk back from a bonfire is
   // just a punishment. An earlier version nudged the choice at one particular
   // index, which a group spawn could step straight over.
-  if (!lvl.enemies.some((e) => e.spec.speed < 12)) place('husk');
-  if (!lvl.enemies.some((e) => e.spec.speed >= 12)) place('hound');
+  if (!lvl.enemies.some((e) => e.spec.speed < 12)) place('husk', true);
+  if (!lvl.enemies.some((e) => e.spec.speed >= 12)) place('hound', true);
 }
 
 /**
@@ -465,9 +471,10 @@ const pickFrom = (table, depth, rng) => {
 export function placeElite(game, lvl, rng, depth) {
   if (depth < 3 || depth >= DUNGEON_DEPTH) return 0;
 
-  const spot = lvl.randomFreeSpot(rng, {
-    roomsOnly: true, awayFrom: lvl.upStair, minDist: 10,
-  });
+  // Far from the stair if it can be, nearer if it must: "one elite a floor"
+  // is a promise, and a floor with no room ten tiles out is still a floor.
+  const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 10 })
+            ?? lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 5 });
   if (!spot) return 0;
 
   const key = pickFrom(ELITES, depth, rng);

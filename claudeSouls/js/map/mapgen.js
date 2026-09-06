@@ -23,7 +23,17 @@ export function generateLevel(depth, rng) {
   // with the stairs, the arrival fire and any situations already in place and
   // their rooms claimed, so the steps that follow are the ones that were
   // always about the finished floor rather than about digging it.
-  assemble(lvl, rng, { depth, boss: depth === DUNGEON_DEPTH });
+  // Up to three attempts. The assembler guarantees every walkable tile is
+  // reachable, and the way it keeps that promise as a last resort is to wall
+  // over what it could not join. A little of that is fine - a dead pocket
+  // behind a bend. A lot of it is a stump of a floor, and a stump is a
+  // generation failure, not a level. Rebuilding from the same stream keeps
+  // the result a function of the seed.
+  for (let attempt = 0; ; attempt++) {
+    const stats = assemble(lvl, rng, { depth, boss: depth === DUNGEON_DEPTH });
+    if ((stats.buried ?? 0) <= 40 || attempt >= 2) { if (attempt) lvl.geomorph.attempts = attempt + 1; break; }
+    lvl.reset();
+  }
   placeExtraFire(lvl, rng);
   placeStoreroom(lvl, rng, depth);
   // Last, against the FINISHED floor. She picks the most open tile she can

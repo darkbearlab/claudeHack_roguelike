@@ -610,7 +610,7 @@ export class Game {
       return false;
     }
     const t = lvl.at(nx, ny);
-    if (t === T.DOOR_CLOSED) { lvl.set(nx, ny, T.DOOR_OPEN); this.msg('You open the door.'); return true; }
+    if (t === T.DOOR_CLOSED) { lvl.openDoor(nx, ny); this.msg('You open the door.'); return true; }
     if (!lvl.passable(nx, ny)) { this.msg(`${capitalise(tileName(t))} blocks the way.`); return false; }
 
     p.x = nx; p.y = ny;

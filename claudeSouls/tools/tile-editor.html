@@ -1,0 +1,413 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>板塊編輯器 · claudeSouls</title>
+<style>
+  :root { color-scheme: dark; --bg:#141216; --panel:#1e1b21; --line:#3a353d; --fg:#e6dfd2; --dim:#9a9187; --ember:#ff9a3c; }
+  body { margin:0; background:var(--bg); color:var(--fg); font: 14px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+  header { padding: 10px 14px; border-bottom: 1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
+  header b { color: var(--ember); font-size: 16px; }
+  header small { color: var(--dim); }
+  main { display:grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr); gap: 14px; padding: 14px; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border:1px solid var(--line); border-radius: 8px; padding: 12px; }
+  h2 { margin: 0 0 8px; font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin: 6px 0; }
+  label { color: var(--dim); }
+  input, select, button, textarea { font: inherit; color: var(--fg); background: #17151a; border:1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 40px; }
+  #importBox { display:none; margin-top: 8px; }
+  #importBox.on { display:block; }
+  #importBox textarea { min-height: 140px; }
+  input[type=text] { width: 12ch; }
+  button { cursor:pointer; }
+  button.on { border-color: var(--ember); background:#2a2320; }
+  button.big { background: var(--ember); color:#1a1208; font-weight: 700; border: none; padding: 8px 14px; }
+  canvas { display:block; image-rendering: pixelated; touch-action: none; border:1px solid var(--line); border-radius: 6px; max-width: 100%; }
+  .palette { display:grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .palette button { display:flex; gap:8px; align-items:center; text-align:left; padding: 8px; min-height: 44px; }
+  .swatch { width: 18px; height: 18px; border-radius: 4px; border:1px solid #0008; display:inline-block; flex: none; }
+  .rots { display:flex; gap: 8px; margin-top: 8px; }
+  .rots canvas { border-color:#2a262c; }
+  textarea { width: 100%; min-height: 220px; resize: vertical; white-space: pre; tab-size: 2; }
+  .problems { color: #ff7a6a; white-space: pre-wrap; }
+  .ok { color: #8fd18a; }
+  .anchors { display:grid; grid-template-columns: auto auto auto auto; gap: 6px 10px; align-items:center; }
+  .hint { color: var(--dim); font-size: 12.5px; }
+  kbd { background:#2a262c; border:1px solid var(--line); border-radius:4px; padding: 0 5px; }
+</style>
+
+<header>
+  <b>板塊編輯器</b>
+  <small>畫一張,複製右邊的程式碼貼給 Claude,就是新增一張板塊。規則和遊戲同一份(<code>validateTile</code>)。</small>
+</header>
+
+<main>
+<section>
+  <h2>畫布</h2>
+  <div class="row">
+    <label>尺寸</label>
+    <select id="size">
+      <option value="10x10">10×10(一格)</option>
+      <option value="20x10">20×10(橫兩格)</option>
+      <option value="10x20">10×20(直兩格)</option>
+      <option value="20x20">20×20(四格)</option>
+    </select>
+    <label>載入</label>
+    <select id="load"><option value="">(新的)</option></select>
+    <button id="clear">清空成牆</button>
+  </div>
+  <div class="palette" id="palette"></div>
+  <div class="row hint">
+    點/拖曳 = 畫(手機也一樣);要擦掉就用「牆」筆刷。點邊界的接口位置(每邊第 4–5 格)自動放兩格 <code>+</code>。
+    鍵盤 <kbd>1</kbd>–<kbd>9</kbd> 切換筆刷。
+  </div>
+  <canvas id="grid"></canvas>
+  <div class="rots" id="rots"></div>
+  <div class="hint">四個朝向。接口在每邊 4–5 格,所以任何朝向都對得上別的板塊。</div>
+</section>
+
+<section>
+  <h2>板塊資料</h2>
+  <div class="row">
+    <label>名字</label><input type="text" id="name" value="newTile" spellcheck="false">
+    <label>種類</label>
+    <select id="kind">
+      <option value="pile">隨機堆</option>
+      <option value="special">特殊(情境)</option>
+      <option value="fixed">固定(手動擺放)</option>
+    </select>
+    <span id="kindExtra"></span>
+  </div>
+  <div class="row">
+    <label>錨點</label>
+    <span class="hint">小寫字母 → 名字。字母本身是地板(或指定地形)。</span>
+  </div>
+  <div class="anchors" id="anchors"></div>
+  <div class="row"><button id="addAnchor">+ 錨點</button></div>
+
+  <h2 style="margin-top:14px">檢查</h2>
+  <div id="problems" class="ok">還沒畫。</div>
+
+  <h2 style="margin-top:14px">輸出(貼給 Claude)</h2>
+  <div class="row">
+    <button class="big" id="copy">複製</button>
+    <button id="import">從 ASCII 匯入…</button>
+    <span id="copied" class="ok"></span>
+  </div>
+  <div id="importBox">
+    <textarea id="importText" spellcheck="false" placeholder="貼上 ASCII:一行一列。直接貼整段 art: [ '...', ] 也可以。"></textarea>
+    <div class="row"><button class="big" id="importGo">匯入</button><button id="importCancel">取消</button></div>
+  </div>
+  <textarea id="out" spellcheck="false"></textarea>
+</section>
+</main>
+
+<script type="module">
+import { T, TILE } from '../js/map/tiles.js';
+import { GEOMORPHS, validateTile } from '../js/data/geomorphs.js';
+import { CHAMBERS } from '../js/data/chambers.js';
+
+// ---- the brushes: exactly the characters the assembler understands --------
+const BRUSHES = [
+  { ch: '#', name: '牆',     tile: T.WALL },
+  { ch: '.', name: '地板',   tile: T.FLOOR },
+  { ch: 'I', name: '柱子',   tile: T.PILLAR },
+  { ch: '%', name: '碎石',   tile: T.RUBBLE },
+  { ch: 'O', name: '坑',     tile: T.PIT },
+  { ch: '~', name: '深淵',   tile: T.CHASM },
+  { ch: '=', name: '橋',     tile: T.BRIDGE },
+  { ch: 'D', name: '單葉門', tile: T.DOOR_CLOSED },
+  { ch: '+', name: '接口',   tile: null, colour: '#ff9a3c' },
+  { ch: '<', name: '上樓梯', tile: T.STAIRS_UP },
+  { ch: '*', name: '篝火',   tile: T.BONFIRE },
+  { ch: 'a', name: '錨點字母', tile: null, colour: '#7fb7ff', letter: true },
+];
+const colourOf = (ch, anchors) => {
+  const b = BRUSHES.find((b) => b.ch === ch);
+  if (b?.tile != null) return TILE[b.tile].colour;
+  if (b?.colour) return b.colour;
+  if (/[a-z]/.test(ch)) {
+    const a = anchors[ch];
+    const t = typeof a === 'object' && a?.tile ? T[a.tile] : T.FLOOR;
+    return TILE[t]?.colour ?? '#7fb7ff';
+  }
+  return '#ff00ff';
+};
+
+// ---- state ------------------------------------------------------------------
+let W = 10, H = 10;
+let art = [];                 // array of arrays of chars
+let brush = '.';
+let letter = 'a';
+let anchors = {};             // letter -> name | {name, tile}
+let kind = 'pile';
+let weight = 2, special = CHAMBERS[0]?.key ?? '', bothEnds = false;
+
+const $ = (id) => document.getElementById(id);
+const grid = $('grid'), ctx = grid.getContext('2d');
+let CELL = 28;
+
+function blank() {
+  art = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) =>
+    (x === 0 || y === 0 || x === W - 1 || y === H - 1) ? '#' : '.'));
+}
+function setSize(w, h) { W = w; H = h; blank(); layout(); redraw(); }
+
+function layout() {
+  // As big as the screen allows, up to 28px; on a 375px phone a 10-wide tile
+  // gets ~32px cells and a 20-wide one ~16px, both usable with a finger.
+  const avail = Math.min(window.innerWidth, 560) - 44;
+  CELL = Math.max(14, Math.min(32, Math.floor(avail / W)));
+  grid.width = W * CELL; grid.height = H * CELL;
+}
+
+// ---- drawing ---------------------------------------------------------------
+function drawCell(c, x, y, cell, ch) {
+  c.fillStyle = colourOf(ch, anchors);
+  c.fillRect(x * cell, y * cell, cell, cell);
+  c.strokeStyle = '#0006'; c.lineWidth = 1;
+  c.strokeRect(x * cell + 0.5, y * cell + 0.5, cell - 1, cell - 1);
+  if (ch !== '#' && ch !== '.') {
+    c.fillStyle = ch === '+' ? '#1a1208' : '#f4eee2';
+    c.font = `${Math.floor(cell * 0.6)}px ui-monospace, monospace`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(ch, x * cell + cell / 2, y * cell + cell / 2 + 1);
+  }
+  // socket lanes: faint marks at 4-5 of every edge so you can see where they go
+}
+function redraw() {
+  ctx.clearRect(0, 0, grid.width, grid.height);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) drawCell(ctx, x, y, CELL, art[y][x]);
+  // socket guides
+  ctx.strokeStyle = '#ff9a3c66'; ctx.lineWidth = 2;
+  for (let cx = 0; cx < W / 10; cx++) {
+    ctx.strokeRect((cx * 10 + 4) * CELL + 1, 1, 2 * CELL - 2, CELL - 2);
+    ctx.strokeRect((cx * 10 + 4) * CELL + 1, (H - 1) * CELL + 1, 2 * CELL - 2, CELL - 2);
+  }
+  for (let cy = 0; cy < H / 10; cy++) {
+    ctx.strokeRect(1, (cy * 10 + 4) * CELL + 1, CELL - 2, 2 * CELL - 2);
+    ctx.strokeRect((W - 1) * CELL + 1, (cy * 10 + 4) * CELL + 1, CELL - 2, 2 * CELL - 2);
+  }
+  drawRotations();
+  emit();
+}
+function rotate(g, times) {
+  let out = g.map((r) => [...r]);
+  for (let t = 0; t < times; t++) {
+    const h = out.length, w = out[0].length;
+    const n = Array.from({ length: w }, () => Array(h).fill(' '));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) n[x][h - 1 - y] = out[y][x];
+    out = n;
+  }
+  return out;
+}
+function drawRotations() {
+  const box = $('rots'); box.innerHTML = '';
+  for (let r = 0; r < 4; r++) {
+    const g = rotate(art, r);
+    const cv = document.createElement('canvas');
+    const cell = 5;
+    cv.width = g[0].length * cell; cv.height = g.length * cell;
+    const c = cv.getContext('2d');
+    for (let y = 0; y < g.length; y++) for (let x = 0; x < g[0].length; x++) {
+      c.fillStyle = colourOf(g[y][x], anchors); c.fillRect(x * cell, y * cell, cell, cell);
+    }
+    cv.title = `旋轉 ${r * 90}°`;
+    box.appendChild(cv);
+  }
+}
+
+// ---- painting ---------------------------------------------------------------
+function socketAt(x, y) {
+  // Is (x,y) on an edge at index 4-5 of its 10-segment? Return the pair.
+  const onV = x === 0 || x === W - 1, onH = y === 0 || y === H - 1;
+  if (!onV && !onH) return null;
+  if (onV) { const a = y % 10; if (a === 4) return [[x, y], [x, y + 1]]; if (a === 5) return [[x, y - 1], [x, y]]; return null; }
+  const a = x % 10; if (a === 4) return [[x, y], [x + 1, y]]; if (a === 5) return [[x - 1, y], [x, y]]; return null;
+}
+function paint(x, y, ch) {
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+  if (edge) {
+    // Only wall or a socket may sit on the border; a socket is placed as a pair.
+    const pair = socketAt(x, y);
+    if (ch === '+' && pair) { for (const [px, py] of pair) art[py][px] = '+'; }
+    else if (ch === '#' || ch === '+') {
+      // erasing a socket erases the pair
+      if (pair && art[y][x] === '+') for (const [px, py] of pair) art[py][px] = '#';
+      else art[y][x] = '#';
+    }
+    return;
+  }
+  art[y][x] = ch === '+' ? '.' : ch;   // a socket only makes sense on the border
+}
+let down = false, erasing = false;
+const cellFrom = (ev) => {
+  const r = grid.getBoundingClientRect();
+  const sx = grid.width / r.width, sy = grid.height / r.height;
+  return [Math.floor((ev.clientX - r.left) * sx / CELL), Math.floor((ev.clientY - r.top) * sy / CELL)];
+};
+grid.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); down = true; erasing = ev.button === 2;
+  // Capture, so a finger or pen that drifts off the canvas mid-stroke keeps
+  // painting instead of the stroke ending where the finger left the element.
+  try { grid.setPointerCapture(ev.pointerId); } catch {}
+  const [x, y] = cellFrom(ev); paint(x, y, erasing ? '#' : (brush === 'a' ? letter : brush)); redraw();
+});
+grid.addEventListener('pointermove', (ev) => {
+  if (!down) return; ev.preventDefault();
+  const [x, y] = cellFrom(ev); paint(x, y, erasing ? '#' : (brush === 'a' ? letter : brush)); redraw();
+});
+const lift = () => { down = false; };
+grid.addEventListener('pointerup', lift); grid.addEventListener('pointercancel', lift); window.addEventListener('pointerup', lift);
+grid.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+// ---- palette ---------------------------------------------------------------
+function buildPalette() {
+  const p = $('palette'); p.innerHTML = '';
+  BRUSHES.forEach((b, i) => {
+    const btn = document.createElement('button');
+    btn.innerHTML = `<span class="swatch" style="background:${b.tile != null ? TILE[b.tile].colour : b.colour}"></span>` +
+                    `<span><b>${b.letter ? letter : b.ch}</b> ${b.name}${i < 9 ? ` <small style="color:#9a9187">${i + 1}</small>` : ''}</span>`;
+    btn.className = brush === b.ch ? 'on' : '';
+    btn.addEventListener('click', () => {
+      if (b.letter) {
+        const l = prompt('哪個字母?(a–z,要先在錨點表登記)', letter);
+        if (l && /^[a-z]$/.test(l)) letter = l;
+      }
+      brush = b.ch; buildPalette();
+    });
+    p.appendChild(btn);
+  });
+}
+window.addEventListener('keydown', (ev) => {
+  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
+  const n = parseInt(ev.key, 10);
+  if (n >= 1 && n <= BRUSHES.length) { brush = BRUSHES[n - 1].ch; buildPalette(); }
+});
+
+// ---- anchors ---------------------------------------------------------------
+function buildAnchors() {
+  const box = $('anchors'); box.innerHTML = '';
+  for (const [l, a] of Object.entries(anchors)) {
+    const name = typeof a === 'string' ? a : a.name;
+    const tile = typeof a === 'object' ? (a.tile ?? '') : '';
+    box.insertAdjacentHTML('beforeend', `
+      <b>${l}</b>
+      <input type="text" data-l="${l}" data-k="name" value="${name}" placeholder="名字(lane / ledge…)" spellcheck="false">
+      <select data-l="${l}" data-k="tile">
+        <option value="">地板</option>
+        <option value="BRIDGE" ${tile === 'BRIDGE' ? 'selected' : ''}>橋</option>
+        <option value="RUBBLE" ${tile === 'RUBBLE' ? 'selected' : ''}>碎石</option>
+      </select>
+      <button data-l="${l}" data-k="del">×</button>`);
+  }
+  box.querySelectorAll('[data-k=name]').forEach((el) => el.addEventListener('input', () => { setAnchor(el.dataset.l, el.value, currentTile(el.dataset.l)); }));
+  box.querySelectorAll('[data-k=tile]').forEach((el) => el.addEventListener('change', () => { setAnchor(el.dataset.l, currentName(el.dataset.l), el.value); }));
+  box.querySelectorAll('[data-k=del]').forEach((el) => el.addEventListener('click', () => { delete anchors[el.dataset.l]; buildAnchors(); redraw(); }));
+}
+const currentName = (l) => typeof anchors[l] === 'string' ? anchors[l] : anchors[l]?.name ?? '';
+const currentTile = (l) => typeof anchors[l] === 'object' ? anchors[l]?.tile ?? '' : '';
+function setAnchor(l, name, tile) { anchors[l] = tile ? { name, tile } : name; redraw(); }
+$('addAnchor').addEventListener('click', () => {
+  const used = Object.keys(anchors);
+  const next = 'abcdefghijklmnopqrstuvwxyz'.split('').find((c) => !used.includes(c));
+  if (!next) return;
+  anchors[next] = ''; letter = next; buildAnchors(); redraw();
+});
+
+// ---- kind ------------------------------------------------------------------
+function buildKind() {
+  const box = $('kindExtra');
+  if (kind === 'pile') box.innerHTML = `<label>權重</label> <input type="number" id="weight" value="${weight}" min="1" max="9" style="width:5ch">`;
+  else if (kind === 'special') box.innerHTML = `<label>情境</label> <select id="special">${CHAMBERS.map((c) => `<option value="${c.key}" ${c.key === special ? 'selected' : ''}>${c.key} — ${c.name}</option>`).join('')}</select>
+    <label><input type="checkbox" id="allEnds" ${bothEnds ? 'checked' : ''}> 所有接口都得接上</label>`;
+  else box.innerHTML = `<span class="hint">固定板塊由 geomorph.js 手動擺放(入口、龍廳)。</span>`;
+  $('weight')?.addEventListener('input', (e) => { weight = +e.target.value || 1; emit(); });
+  $('special')?.addEventListener('change', (e) => { special = e.target.value; emit(); });
+  $('allEnds')?.addEventListener('change', (e) => { bothEnds = e.target.checked; emit(); });
+}
+$('kind').addEventListener('change', (e) => { kind = e.target.value; buildKind(); emit(); });
+$('name').addEventListener('input', emit);
+
+// ---- output ----------------------------------------------------------------
+function tileObject() {
+  const t = { art: art.map((r) => r.join('')) };
+  if (kind === 'pile') t.weight = weight;
+  if (kind === 'special') { t.special = special; if (bothEnds) t.allEnds = true; }
+  if (kind === 'fixed') t.fixed = true;
+  const used = new Set(art.flat().filter((c) => /[a-z]/.test(c)));
+  const an = {};
+  for (const l of used) if (anchors[l]) an[l] = anchors[l];
+  if (Object.keys(an).length) t.anchors = an;
+  return t;
+}
+function emit() {
+  const name = ($('name').value || 'newTile').replace(/[^A-Za-z0-9_]/g, '');
+  const t = tileObject();
+  const probs = validateTile(name, t);
+  // a letter that is drawn but has no name is already caught by validateTile;
+  // a name that is empty is not
+  for (const [l, a] of Object.entries(t.anchors ?? {})) {
+    const nm = typeof a === 'string' ? a : a.name;
+    if (!nm) probs.push(`${name}: anchor '${l}' has no name`);
+  }
+  const pb = $('problems');
+  pb.textContent = probs.length ? probs.join('\n') : '沒有問題。可以貼。';
+  pb.className = probs.length ? 'problems' : 'ok';
+
+  const head = [];
+  if (t.weight != null) head.push(`weight: ${t.weight}`);
+  if (t.special) head.push(`special: '${t.special}'`);
+  if (t.allEnds) head.push('allEnds: true');
+  if (t.fixed) head.push('fixed: true');
+  if (t.anchors) {
+    const parts = Object.entries(t.anchors).map(([l, a]) =>
+      typeof a === 'string' ? `${l}: '${a}'` : `${l}: { name: '${a.name}', tile: '${a.tile}' }`);
+    head.push(`anchors: { ${parts.join(', ')} }`);
+  }
+  const rows = t.art.map((r) => `    '${r}',`).join('\n');
+  $('out').value = `  ${name}: { ${head.join(', ')}${head.length ? ',' : ''} art: [\n${rows}\n  ]},`;
+}
+$('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('out').value); $('copied').textContent = '已複製'; }
+  catch { $('out').select(); document.execCommand('copy'); $('copied').textContent = '已複製(選取)'; }
+  setTimeout(() => { $('copied').textContent = ''; }, 1500);
+});
+// An inline box rather than prompt(): on a phone prompt() is one line, and
+// pasting ten rows into it loses every newline.
+$('import').addEventListener('click', () => { $('importBox').classList.toggle('on'); $('importText').focus(); });
+$('importCancel').addEventListener('click', () => $('importBox').classList.remove('on'));
+$('importGo').addEventListener('click', () => {
+  const txt = $('importText').value;
+  if (!txt.trim()) return;
+  const rows = [...txt.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const lines = rows.length ? rows : txt.split('\n').map((l) => l.trim()).filter(Boolean);
+  const w = Math.max(...lines.map((l) => l.length)), h = lines.length;
+  if (w % 10 || h % 10) { alert(`${w}x${h} 不是 10 的倍數`); return; }
+  W = w; H = h; art = lines.map((l) => l.padEnd(w, '#').split(''));
+  $('size').value = `${W}x${H}`; $('importBox').classList.remove('on'); layout(); redraw();
+});
+
+// ---- load an existing tile ---------------------------------------------
+function buildLoad() {
+  const sel = $('load');
+  for (const name of Object.keys(GEOMORPHS)) sel.insertAdjacentHTML('beforeend', `<option value="${name}">${name}</option>`);
+  sel.addEventListener('change', () => {
+    const t = GEOMORPHS[sel.value]; if (!t) return;
+    W = t.art[0].length; H = t.art.length;
+    art = t.art.map((r) => r.split(''));
+    anchors = JSON.parse(JSON.stringify(t.anchors ?? {}));
+    kind = t.special ? 'special' : t.fixed ? 'fixed' : 'pile';
+    weight = t.weight ?? 2; special = t.special ?? special; bothEnds = !!t.allEnds;
+    $('name').value = sel.value; $('kind').value = kind; $('size').value = `${W}x${H}`;
+    buildKind(); buildAnchors(); layout(); redraw();
+  });
+}
+$('size').addEventListener('change', (e) => { const [w, h] = e.target.value.split('x').map(Number); setSize(w, h); });
+$('clear').addEventListener('click', () => { blank(); redraw(); });
+window.addEventListener('resize', () => { layout(); redraw(); });
+
+buildPalette(); buildKind(); buildAnchors(); buildLoad();
+setSize(10, 10);
+</script>

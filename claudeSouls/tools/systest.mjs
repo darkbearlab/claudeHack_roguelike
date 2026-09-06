@@ -291,13 +291,16 @@ check('enemies arrive in packs whose threatened ground overlaps', () => {
   // budget, so head count stays where it was.
   // Packs come out of the floor's budget; the one elite per floor does not, on
   // purpose - it is an addition, not a reshuffle.
-  // Twenty, not seventeen. Seventeen was the ceiling for a floor with at most
-  // one situation on it; assembled floors carry up to two, and each casts as
-  // many as four, all of which count against the ordinary budget but not
-  // against each other. Measured over 180 floors: median 11, one floor at 19,
-  // and that one had two situations. This guard is about packs inflating the
-  // count, and packs did not - the situations did, on purpose.
-  assert(worst <= 20, `a floor held ${worst} enemies; packs are inflating the count`);
+  // The cap is what populate's own arithmetic permits, not a number that gets
+  // nudged every time something else changes (it was 17, then 20, and each
+  // time the reason was something other than packs). At the deepest ordinary
+  // floor: want = 4 + 7 + 2 = 13, and staged situation casts count against
+  // it; plus two storeroom guards, one elite, the slow/fast guarantee (a hound
+  // brings a group of up to 3), and a pack may overrun `want` by its size
+  // minus one. 13 + 2 + 1 + 4 + 2 = 22. A floor above that has something
+  // being counted twice, which is what this test is for.
+  const CAP = (4 + Math.floor((DUNGEON_DEPTH - 1) * 0.8) + 2) + 2 + 1 + 4 + 2;
+  assert(worst <= CAP, `a floor held ${worst} enemies (cap ${CAP}); packs are inflating the count`);
   return `${clustered}/${floors} floors, at most ${worst} enemies on one`;
 });
 
@@ -3702,6 +3705,54 @@ check('every person has art and a way to be drawn', () => {
     }
   }
   return `${NPCS.length} people, ${faces} portraits, all present`;
+});
+
+check('a doorway is one door, two leaves wide, on the side you enter - or nothing', () => {
+  // Reported: doors came four leaves in a clump, because both sides of a
+  // connection were written as doors and a door is two wide. Now the door is
+  // on the tile you enter (the board game's arrow side), the other side is
+  // floor, and a quarter of doorways are open archways.
+  let doorTiles = 0, doubles = 0, singles = 0, thick = 0, arches = 0, floors = 0;
+  for (let s = 0; s < 8; s++) for (let d = 1; d < DUNGEON_DEPTH; d++) {
+    const lvl = generateLevel(d, new RNG(`door:${s}:${d}`));
+    floors++;
+    const isD = (x, y) => lvl.at(x, y) === T.DOOR_CLOSED;
+    for (let y = 0; y < lvl.h; y++) for (let x = 0; x < lvl.w; x++) {
+      if (!isD(x, y)) continue;
+      doorTiles++;
+      const h = isD(x + 1, y), v = isD(x, y + 1);
+      if (h || v) doubles++;
+      else if (!isD(x - 1, y) && !isD(x, y - 1)) singles++;
+      // A door with a door across the tile boundary from it is two thick.
+      if (h && (isD(x, y - 1) || isD(x, y + 1))) thick++;
+      if (v && (isD(x - 1, y) || isD(x + 1, y))) thick++;
+    }
+    // Archways: a socket position that is floor on both sides of a boundary.
+    for (let cy = 0; cy < 3; cy++) for (let cx = 0; cx < 6; cx++) {
+      const x = cx * 10 + 4, y = cy * 10 + 9;
+      if (cy < 2 && lvl.at(x, y) === T.FLOOR && lvl.at(x, y + 1) === T.FLOOR && lvl.at(x - 1, y) === T.WALL) arches++;
+      const x2 = cx * 10 + 9, y2 = cy * 10 + 4;
+      if (cx < 5 && lvl.at(x2, y2) === T.FLOOR && lvl.at(x2 + 1, y2) === T.FLOOR && lvl.at(x2, y2 - 1) === T.WALL) arches++;
+    }
+  }
+  assert(thick === 0, `${thick} doors are two tiles thick`);
+  assert(doubles > floors * 5, `only ${doubles} double doors on ${floors} floors`);
+  assert(arches > floors, `only ${arches} open archways on ${floors} floors - the archway roll is not happening`);
+  assert(singles > 0, 'no single-leaf doors at all - the slot tile has lost its door, and the diagonal rule its control');
+
+  // And one door is one door: open a leaf, its partner opens with it.
+  const g = new Game(null);
+  g.ui = new QuietUI();
+  g.newGame({ seed: 'leaf', name: 'A', hero: 'knight' });
+  const lvl = g.level;
+  let pair = null;
+  for (let y = 0; y < lvl.h && !pair; y++) for (let x = 0; x < lvl.w && !pair; x++) {
+    if (lvl.at(x, y) === T.DOOR_CLOSED && lvl.at(x + 1, y) === T.DOOR_CLOSED) pair = { x, y };
+  }
+  assert(pair, 'no double door on floor one to try');
+  lvl.openDoor(pair.x, pair.y);
+  assert(lvl.at(pair.x + 1, pair.y) === T.DOOR_OPEN, 'the other leaf stayed shut');
+  return `${doubles} double doors, ${arches} archways, ${singles} single leaves, none two thick; leaves open together`;
 });
 
 check('nobody stands where somebody else already is', () => {

@@ -68,7 +68,7 @@ export const GEOMORPHS = {
 
   // A short single-file stretch. Narrow places are tactics - a corridor is a
   // real answer to a pack of hounds - and the only rule is that they must be
-  // SHORT: three tiles here, never more than MAX_STRAIT anywhere.
+  // SHORT: four tiles here, which is MAX_STRAIT exactly and never more.
   squeeze: { weight: 4, art: [
     '####++####',
     '###....###',
@@ -76,7 +76,7 @@ export const GEOMORPHS = {
     '####.#####',
     '####.#####',
     '####.#####',
-    '###....###',
+    '####.#####',
     '###....###',
     '###....###',
     '####++####',
@@ -90,7 +90,7 @@ export const GEOMORPHS = {
   // game's corner-cutting rule refuses that - so the tile was passable to the
   // test's walker and a wall to the player. Nothing narrow may depend on a
   // diagonal.
-  pinch: { weight: 3, art: [
+  pinch: { weight: 4, art: [
     '####++####',
     '####..####',
     '####.I####',
@@ -303,23 +303,55 @@ export const GEOMORPHS = {
   ]},
 };
 
+/**
+ * Everything wrong with one tile's drawing, as a list of sentences.
+ *
+ * Shared with the tile editor (tools/tile-editor.html), so what the editor
+ * refuses and what the game refuses are the same rules by construction.
+ */
+export function validateTile(name, t) {
+  const bad = [];
+  const art = t?.art ?? [];
+  const h = art.length, w = art[0]?.length ?? 0;
+  if (!h || !w) { bad.push(`${name}: empty`); return bad; }
+  if (h % 10 || w % 10) bad.push(`${name}: ${w}x${h} is not a multiple of 10`);
+  if (art.some((r) => r.length !== w)) bad.push(`${name}: ragged rows`);
+  let sockets = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const c = art[y][x];
+    if (c === '+') {
+      sockets++;
+      const onEdge = x === 0 || y === 0 || x === w - 1 || y === h - 1;
+      const at = (x === 0 || x === w - 1) ? y % 10 : x % 10;
+      if (!onEdge || (at !== 4 && at !== 5)) bad.push(`${name}: socket at ${x},${y} is not at 4-5 of an edge`);
+      else {
+        // its partner cell must be a socket too
+        const px = (x === 0 || x === w - 1) ? x : (at === 4 ? x + 1 : x - 1);
+        const py = (x === 0 || x === w - 1) ? (at === 4 ? y + 1 : y - 1) : y;
+        if (art[py]?.[px] !== '+') bad.push(`${name}: socket at ${x},${y} is one cell wide - both 4 and 5 must be +`);
+      }
+    } else if (/[a-z]/.test(c) && !t.anchors?.[c]) {
+      bad.push(`${name}: anchor letter '${c}' has no name`);
+    } else if (!/[#.I%O~=<>*D+ ]/.test(c) && !/[a-z]/.test(c)) {
+      bad.push(`${name}: unknown character '${c}' at ${x},${y}`);
+    }
+  }
+  if (!sockets && !t.fixed) bad.push(`${name}: no sockets - nothing could ever be placed next to it`);
+  // every edge cell that is not a socket must be wall, or the tile leaks
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) {
+    const c = art[y][x];
+    if (c !== '#' && c !== '+') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
+  }
+  for (let y = 1; y < h - 1; y++) for (const x of [0, w - 1]) {
+    const c = art[y][x];
+    if (c !== '#' && c !== '+') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
+  }
+  return bad;
+}
+
 /** Every tile's art is the right shape, or the loader says which one is not. */
 export function validateGeomorphs() {
   const bad = [];
-  for (const [name, t] of Object.entries(GEOMORPHS)) {
-    const h = t.art.length, w = t.art[0]?.length ?? 0;
-    if (h % 10 || w % 10) bad.push(`${name}: ${w}x${h} is not a multiple of 10`);
-    if (t.art.some((r) => r.length !== w)) bad.push(`${name}: ragged rows`);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const c = t.art[y][x];
-      if (c === '+') {
-        const onEdge = x === 0 || y === 0 || x === w - 1 || y === h - 1;
-        const at = (x === 0 || x === w - 1) ? y % 10 : x % 10;
-        if (!onEdge || (at !== 4 && at !== 5)) bad.push(`${name}: socket at ${x},${y} is not at 4-5 of an edge`);
-      } else if (/[a-z]/.test(c) && !t.anchors?.[c]) {
-        bad.push(`${name}: anchor letter '${c}' has no name`);
-      }
-    }
-  }
+  for (const [name, t] of Object.entries(GEOMORPHS)) bad.push(...validateTile(name, t));
   return bad;
 }

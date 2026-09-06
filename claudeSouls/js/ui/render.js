@@ -340,7 +340,7 @@ export class Renderer {
         break;
     }
 
-    if (isDoor(t)) this.drawDoor(ctx, t, px, py, cell, dim);
+    if (isDoor(t)) this.drawDoor(ctx, t, px, py, cell, dim, x, y);
     else if (t === T.STAIRS_DOWN) this.feature(ctx, 'feat_stairs_down', '>', '#e8e2d0', px, py, cell, dim);
     else if (t === T.STAIRS_UP) this.feature(ctx, 'feat_stairs_up', '<', '#e8e2d0', px, py, cell, dim);
     else if (isBonfire(t)) this.drawBonfire(ctx, px, py, cell, dim);
@@ -361,18 +361,50 @@ export class Renderer {
     }
   }
 
-  drawDoor(ctx, t, px, py, cell, dim) {
+  drawDoor(ctx, t, px, py, cell, dim, x, y) {
+    // Two leaves are one door. A closed door with a closed door beside it
+    // is one leaf of a double door, and the pair is drawn as one piece: the
+    // single-leaf art once, and once mirrored, so the hinges sit on the
+    // outside and the handles meet in the middle. It is the door art that
+    // was already in the game - a wide one squashed into the generator's
+    // portrait frame read worse than the mirror does.
+    const lvl = this.game.level;
+    const closed = (tx, ty) => lvl?.at(tx, ty) === T.DOOR_CLOSED;
+    const open = (tx, ty) => lvl?.at(tx, ty) === T.DOOR_OPEN;
     if (t === T.DOOR_CLOSED) {
       const img = this.sprite('feat_door');
-      if (img) this.blit(ctx, img, px, py, cell, dim, 1, 0);
-      else {
+      if (!img) {
         ctx.fillStyle = rgb(140, 96, 48, dim);
         ctx.fillRect(px + cell * 0.08, py + cell * 0.08, cell * 0.84, cell * 0.84);
+        return;
       }
+      let flipX = false, flipY = false, angle = 0;
+      if (closed(x + 1, y) || closed(x - 1, y)) flipX = closed(x - 1, y);          // horizontal pair
+      else if (closed(x, y + 1) || closed(x, y - 1)) { angle = Math.PI / 2; flipY = closed(x, y - 1); }
+      const r = Math.min(cell / img.width, cell / img.height);
+      const w = img.width * r, h = img.height * r;
+      ctx.save();
+      ctx.globalAlpha = dim;
+      ctx.imageSmoothingEnabled = cell > 44;
+      ctx.translate(px + cell / 2, py + cell / 2);
+      if (angle) ctx.rotate(angle);
+      ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
     } else {
+      // Open: the frame's posts. On a pair only the outer post of each leaf,
+      // so the opening reads as one wide gap.
       ctx.fillStyle = rgb(116, 82, 42, dim);
-      ctx.fillRect(px, py, cell * 0.16, cell);
-      ctx.fillRect(px + cell * 0.84, py, cell * 0.16, cell);
+      if (open(x + 1, y) || open(x - 1, y)) {
+        if (!open(x - 1, y)) ctx.fillRect(px, py, cell * 0.16, cell);
+        if (!open(x + 1, y)) ctx.fillRect(px + cell * 0.84, py, cell * 0.16, cell);
+      } else if (open(x, y + 1) || open(x, y - 1)) {
+        if (!open(x, y - 1)) ctx.fillRect(px, py, cell, cell * 0.16);
+        if (!open(x, y + 1)) ctx.fillRect(px, py + cell * 0.84, cell, cell * 0.16);
+      } else {
+        ctx.fillRect(px, py, cell * 0.16, cell);
+        ctx.fillRect(px + cell * 0.84, py, cell * 0.16, cell);
+      }
     }
   }
 
