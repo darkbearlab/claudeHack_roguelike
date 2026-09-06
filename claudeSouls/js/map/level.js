@@ -13,8 +13,11 @@
 import { T, TILE, isWalkable, isOpaque, isDoor,
          diagonalOk as tilesDiagonalOk, pinches, flyable } from './tiles.js';
 
-export const MAP_W = 64;
-export const MAP_H = 25;
+// A 6x3 grid of 10x10 tiles. It used to be 64x25 for a rooms-and-corridors
+// generator; the map is assembled from tiles now (see geomorph.js) and its
+// size is a whole number of them.
+export const MAP_W = 60;
+export const MAP_H = 30;
 
 export class Level {
   constructor(depth, w = MAP_W, h = MAP_H) {

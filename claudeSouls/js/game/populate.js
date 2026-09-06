@@ -145,6 +145,11 @@ function nearbyFree(lvl, x, y, r, rng) {
       const t = lvl.at(nx, ny);
       if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE) continue;
       if (lvl.isSanctuary(nx, ny)) continue;      // group members too
+      // And never through a door into a room the anchor is not in. A pack
+      // anchored beside a colonnade put a crawler inside it, and the
+      // situation's exact cast came out one over. A group stands together;
+      // it does not stand in two rooms.
+      if (lvl.roomAt(nx, ny)?.id !== lvl.roomAt(x, y)?.id) continue;
       out.push({ x: nx, y: ny });
     }
   }
@@ -175,7 +180,11 @@ export function spawnBoss(game, lvl) {
   // feature - nobody claims a room by standing in it.
   const bySize = [...lvl.rooms].sort((a, b) => b.w * b.h - a.w * a.h);
   const hasNpc = (r) => lvl.npcs.some((n) => lvl.roomAt(n.x, n.y)?.id === r.id);
-  const room = bySize.find((r) => !lvl.claims.has(r.id) && !hasNpc(r)) ?? bySize[0];
+  // A floor assembled from tiles has already put down a hall for this and
+  // claimed it 'arena'. Failing that, the biggest room nobody has spoken for.
+  const room = bySize.find((r) => lvl.claims.get(r.id)?.has('arena'))
+            ?? bySize.find((r) => !lvl.claims.has(r.id) && !hasNpc(r))
+            ?? bySize[0];
   if (!room) return;
   lvl.claimRoom('arena', room.id);
 
