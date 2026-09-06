@@ -610,9 +610,14 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       }
       const { pl, sq, wx, wy } = pick(grow);
       // A tile with floor behind every edge, so whatever it lands beside can
-      // be reached through it. `cross` is that tile.
+      // be reached through it. Several qualify and the order is shuffled: a
+      // repair that always reached for `cross` first put six of them on one
+      // floor. (The swap repair below still uses a cross - it needs a socket
+      // on all four sides to re-resolve every neighbour.)
       let placedAny = false;
-      for (const name of ['cross', 'hall', 'tee', 'landing']) {
+      const fillers = ['cross', 'hall', 'pillared', 'split'];
+      for (let i = fillers.length - 1; i > 0; i--) { const j = rng.rn2(i + 1); [fillers[i], fillers[j]] = [fillers[j], fillers[i]]; }
+      for (const name of [...fillers, 'tee', 'landing']) {
         const opts = [];
         for (let rot = 0; rot < 4; rot++) {
           const p = piece(name, rot);

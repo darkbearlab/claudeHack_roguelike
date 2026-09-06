@@ -214,6 +214,23 @@ export const GEOMORPHS = {
     '#.........',
   ]},
 
+  // A causeway. You arrive on the bridge from the south and cross a gulf that
+  // runs out to both edges - beside another chasm-edged tile it is one wide
+  // drop - into a landing three rows deep with the way on at the north.
+  // Drawn by the author in the editor; the catalogue's first tile that was.
+  causeway: { weight: 1, art: [
+    '####++####',
+    '..........',
+    '..........',
+    '..........',
+    '~~~~==~~~~',
+    '~~~~==~~~~',
+    '~~~~==~~~~',
+    '~~~~==~~~~',
+    '~~~~==~~~~',
+    '~~~~^^~~~~',
+  ]},
+
   nook: { weight: 1, art: [
     '####++####',
     '#........#',
@@ -393,7 +410,9 @@ export function validateTile(name, t) {
     const kind = (c) => (c === '+' || c === '^') ? 'socket' : c === '#' ? 'wall' : standable(c) ? 'open' : 'other';
     if (kind(a) !== kind(b)) bad.push(`${name}: edge middle at ${ax},${ay}/${bx},${by} is '${a}${b}' - half open, half not`);
     else if (kind(a) === 'open') { openEdges++; sockets++; }
-    else if (kind(a) === 'other') bad.push(`${name}: edge middle at ${ax},${ay} is '${a}' - a wall, a socket or floor`);
+    // 'other' - a chasm, a pit, rubble - is a closed edge drawn as itself:
+    // nothing grows through it and nothing is ever written onto it. That is
+    // what "the sides are open space, not stone" looks like on a border.
   }
   if (openEdges && (t.special || t.fixed) && !t.openOk) {
     bad.push(`${name}: an open edge on a ${t.special ? 'situation' : 'fixed piece'} - its room is meant to be a room; say openOk: true if you mean it`);
