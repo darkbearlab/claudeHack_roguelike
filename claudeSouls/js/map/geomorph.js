@@ -737,6 +737,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       }
     }
     if (pl === hall) lvl.claimRoom('arena', room.id);
+    // A tile that asked for its own enemies gets its room to itself: the
+    // random fill, the extra fire and the chest all avoid claimed rooms.
+    if (spec.enemies != null) lvl.claimRoom('staged', room.id);
   }
   lvl.genKind = 'geomorph';
   lvl.geomorph = stats;

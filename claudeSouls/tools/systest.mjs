@@ -3884,6 +3884,49 @@ check('an open edge is never walled or doored, and open edges merge', () => {
   return `${segments} open edges, none walled or doored, ${merged} merged into a neighbour`;
 });
 
+check('a tile that asks for enemies gets them, out of the budget, and nothing else', () => {
+  // `enemies: [lo, hi]` on a tile. The light version of a situation: no
+  // roles, just a count, species by depth. It has to be exact, it has to be
+  // counted against the floor's budget rather than added on top, and the room
+  // has to be the tile's alone - the random fill topping it up would make
+  // "one to three" mean "one to eight".
+  const { validateTile, GEOMORPHS } = geomorphsModule;
+  assert(validateTile('back', { art: GEOMORPHS.hall.art, enemies: [3, 1] }).some((m) => /lo <= hi/.test(m)), 'a backwards range was allowed');
+  assert(validateTile('many', { art: GEOMORPHS.hall.art, enemies: [0, 20] }).some((m) => /lo <= hi/.test(m)), 'a range of twenty was allowed');
+  assert(validateTile('sit', { special: 'colonnade', art: GEOMORPHS.hall.art, enemies: [1, 2] }).some((m) => /cast/.test(m)), 'enemies on a situation were allowed');
+  const asking = Object.keys(GEOMORPHS).filter((n) => GEOMORPHS[n].enemies != null);
+  assert(asking.length >= 1, 'no tile in the catalogue asks for enemies');
+
+  let rooms = 0, outside = [], claimedWrong = 0;
+  for (let sd = 0; sd < 15; sd++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `staged${sd}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const room of lvl.rooms) {
+        const spec = GEOMORPHS[room.tile];
+        if (!spec?.enemies) continue;
+        rooms++;
+        const want = Array.isArray(spec.enemies) ? spec.enemies : spec.enemies.n;
+        let n = 0, free = 0;
+        for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) {
+          if (lvl.walkable(x, y)) free++;
+          const e = lvl.enemyAt(x, y);
+          if (e && e.alive && e.x === x && e.y === y) n++;
+        }
+        if (!lvl.claims.get(room.id)?.has('staged')) claimedWrong++;
+        // exact, unless the tile had no room for them
+        if (free >= want[1] && (n < want[0] || n > want[1])) outside.push(`${room.tile} d${d}: ${n} enemies, asked for ${want[0]}-${want[1]}`);
+      }
+    }
+  }
+  assert(rooms > 10, `only ${rooms} asking rooms placed across 135 floors`);
+  assert(claimedWrong === 0, `${claimedWrong} asking rooms were not claimed - the fire or the fill could take them`);
+  assert(outside.length === 0, `${outside.length} of ${rooms}: ${outside.slice(0, 3).join('; ')}`);
+  return `${rooms} rooms asked and got exactly what they asked for`;
+});
+
 check('nobody stands where somebody else already is', () => {
   // The standing audit. Every entry here was a real defect found by measuring
   // the finished floor rather than by reading the placement code, and each one

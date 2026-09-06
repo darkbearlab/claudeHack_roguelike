@@ -20,6 +20,7 @@
 import { Enemy } from './actors.js';
 import { pickEnemy, ENEMY_BY_KEY } from '../data/enemies.js';
 import { CHAMBER_BY_KEY, castFor } from '../data/chambers.js';
+import { GEOMORPHS } from '../data/geomorphs.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T } from '../map/tiles.js';
 import { DIRS } from '../../../engine/util.js';
@@ -33,7 +34,7 @@ export function populate(game, lvl, rng) {
   // difficulty dial - composition is" applies to situations too: a floor with
   // a colonnade on it is not a floor with three more enemies, it is a floor
   // where three of them are standing somewhere that means something.
-  const staged = castChambers(game, lvl, rng, depth);
+  const staged = castChambers(game, lvl, rng, depth) + stageTiles(game, lvl, rng, depth);
   placeElite(game, lvl, rng, depth);
 
   // Grows slowly. Doubling the count is not how this game gets harder.
@@ -116,6 +117,55 @@ export function castChambers(game, lvl, rng, depth) {
     }
   }
   return cast;
+}
+
+/**
+ * Fill the tiles that asked for enemies.
+ *
+ * A tile may say `enemies: [lo, hi]`. This rolls the number, picks each
+ * species for the depth - the same table the random fill draws from, so a
+ * tile does not have to know what lives at depth eight - and stands them on
+ * the tile's own floor. It is the light version of a situation: no roles, no
+ * anchors, no intent, just "something is in here". Returns how many, which
+ * the caller counts against the floor's budget exactly as it counts a cast.
+ */
+export function stageTiles(game, lvl, rng, depth) {
+  let placed = 0;
+  for (const room of lvl.rooms) {
+    const spec = room.tile ? GEOMORPHS[room.tile] : null;
+    if (!spec?.enemies) continue;
+    const want = Array.isArray(spec.enemies) ? spec.enemies : spec.enemies.n;
+    const aware = !Array.isArray(spec.enemies) && !!spec.enemies.aware;
+    const n = rng.int(want[0], want[1]);
+    for (let i = 0; i < n; i++) {
+      const spots = [];
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) {
+          if (!lvl.walkable(x, y) || lvl.occupant(x, y)) continue;
+          const t = lvl.at(x, y);
+          if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE || t === T.CHEST) continue;
+          if (lvl.isSanctuary(x, y)) continue;
+          spots.push({ x, y });
+        }
+      }
+      if (!spots.length) break;
+      // A few tries per enemy, not one: the species is drawn for the depth
+      // and may be two tiles across, and a 2x2 refuses a spot its body does
+      // not fit. One causeway in 148 came out empty that way.
+      const key = pickEnemy(rng, depth).key;
+      for (let tries = 0; tries < 6; tries++) {
+        const at = rng.pick(spots);
+        const before = lvl.enemies.length;
+        spawn(game, lvl, key, at.x, at.y, rng, true);
+        if (lvl.enemies.length > before) {
+          placed++;
+          if (aware) lvl.enemies[lvl.enemies.length - 1].aware = true;
+          break;
+        }
+      }
+    }
+  }
+  return placed;
 }
 
 export function spawn(game, lvl, key, x, y, rng, noGroup = false) {

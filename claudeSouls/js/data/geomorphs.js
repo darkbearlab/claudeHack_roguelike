@@ -14,6 +14,14 @@
 //     space; an open edge facing a wall is a wall; one facing nothing is floor
 //     against rock. A situation or a fixed piece may only have one if it says
 //     `openOk: true`, because their rooms are meant to be rooms.
+//   - `enemies: [lo, hi]` (or `{ n: [lo, hi], aware: true }`) is how many
+//     the tile wants standing in it. populate rolls the number, picks each
+//     species for the depth, and counts them against the floor's budget the
+//     way a situation's cast is counted - so a tile that asks for three is
+//     not three more enemies on the floor, it is three of the floor's
+//     enemies standing somewhere that was drawn for them. The room is claimed
+//     for it: no random top-up, no fire, no chest. Tiles that say nothing are
+//     filled by the ordinary random placement as before.
 //   - A socket drawn `^^` instead of `++` is the ARROW: the board game's
 //     marked entrance. A tile with an arrow can only be placed with the arrow
 //     facing the tile it is placed from, so it is always entered there; its
@@ -218,7 +226,9 @@ export const GEOMORPHS = {
   // runs out to both edges - beside another chasm-edged tile it is one wide
   // drop - into a landing three rows deep with the way on at the north.
   // Drawn by the author in the editor; the catalogue's first tile that was.
-  causeway: { weight: 1, art: [
+  // Measured before `enemies` existed: the ordinary fill left it empty 78% of
+  // the time. Now something is on the landing when you step off the bridge.
+  causeway: { weight: 1, enemies: [1, 3], art: [
     '####++####',
     '..........',
     '..........',
@@ -422,6 +432,15 @@ export function validateTile(name, t) {
   // tile with two entrances has none.
   if (arrows > 2) bad.push(`${name}: ${arrows / 2} arrow sockets - a tile has one entrance or none`);
   if (arrows && t.fixed) bad.push(`${name}: an arrow on a fixed piece - fixed pieces are placed by hand and are not entered`);
+  // enemies: a range, small, and not on a situation - a situation has a cast.
+  if (t.enemies != null) {
+    const n = Array.isArray(t.enemies) ? t.enemies : t.enemies?.n;
+    if (!Array.isArray(n) || n.length !== 2 || !Number.isInteger(n[0]) || !Number.isInteger(n[1]) || n[0] < 0 || n[1] < n[0] || n[1] > 8) {
+      bad.push(`${name}: enemies must be [lo, hi] with 0 <= lo <= hi <= 8`);
+    }
+    if (t.special) bad.push(`${name}: enemies on a situation - a situation casts by role; use its cast list`);
+    if (t.fixed) bad.push(`${name}: enemies on a fixed piece - the entry and the hall are populated by hand`);
+  }
   // Sockets only ever sit at an edge's middle; that was checked above. The
   // rest of the border may be anything - wall, floor, chasm - because an edge
   // may be open now.
