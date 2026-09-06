@@ -9,6 +9,11 @@
 //     20x10 is two, 20x20 is four.
 //   - Anchors for a situation are lowercase letters, mapped to names in the
 //     tile's `anchors` table. The letter is floor (or whatever `tile` says).
+//   - An edge whose middle pair (index 4-5) is drawn as floor is an OPEN
+//     edge: no wall, no door. Two open edges facing each other merge into one
+//     space; an open edge facing a wall is a wall; one facing nothing is floor
+//     against rock. A situation or a fixed piece may only have one if it says
+//     `openOk: true`, because their rooms are meant to be rooms.
 //   - A socket drawn `^^` instead of `++` is the ARROW: the board game's
 //     marked entrance. A tile with an arrow can only be placed with the arrow
 //     facing the tile it is placed from, so it is always entered there; its
@@ -179,6 +184,36 @@ export const GEOMORPHS = {
     '####++####',
   ]},
 
+  // Open on the east. Beside another cavern it is one wide space; beside a
+  // walled tile it is a room with a rock wall; beside nothing, a cave mouth.
+  cavern: { weight: 2, art: [
+    '####++####',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '####++####',
+  ]},
+
+  // Open on two adjacent sides. Two of these corner to corner make an L; four
+  // make a hall bigger than any tile.
+  court: { weight: 1, art: [
+    '####++####',
+    '#.........',
+    '#.........',
+    '#.........',
+    '+.........',
+    '+.........',
+    '#.........',
+    '#.........',
+    '#.........',
+    '#.........',
+  ]},
+
   nook: { weight: 1, art: [
     '####++####',
     '#........#',
@@ -346,20 +381,31 @@ export function validateTile(name, t) {
       bad.push(`${name}: unknown character '${c}' at ${x},${y}`);
     }
   }
+  // Open edges: an edge segment's middle pair is all-socket, all-wall, or
+  // all-floor. A mixed pair is ambiguous - half a doorway - and refused.
+  const standable = (c) => c === '.' || c === '=' || /[a-z]/.test(c);
+  let openEdges = 0;
+  const pairs = [];
+  for (let cx = 0; cx < w / 10; cx++) { pairs.push([[cx * 10 + 4, 0], [cx * 10 + 5, 0]]); pairs.push([[cx * 10 + 4, h - 1], [cx * 10 + 5, h - 1]]); }
+  for (let cy = 0; cy < h / 10; cy++) { pairs.push([[0, cy * 10 + 4], [0, cy * 10 + 5]]); pairs.push([[w - 1, cy * 10 + 4], [w - 1, cy * 10 + 5]]); }
+  for (const [[ax, ay], [bx, by]] of pairs) {
+    const a = art[ay]?.[ax], b = art[by]?.[bx];
+    const kind = (c) => (c === '+' || c === '^') ? 'socket' : c === '#' ? 'wall' : standable(c) ? 'open' : 'other';
+    if (kind(a) !== kind(b)) bad.push(`${name}: edge middle at ${ax},${ay}/${bx},${by} is '${a}${b}' - half open, half not`);
+    else if (kind(a) === 'open') { openEdges++; sockets++; }
+    else if (kind(a) === 'other') bad.push(`${name}: edge middle at ${ax},${ay} is '${a}' - a wall, a socket or floor`);
+  }
+  if (openEdges && (t.special || t.fixed) && !t.openOk) {
+    bad.push(`${name}: an open edge on a ${t.special ? 'situation' : 'fixed piece'} - its room is meant to be a room; say openOk: true if you mean it`);
+  }
   if (!sockets && !t.fixed) bad.push(`${name}: no sockets - nothing could ever be placed next to it`);
   // Two cells make one arrow socket; more than that is two entrances, and a
   // tile with two entrances has none.
   if (arrows > 2) bad.push(`${name}: ${arrows / 2} arrow sockets - a tile has one entrance or none`);
   if (arrows && t.fixed) bad.push(`${name}: an arrow on a fixed piece - fixed pieces are placed by hand and are not entered`);
-  // every edge cell that is not a socket must be wall, or the tile leaks
-  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) {
-    const c = art[y][x];
-    if (c !== '#' && c !== '+' && c !== '^') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
-  }
-  for (let y = 1; y < h - 1; y++) for (const x of [0, w - 1]) {
-    const c = art[y][x];
-    if (c !== '#' && c !== '+' && c !== '^') bad.push(`${name}: border at ${x},${y} is '${c}', must be wall or socket`);
-  }
+  // Sockets only ever sit at an edge's middle; that was checked above. The
+  // rest of the border may be anything - wall, floor, chasm - because an edge
+  // may be open now.
   return bad;
 }
 

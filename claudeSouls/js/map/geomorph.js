@@ -52,18 +52,29 @@ function piece(name, rot) {
   const H = g.length, W = g[0].length;
   const cw = W / U, ch = H / U;
   // `+` is a socket; `^` is the ARROW socket, the one the tile must be
-  // entered by. It rotates with the art like everything else.
+  // entered by. And an edge whose middle pair is drawn as floor is an OPEN
+  // edge: a socket with no door and no wall, where the tile simply ends and
+  // whatever is beside it begins. Two open edges facing each other merge
+  // into one space; an open edge beside nothing is floor against rock. All
+  // of it rotates with the art like everything else.
   const socks = [];
   const isSock = (c) => c === '+' || c === '^';
+  const openPair = (a, b) => standable(a) && standable(b);
   for (let cx = 0; cx < cw; cx++) {
-    const t = g[0][cx * U + 4], b = g[H - 1][cx * U + 4];
+    const t = g[0][cx * U + 4], t2 = g[0][cx * U + 5];
+    const b = g[H - 1][cx * U + 4], b2 = g[H - 1][cx * U + 5];
     if (isSock(t)) socks.push({ cx, cy: 0, e: 0, arrow: t === '^' });
+    else if (openPair(t, t2)) socks.push({ cx, cy: 0, e: 0, open: true });
     if (isSock(b)) socks.push({ cx, cy: ch - 1, e: 2, arrow: b === '^' });
+    else if (openPair(b, b2)) socks.push({ cx, cy: ch - 1, e: 2, open: true });
   }
   for (let cy = 0; cy < ch; cy++) {
-    const r = g[cy * U + 4][W - 1], l = g[cy * U + 4][0];
+    const r = g[cy * U + 4][W - 1], r2 = g[cy * U + 5][W - 1];
+    const l = g[cy * U + 4][0], l2 = g[cy * U + 5][0];
     if (isSock(r)) socks.push({ cx: cw - 1, cy, e: 1, arrow: r === '^' });
+    else if (openPair(r, r2)) socks.push({ cx: cw - 1, cy, e: 1, open: true });
     if (isSock(l)) socks.push({ cx: 0, cy, e: 3, arrow: l === '^' });
+    else if (openPair(l, l2)) socks.push({ cx: 0, cy, e: 3, open: true });
   }
   return { name, g, cw, ch, socks, arrow: socks.some((s) => s.arrow), rot: ((rot % 4) + 4) % 4 };
 }
@@ -116,7 +127,13 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   // `reopen` can give it another chance later: the first port left it listed,
   // reopen skipped every listed socket, and a floor that had walled two good
   // sockets early starved at three pieces with nowhere it was allowed to grow.
+  // An open edge is never written to: no door, no wall. It is recognised by
+  // what is drawn there rather than by a flag, because half the callers build
+  // their socket coordinates on the spot.
+  const isOpenEdge = (pl, s) => isFloorAt(pl.p, socketCells(s));
   const wallAt = (pl, s) => {
+    s.done = true;
+    if (isOpenEdge(pl, s)) return;                  // floor against rock is fine
     setCells(pl.p, socketCells(s), '#');
     pl.p.socks = pl.p.socks.filter((q) => q !== s);
   };
@@ -126,8 +143,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   // than four leaves in a clump. And some of the time there is no door at
   // all: an open archway, which is the difference between a floor of rooms
   // and a floor of cells. `openAt` is the open side, `doorAt` the door side.
-  const openAt = (pl, s) => setCells(pl.p, socketCells(s), '.');
-  const doorAt = (pl, s) => setCells(pl.p, socketCells(s), rng.rn2(4) === 0 ? '.' : 'D');
+  // On an open edge both are no-ops: the edge was never anything but open.
+  const openAt = (pl, s) => { s.done = true; if (!isOpenEdge(pl, s)) setCells(pl.p, socketCells(s), '.'); };
+  const doorAt = (pl, s) => { s.done = true; if (!isOpenEdge(pl, s)) setCells(pl.p, socketCells(s), rng.rn2(4) === 0 ? '.' : 'D'); };
   // Either side of a connection reads as one, whichever character it got.
   const isOpening = (c) => c === 'D' || c === '.';
 
@@ -190,16 +208,20 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       for (let cy = 0; cy < pl.p.ch; cy++) for (let cx = 0; cx < pl.p.cw; cx++) for (let e = 0; e < 4; e++) {
         const wx = pl.ox + cx + DX[e], wy = pl.oy + cy + DY[e];
         if (!inBounds(wx, wy) || cells[wy][wx] != null) continue;
+        const existing = pl.p.socks.find((q) => q.cx === cx && q.cy === cy && q.e === e);
+        // An open edge that faces empty ground and has already been through
+        // the frontier can go through it again: it is still a way to grow.
+        if (existing) { if (existing.open && existing.done) cands.push({ pl, s: existing, again: true }); continue; }
         const s = { cx, cy, e };
-        if (pl.p.socks.some((q) => q.cx === cx && q.cy === cy && q.e === e)) continue;
         if (!isFloorAt(pl.p, behindCells(s))) continue;
         cands.push({ pl, s });
       }
     }
     trace?.(`reopen: ${cands.length} candidates, ${filledCells()}/${total} cells filled`);
     if (!cands.length) return false;
-    const { pl, s } = pick(cands);
-    pl.p.socks.push(s); setCells(pl.p, socketCells(s), '+');
+    const { pl, s, again } = pick(cands);
+    if (again) { s.done = false; }
+    else { pl.p.socks.push(s); setCells(pl.p, socketCells(s), '+'); }
     frontier.push({ pl, s }); stats.reopened++;
     return true;
   };
@@ -248,9 +270,11 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   while (frontier.length || (filledCells() < MIN_FILL && (reopen() || unstick()))) {
     if (!frontier.length) continue;
     const { pl, s } = frontier.splice(rng.rn2(frontier.length), 1)[0];
-    const sc = socketCells(s);
-    const mark = pl.p.g[sc[0][1]][sc[0][0]];
-    if (mark !== '+' && mark !== '^') continue;                  // resolved already
+    // Resolved already - possibly from the other side, when a later piece
+    // found this socket facing it. A flag rather than the character, because
+    // an open edge is drawn as floor from the start and would otherwise look
+    // resolved before anything had happened to it.
+    if (s.done) continue;
     const wx = pl.ox + s.cx + DX[s.e], wy = pl.oy + s.cy + DY[s.e];
 
     if (!inBounds(wx, wy)) { trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> off map`); wallAt(pl, s); stats.deadEnds++; continue; }
@@ -387,17 +411,20 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   };
   const setDoor = (wx, wy, e, ch) => {
     const a = pieces[cells[wy][wx]], b = pieces[cells[wy + DY[e]][wx + DX[e]]];
-    setCells(a.p, socketCells({ cx: wx - a.ox, cy: wy - a.oy, e }), ch);
-    setCells(b.p, socketCells({ cx: wx + DX[e] - b.ox, cy: wy + DY[e] - b.oy, e: opp(e) }), ch);
+    const sa = { cx: wx - a.ox, cy: wy - a.oy, e }, sb = { cx: wx + DX[e] - b.ox, cy: wy + DY[e] - b.oy, e: opp(e) };
+    if (!isOpenEdge(a, sa)) setCells(a.p, socketCells(sa), ch);
+    if (!isOpenEdge(b, sb)) setCells(b.p, socketCells(sb), ch);
   };
-  // Is the door between these two cells somebody's arrow? Closing it would
-  // leave that tile entered from somewhere else, which is the one thing an
-  // arrow says may not happen.
+  // Is the door between these two cells one that must not be closed? An
+  // arrow's door - closing it would leave that tile entered from somewhere
+  // else, the one thing an arrow forbids - or an open edge, which has no door
+  // to close and would get two wall tiles in the middle of a wide opening.
   const isArrowDoor = (wx, wy, e) => {
     const a = pieces[cells[wy][wx]], b = pieces[cells[wy + DY[e]][wx + DX[e]]];
-    const sa = a.p.socks.find((q) => q.cx === wx - a.ox && q.cy === wy - a.oy && q.e === e);
-    const sb = b.p.socks.find((q) => q.cx === wx + DX[e] - b.ox && q.cy === wy + DY[e] - b.oy && q.e === opp(e));
-    return !!(sa?.arrow || sb?.arrow);
+    const sa = { cx: wx - a.ox, cy: wy - a.oy, e }, sb = { cx: wx + DX[e] - b.ox, cy: wy + DY[e] - b.oy, e: opp(e) };
+    const qa = a.p.socks.find((q) => q.cx === sa.cx && q.cy === sa.cy && q.e === e);
+    const qb = b.p.socks.find((q) => q.cx === sb.cx && q.cy === sb.cy && q.e === opp(e));
+    return !!(qa?.arrow || qb?.arrow || isOpenEdge(a, sa) || isOpenEdge(b, sb));
   };
   const MAX_RUN = 3;
   for (const [axisE, major, minor] of [[1, cols, rows], [2, rows, cols]]) {
@@ -501,7 +528,7 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       }
       if (cands.length) {
         const { a, sa, b, sb } = pick(cands);
-        openAt(a, sa); doorAt(b, sb);
+        openAt(a, sa); doorAt(b, sb);   // both respect an open edge
         stats.loops++; stats.cut++; stats.rejoined = (stats.rejoined ?? 0) + 1;
         continue;
       }

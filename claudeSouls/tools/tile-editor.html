@@ -60,6 +60,7 @@
   <div class="row hint">
     點/拖曳 = 畫(手機也一樣);要擦掉就用「牆」筆刷。點邊界的接口位置(每邊第 4–5 格)自動放兩格 <code>+</code>;
     用「箭頭」筆刷點同一個位置就是入口 <code>^^</code>,一張只能有一個,沒有箭頭的板塊哪一邊都能進。
+    邊界也可以畫地板:一條邊的中間兩格都是地板,那條邊就是<b>開口邊</b>——沒有牆也沒有門,對面是開口就合併成一片。
     鍵盤 <kbd>1</kbd>–<kbd>9</kbd> 切換筆刷。
   </div>
   <canvas id="grid"></canvas>
@@ -231,18 +232,20 @@ function paint(x, y, ch) {
   if (x < 0 || y < 0 || x >= W || y >= H) return;
   const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
   if (edge) {
-    // Only wall or a socket may sit on the border; a socket is placed as a pair.
+    // A socket is placed as a pair, at an edge's middle only. Anything else
+    // may go on the border: floor there makes the edge OPEN once both middle
+    // cells are floor. Painting over a socket pair erases the pair.
     const pair = socketAt(x, y);
     const isSock = (c) => c === '+' || c === '^';
-    if ((ch === '+' || ch === '^') && pair) {
+    if ((ch === '+' || ch === '^')) {
+      if (!pair) return;                                   // sockets live at 4-5 only
       // One arrow per tile: painting a new one demotes the old one to a plain socket.
       if (ch === '^') for (const row of art) for (let i = 0; i < row.length; i++) if (row[i] === '^') row[i] = '+';
       for (const [px, py] of pair) art[py][px] = ch;
-    } else if (ch === '#' || isSock(ch)) {
-      // erasing a socket erases the pair
-      if (pair && isSock(art[y][x])) for (const [px, py] of pair) art[py][px] = '#';
-      else art[y][x] = '#';
+      return;
     }
+    if (pair && isSock(art[y][x])) for (const [px, py] of pair) art[py][px] = ch;
+    else art[y][x] = ch;
     return;
   }
   art[y][x] = (ch === '+' || ch === '^') ? '.' : ch;   // a socket only makes sense on the border
