@@ -82,11 +82,13 @@
   </div>
   <div class="row">
     <label>預期敵人</label>
+    <select id="enAt"><option value="">在板塊裡隨機</option></select>
     <input type="number" id="enLo" min="0" max="8" value="" placeholder="最少" style="width:6ch">
     <span>–</span>
     <input type="number" id="enHi" min="0" max="8" value="" placeholder="最多" style="width:6ch">
     <label><input type="checkbox" id="enAware"> 一開始就清醒</label>
-    <span class="hint">留空 = 交給隨機補怪。種類由層數決定,數量算進該層預算。</span>
+    <span class="hint">留空 = 交給隨機補怪。選一個錨點 = 那些格子<b>每格一隻</b>(再填數量就是從中挑幾格)。
+    種類由層數決定,數量算進該層預算。</span>
   </div>
   <div class="row">
     <label>錨點</label>
@@ -347,14 +349,33 @@ function buildKind() {
 }
 $('kind').addEventListener('change', (e) => { kind = e.target.value; buildKind(); emit(); });
 $('name').addEventListener('input', emit);
-for (const id of ['enLo', 'enHi', 'enAware']) $(id).addEventListener('input', emit);
+for (const id of ['enLo', 'enHi', 'enAware', 'enAt']) $(id).addEventListener('input', emit);
+$('enAt').addEventListener('change', emit);
 
 // ---- output ----------------------------------------------------------------
 function readEnemies() {
-  const lo = $('enLo').value, hi = $('enHi').value;
-  if (lo === '' && hi === '') return null;
-  const n = [Math.max(0, +lo || 0), Math.max(0, +hi || +lo || 0)];
-  return $('enAware').checked ? { n, aware: true } : n;
+  const lo = $('enLo').value, hi = $('enHi').value, at = $('enAt').value;
+  if (lo === '' && hi === '' && !at) return null;
+  const n = (lo === '' && hi === '') ? null : [Math.max(0, +lo || 0), Math.max(0, +hi || +lo || 0)];
+  if (!at) return $('enAware').checked ? { n, aware: true } : n;
+  const o = { at };
+  if (n) o.n = n;
+  if ($('enAware').checked) o.aware = true;
+  return o;
+}
+/** The anchor names this tile actually draws, for the spawn-point picker. */
+function refreshAnchorPicker() {
+  const sel = $('enAt'), had = sel.value;
+  const drawn = new Set();
+  for (const row of art) for (const c of row) {
+    if (!/[a-z]/.test(c)) continue;
+    const a = anchors[c];
+    const nm = typeof a === 'string' ? a : a?.name;
+    if (nm) drawn.add(nm);
+  }
+  sel.innerHTML = '<option value="">在板塊裡隨機</option>' +
+    [...drawn].map((n) => `<option value="${n}">${n} 的每一格</option>`).join('');
+  sel.value = drawn.has(had) ? had : '';
 }
 function tileObject() {
   const t = { art: art.map((r) => r.join('')) };
@@ -370,6 +391,7 @@ function tileObject() {
   return t;
 }
 function emit() {
+  refreshAnchorPicker();
   const name = ($('name').value || 'newTile').replace(/[^A-Za-z0-9_]/g, '');
   const t = tileObject();
   const probs = validateTile(name, t);
@@ -388,8 +410,16 @@ function emit() {
   if (t.special) head.push(`special: '${t.special}'`);
   if (t.allEnds) head.push('allEnds: true');
   if (t.fixed) head.push('fixed: true');
-  if (t.enemies) head.push(Array.isArray(t.enemies) ? `enemies: [${t.enemies[0]}, ${t.enemies[1]}]`
-                                                    : `enemies: { n: [${t.enemies.n[0]}, ${t.enemies.n[1]}], aware: true }`);
+  if (t.enemies) {
+    if (Array.isArray(t.enemies)) head.push(`enemies: [${t.enemies[0]}, ${t.enemies[1]}]`);
+    else {
+      const parts = [];
+      if (t.enemies.at) parts.push(`at: '${t.enemies.at}'`);
+      if (t.enemies.n) parts.push(`n: [${t.enemies.n[0]}, ${t.enemies.n[1]}]`);
+      if (t.enemies.aware) parts.push('aware: true');
+      head.push(`enemies: { ${parts.join(', ')} }`);
+    }
+  }
   if (t.anchors) {
     const parts = Object.entries(t.anchors).map(([l, a]) =>
       typeof a === 'string' ? `${l}: '${a}'` : `${l}: { name: '${a.name}', tile: '${a.tile}' }`);
@@ -429,8 +459,9 @@ function buildLoad() {
     anchors = JSON.parse(JSON.stringify(t.anchors ?? {}));
     kind = t.special ? 'special' : t.fixed ? 'fixed' : 'pile';
     weight = t.weight ?? 2; special = t.special ?? special; bothEnds = !!t.allEnds;
-    const en = t.enemies == null ? null : (Array.isArray(t.enemies) ? { n: t.enemies, aware: false } : t.enemies);
-    $('enLo').value = en ? en.n[0] : ''; $('enHi').value = en ? en.n[1] : ''; $('enAware').checked = !!en?.aware;
+    const en = t.enemies == null ? null : (Array.isArray(t.enemies) ? { n: t.enemies } : t.enemies);
+    $('enLo').value = en?.n ? en.n[0] : ''; $('enHi').value = en?.n ? en.n[1] : ''; $('enAware').checked = !!en?.aware;
+    refreshAnchorPicker(); $('enAt').value = en?.at ?? '';
     $('name').value = sel.value; $('kind').value = kind; $('size').value = `${W}x${H}`;
     buildKind(); buildAnchors(); layout(); redraw();
   });

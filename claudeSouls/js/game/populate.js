@@ -131,38 +131,58 @@ export function castChambers(game, lvl, rng, depth) {
  */
 export function stageTiles(game, lvl, rng, depth) {
   let placed = 0;
+  const free = (x, y) => {
+    if (!lvl.walkable(x, y) || lvl.occupant(x, y)) return false;
+    const t = lvl.at(x, y);
+    if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE || t === T.CHEST) return false;
+    return !lvl.isSanctuary(x, y);
+  };
+  // One enemy at one place, retrying the SPECIES: the species is drawn for
+  // the depth and may be two tiles across, and a 2x2 refuses ground its body
+  // does not fit. One causeway in 148 came out empty when this tried once.
+  const put = (x, y, aware) => {
+    for (let tries = 0; tries < 6; tries++) {
+      const before = lvl.enemies.length;
+      spawn(game, lvl, pickEnemy(rng, depth).key, x, y, rng, true);
+      if (lvl.enemies.length > before) {
+        placed++;
+        if (aware) lvl.enemies[lvl.enemies.length - 1].aware = true;
+        return true;
+      }
+    }
+    return false;
+  };
+
   for (const room of lvl.rooms) {
     const spec = room.tile ? GEOMORPHS[room.tile] : null;
     if (!spec?.enemies) continue;
-    const want = Array.isArray(spec.enemies) ? spec.enemies : spec.enemies.n;
-    const aware = !Array.isArray(spec.enemies) && !!spec.enemies.aware;
-    const n = rng.int(want[0], want[1]);
+    const cfg = Array.isArray(spec.enemies) ? { n: spec.enemies } : spec.enemies;
+    const aware = !!cfg.aware;
+
+    // Marked cells: `at` names an anchor, and every cell of it gets one -
+    // unless `n` asks for only some of them.
+    if (cfg.at) {
+      let cells = (room.anchors?.[cfg.at] ?? []).filter((c) => free(c.x, c.y));
+      if (cfg.n) {
+        const want = rng.int(cfg.n[0], cfg.n[1]);
+        cells = [...cells];
+        for (let i = cells.length - 1; i > 0; i--) { const j = rng.rn2(i + 1); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+        cells = cells.slice(0, want);
+      }
+      for (const c of cells) put(c.x, c.y, aware);
+      continue;
+    }
+
+    // Otherwise: a count, anywhere in the tile.
+    const n = rng.int(cfg.n[0], cfg.n[1]);
     for (let i = 0; i < n; i++) {
       const spots = [];
       for (let y = room.y; y < room.y + room.h; y++) {
-        for (let x = room.x; x < room.x + room.w; x++) {
-          if (!lvl.walkable(x, y) || lvl.occupant(x, y)) continue;
-          const t = lvl.at(x, y);
-          if (t === T.STAIRS_UP || t === T.STAIRS_DOWN || t === T.BONFIRE || t === T.CHEST) continue;
-          if (lvl.isSanctuary(x, y)) continue;
-          spots.push({ x, y });
-        }
+        for (let x = room.x; x < room.x + room.w; x++) if (free(x, y)) spots.push({ x, y });
       }
       if (!spots.length) break;
-      // A few tries per enemy, not one: the species is drawn for the depth
-      // and may be two tiles across, and a 2x2 refuses a spot its body does
-      // not fit. One causeway in 148 came out empty that way.
-      const key = pickEnemy(rng, depth).key;
-      for (let tries = 0; tries < 6; tries++) {
-        const at = rng.pick(spots);
-        const before = lvl.enemies.length;
-        spawn(game, lvl, key, at.x, at.y, rng, true);
-        if (lvl.enemies.length > before) {
-          placed++;
-          if (aware) lvl.enemies[lvl.enemies.length - 1].aware = true;
-          break;
-        }
-      }
+      const at = rng.pick(spots);
+      put(at.x, at.y, aware);
     }
   }
   return placed;

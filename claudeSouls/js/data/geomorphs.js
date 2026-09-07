@@ -22,6 +22,10 @@
 //     enemies standing somewhere that was drawn for them. The room is claimed
 //     for it: no random top-up, no fire, no chest. Tiles that say nothing are
 //     filled by the ordinary random placement as before.
+//   - `enemies: { at: 'post' }` puts one on EVERY cell of that anchor - the
+//     way to say "something stands exactly here". Add `n: [lo, hi]` to take
+//     only some of the marked cells instead of all of them. The species is
+//     still drawn for the depth; only the ground is fixed.
 //   - A socket drawn `^^` instead of `++` is the ARROW: the board game's
 //     marked entrance. A tile with an arrow can only be placed with the arrow
 //     facing the tile it is placed from, so it is always entered there; its
@@ -79,6 +83,24 @@ export const GEOMORPHS = {
     '###....###',
     '###....###',
     '###....###',
+    '###....###',
+    '####..####',
+    '####..####',
+    '####++####',
+  ]},
+
+  // A gate. Two marked cells either side of the way through, and something
+  // standing on each of them - this is `enemies: { at }`, the way to say
+  // "exactly here" rather than "somewhere in this tile". Awake, because two
+  // things you have to get past are a decision and two things asleep are a
+  // corridor.
+  gatepost: { weight: 1, enemies: { at: 'post', aware: true }, anchors: { a: 'post' }, art: [
+    '####++####',
+    '####..####',
+    '####..####',
+    '###....###',
+    '+..a..a..+',
+    '+........+',
     '###....###',
     '####..####',
     '####..####',
@@ -434,9 +456,25 @@ export function validateTile(name, t) {
   if (arrows && t.fixed) bad.push(`${name}: an arrow on a fixed piece - fixed pieces are placed by hand and are not entered`);
   // enemies: a range, small, and not on a situation - a situation has a cast.
   if (t.enemies != null) {
+    const at = Array.isArray(t.enemies) ? null : t.enemies?.at;
     const n = Array.isArray(t.enemies) ? t.enemies : t.enemies?.n;
-    if (!Array.isArray(n) || n.length !== 2 || !Number.isInteger(n[0]) || !Number.isInteger(n[1]) || n[0] < 0 || n[1] < n[0] || n[1] > 8) {
-      bad.push(`${name}: enemies must be [lo, hi] with 0 <= lo <= hi <= 8`);
+    // `n` is required without `at` (there is nothing else to go on) and
+    // optional with it (no `n` means every marked cell).
+    if (n != null || !at) {
+      if (!Array.isArray(n) || n.length !== 2 || !Number.isInteger(n[0]) || !Number.isInteger(n[1]) || n[0] < 0 || n[1] < n[0] || n[1] > 8) {
+        bad.push(`${name}: enemies must be [lo, hi] with 0 <= lo <= hi <= 8`);
+      }
+    }
+    if (at) {
+      // The anchor has to be one this tile actually draws, or the tile asks
+      // for enemies on ground that does not exist and silently gets none.
+      const drawn = new Set();
+      for (const row of art) for (const c of row) {
+        if (!/[a-z]/.test(c)) continue;
+        const a = t.anchors?.[c];
+        drawn.add(typeof a === 'string' ? a : a?.name);
+      }
+      if (!drawn.has(at)) bad.push(`${name}: enemies at '${at}', but no cell is drawn with that anchor`);
     }
     if (t.special) bad.push(`${name}: enemies on a situation - a situation casts by role; use its cast list`);
     if (t.fixed) bad.push(`${name}: enemies on a fixed piece - the entry and the hall are populated by hand`);

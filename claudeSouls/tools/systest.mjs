@@ -3906,9 +3906,12 @@ check('a tile that asks for enemies gets them, out of the budget, and nothing el
       const lvl = g.levelAt(d);
       for (const room of lvl.rooms) {
         const spec = GEOMORPHS[room.tile];
+        // A count, not a set of marked cells - those are the next test's, and
+        // they may have no count at all.
         if (!spec?.enemies) continue;
-        rooms++;
         const want = Array.isArray(spec.enemies) ? spec.enemies : spec.enemies.n;
+        if (!want) continue;
+        rooms++;
         let n = 0, free = 0;
         for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) {
           if (lvl.walkable(x, y)) free++;
@@ -3925,6 +3928,42 @@ check('a tile that asks for enemies gets them, out of the budget, and nothing el
   assert(claimedWrong === 0, `${claimedWrong} asking rooms were not claimed - the fire or the fill could take them`);
   assert(outside.length === 0, `${outside.length} of ${rooms}: ${outside.slice(0, 3).join('; ')}`);
   return `${rooms} rooms asked and got exactly what they asked for`;
+});
+
+check('a marked cell always has something standing on it', () => {
+  // `enemies: { at: 'post' }` - one on EVERY cell of that anchor. "Somewhere
+  // in this tile" was already possible; this is "exactly here", which is what
+  // a gate or a guard post needs.
+  const { validateTile, GEOMORPHS } = geomorphsModule;
+  assert(validateTile('ghost', { art: GEOMORPHS.hall.art, enemies: { at: 'nope' } }).some((m) => /no cell is drawn/.test(m)),
+    'an anchor the art does not draw was allowed');
+  const marked = Object.keys(GEOMORPHS).filter((n) => GEOMORPHS[n].enemies?.at);
+  assert(marked.length >= 1, 'no tile in the catalogue marks its spawn cells');
+
+  let cells = 0, empty = [], rooms = 0;
+  for (let sd = 0; sd < 15; sd++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `marked${sd}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const room of lvl.rooms) {
+        const spec = GEOMORPHS[room.tile];
+        if (!spec?.enemies?.at || spec.enemies.n) continue;   // "all of them" only
+        rooms++;
+        for (const c of room.anchors?.[spec.enemies.at] ?? []) {
+          cells++;
+          const e = lvl.enemyAt(c.x, c.y);
+          if (!e || !e.alive) empty.push(`${room.tile} d${d} at ${c.x},${c.y}`);
+          else if (spec.enemies.aware && !e.aware) empty.push(`${room.tile} d${d} at ${c.x},${c.y}: asleep, asked for awake`);
+        }
+      }
+    }
+  }
+  assert(rooms > 5, `only ${rooms} tiles with marked cells across 135 floors`);
+  assert(cells > 15, `only ${cells} marked cells`);
+  assert(empty.length === 0, `${empty.length} of ${cells}: ${empty.slice(0, 3).join('; ')}`);
+  return `${cells} marked cells across ${rooms} tiles, every one occupied`;
 });
 
 check('nobody stands where somebody else already is', () => {

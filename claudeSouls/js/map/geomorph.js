@@ -721,6 +721,9 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
         if (ch === '*') { lvl.bonfires.push({ x: wx, y: wy, id: fireId++ }); lvl.claimRoom('fire', room.id); }
       }
     }
+    // Kept on every room, not only on situations: `enemies: { at }` needs
+    // them too, and they are computed for every tile regardless.
+    room.anchors = anchors;
     if (lvl.upStair && lvl.roomAt(lvl.upStair.x, lvl.upStair.y)?.id === room.id) lvl.claimRoom('stair', room.id);
     if (lvl.downStair && lvl.roomAt(lvl.downStair.x, lvl.downStair.y)?.id === room.id) lvl.claimRoom('stair', room.id);
     if (spec.special) {
