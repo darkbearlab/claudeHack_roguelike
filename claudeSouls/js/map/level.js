@@ -49,6 +49,12 @@ export class Level {
     // does the casting. See js/data/chambers.js and docs/SITUATIONS.md.
     this.chambers    = [];
 
+    // Ambush. `signals` are unseen sensing areas; `nests` are unseen spawn
+    // cells holding enemies that have not been placed yet. Both are decided at
+    // generation and reset for free, because resting rebuilds the floor from
+    // its seed. See docs/AMBUSH.md.
+    this.signals = [];   // {x, y, live, spent}
+    this.nests   = [];   // {x, y, key, aware}
     this.upStair = null;
     this.downStair = null;
     this.genKind = 'rooms';
@@ -59,6 +65,7 @@ export class Level {
   reset() {
     this.tiles.fill(0); this.lit.fill(0); this.seen.fill(0); this.visible.fill(0);
     this.rooms = []; this.enemies = []; this.projectiles = []; this.bonfires = [];
+    this.signals = []; this.nests = [];
     this.claims = new Map(); this.npcs = []; this.chambers = [];
     this.upStair = null; this.downStair = null; this.store = null; this._idx = null;
   }

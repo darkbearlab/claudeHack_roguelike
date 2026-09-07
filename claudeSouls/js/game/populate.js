@@ -13,6 +13,12 @@
 //    Otherwise "run past it" is either always right or never possible, and the
 //    walk back from a bonfire stops being a decision.
 //
+//    Ambush tilts this on purpose, and the tilt is named here rather than left
+//    to be discovered: a signal fires behind you, so running past is no longer
+//    free. That is deliberate - it is what gives the fast, fragile things a
+//    job - but it means this rule now reads "something you can outrun, and
+//    somewhere that outrunning costs you". See docs/AMBUSH.md.
+//
 // Placement is seeded separately from terrain (`seed#depth#mob`) so that the
 // same floor always contains the same enemies in the same spots. That is what
 // makes learning a floor mean anything.
@@ -21,6 +27,7 @@ import { Enemy } from './actors.js';
 import { pickEnemy, ENEMY_BY_KEY } from '../data/enemies.js';
 import { CHAMBER_BY_KEY, castFor } from '../data/chambers.js';
 import { GEOMORPHS, enemyEntries } from '../data/geomorphs.js';
+import { RNG } from '../../../engine/rng.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T } from '../map/tiles.js';
 import { DIRS } from '../../../engine/util.js';
@@ -29,6 +36,9 @@ export function populate(game, lvl, rng) {
   const depth = lvl.depth;
   if (depth === DUNGEON_DEPTH) return;      // the boss floor is placed by hand
 
+  // Before anything is placed: a nest can only hold its enemies back if a live
+  // signal exists to call them.
+  armSignals(lvl, game.seed);
   placeGuards(game, lvl, rng);
   // Out of the same budget as everything else. "Enemy count is not the
   // difficulty dial - composition is" applies to situations too: a floor with
@@ -129,6 +139,35 @@ export function castChambers(game, lvl, rng, depth) {
  * anchors, no intent, just "something is in here". Returns how many, which
  * the caller counts against the floor's budget exactly as it counts a cast.
  */
+/** How near you must come to a signal to set it off. */
+export const SIGNAL_RADIUS = 5;
+/** How far a signal reaches when it goes off. */
+export const WAKE_RADIUS = 10;
+
+/**
+ * Decide which signals are live, before anything is placed.
+ *
+ * From a DERIVED stream, never the floor's own. `placeKeeper` once drew a
+ * number mid-generation and shifted every decision after it, so the same seed
+ * built a different dungeon - and three A/B comparisons were quietly measuring
+ * two different maps. Rolled here, adding this feature leaves every existing
+ * floor byte-identical.
+ *
+ * Never on floor 1: it is the tutorial, and being jumped by something unseen
+ * is a poor first impression. A dead signal is not an empty one - its nests
+ * simply place their enemies now, so the floor holds the same number either
+ * way and only the timing differs.
+ */
+export function armSignals(lvl, seed) {
+  const rng = new RNG(`${seed}#${lvl.depth}#ambush`);
+  for (const room of lvl.rooms) {
+    if (!room.signal?.cells?.length) continue;
+    const live = lvl.depth > 1 && rng.oneIn(room.signal.oneIn);
+    const mid = room.signal.cells[room.signal.cells.length >> 1];
+    lvl.signals.push({ x: mid.x, y: mid.y, live, spent: false });
+  }
+}
+
 export function stageTiles(game, lvl, rng, depth) {
   let placed = 0;
   const free = (x, y) => {
@@ -158,6 +197,30 @@ export function stageTiles(game, lvl, rng, depth) {
     if (!spec?.enemies) continue;
     for (const cfg of enemyEntries(spec)) {
       const aware = !!cfg.aware;
+      // A nest waits for a signal - but only if a LIVE one can actually reach
+      // it. A nest nothing will ever wake would be dead content, so it places
+      // its enemies now like any other entry.
+      if (cfg.nest) {
+        const cells = (room.anchors?.[cfg.at] ?? []);
+        const woken = cells.some((c) => lvl.signals.some((s) => s.live &&
+          Math.max(Math.abs(s.x - c.x), Math.abs(s.y - c.y)) <= WAKE_RADIUS));
+        if (woken) {
+          const key = cfg.role ? castFor(cfg.role, depth, ENEMY_BY_KEY) : null;
+          let hold = cells.filter((c) => free(c.x, c.y));
+          if (cfg.n) {
+            const want = rng.int(cfg.n[0], cfg.n[1]);
+            hold = [...hold];
+            for (let i = hold.length - 1; i > 0; i--) { const j = rng.rn2(i + 1); [hold[i], hold[j]] = [hold[j], hold[i]]; }
+            hold = hold.slice(0, want);
+          }
+          for (const c of hold) lvl.nests.push({ x: c.x, y: c.y, key: key ?? pickEnemy(rng, depth).key, aware: true });
+          // Counted against the floor's budget exactly as if they were placed:
+          // the ambush is not extra enemies, it is the same enemies arriving
+          // late. Same rule as a pack and a situation's cast.
+          placed += hold.length;
+          continue;
+        }
+      }
       // A role asks for a KIND - the same table a situation's cast uses. It
       // can come back empty on a floor too shallow for that role, which
       // tileMinDepth is supposed to prevent; falling back to the ordinary

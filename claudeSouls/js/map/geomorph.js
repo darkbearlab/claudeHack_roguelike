@@ -728,6 +728,11 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
     // Kept on every room, not only on situations: `enemies: { at }` needs
     // them too, and they are computed for every tile regardless.
     room.anchors = anchors;
+    // The signal's own cells, so populate can decide whether it is live and
+    // where its centre is. The anchors are already collected above.
+    if (spec.signal?.at && anchors[spec.signal.at]?.length) {
+      room.signal = { cells: anchors[spec.signal.at], oneIn: spec.signal.oneIn ?? 2 };
+    }
     if (lvl.upStair && lvl.roomAt(lvl.upStair.x, lvl.upStair.y)?.id === room.id) lvl.claimRoom('stair', room.id);
     if (lvl.downStair && lvl.roomAt(lvl.downStair.x, lvl.downStair.y)?.id === room.id) lvl.claimRoom('stair', room.id);
     if (spec.special) {

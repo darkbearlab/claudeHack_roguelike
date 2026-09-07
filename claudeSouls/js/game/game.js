@@ -35,7 +35,7 @@ import { AFFIX_BY_KEY, canGrant, affixesOn, TEMP_HITS } from '../data/affixes.js
 import { attackTiles, snapDir, blocksDirection } from './patterns.js';
 import { enemyTurn, tickEnemyState } from './ai.js';
 import { makeProjectile, stepProjectiles, resetProjectileIds } from './projectile.js';
-import { populate, spawnBoss } from './populate.js';
+import { populate, spawnBoss, spawn, SIGNAL_RADIUS, WAKE_RADIUS } from './populate.js';
 import { FxLog } from './fx.js';
 import { buildHub } from '../map/hub.js';
 import { HERO_BY_KEY } from '../data/heroes.js';
@@ -344,6 +344,7 @@ export class Game {
   afterMove() {
     const p = this.player;
     computeFOV(this.level, p.x, p.y, 11, false);
+    this.checkAmbush();
 
     // Anything mid-swing is visible, whatever is between you and it.
     //
@@ -618,6 +619,53 @@ export class Game {
     this.afterMove();
     this.onEnterTile();
     return true;
+  }
+
+  /**
+   * Step near a signal and everything it can reach comes out at once.
+   *
+   * The nests have no trigger of their own - that decoupling is the whole
+   * point. One signal empties every nest in range, so a wave arrives together
+   * instead of one thing crawling out at a time, which is what makes it read
+   * as being called rather than as random spawning. See docs/AMBUSH.md.
+   *
+   * Whether the player can see it happen is deliberately not checked. An
+   * ambush is an ambush; how they arrive - out of the floor, off the ceiling -
+   * is presentation, and it hangs on the `spawn` event below.
+   */
+  checkAmbush() {
+    const lvl = this.level, p = this.player;
+    if (!lvl.signals?.length || !lvl.nests?.length) return;
+    const near = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+
+    let woke = 0;
+    for (const sig of lvl.signals) {
+      if (!sig.live || sig.spent) continue;
+      if (near(sig, p) > SIGNAL_RADIUS) continue;
+      sig.spent = true;                       // once, until the floor comes back
+      const keep = [];
+      for (const n of lvl.nests) {
+        if (near(sig, n) > WAKE_RADIUS) { keep.push(n); continue; }
+        // A cell somebody is already standing on is simply skipped; the rest
+        // of the wave still arrives.
+        if (lvl.occupant(n.x, n.y) || !lvl.walkable(n.x, n.y)) continue;
+        const before = lvl.enemies.length;
+        spawn(this, lvl, n.key, n.x, n.y, this.rng, true);
+        if (lvl.enemies.length === before) { keep.push(n); continue; }
+        const e = lvl.enemies[lvl.enemies.length - 1];
+        e.aware = true;                       // asleep is not an ambush
+        e.lastKnown = { x: p.x, y: p.y };
+        this.fx.add({ kind: 'spawn', uid: e.uid, x: n.x, y: n.y });
+        woke++;
+      }
+      lvl.nests = keep;
+    }
+    if (woke) {
+      lvl.markEnemiesDirty();
+      // The only voice this mechanic has: the game has no sound, and nothing
+      // is drawn on the map. It says that it happened, not where.
+      this.msg('石縫裡有東西鑽出來。', 'bad');
+    }
   }
 
   onEnterTile() {

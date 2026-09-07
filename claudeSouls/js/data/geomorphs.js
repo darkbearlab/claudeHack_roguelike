@@ -30,6 +30,11 @@
 //     asks for a KIND rather than whatever the depth offers, using the same
 //     table a situation's cast uses. `enemies` may be a list of these, so one
 //     tile can want shooters at the back and something solid in front.
+//   - `enemies: { ..., nest: true }` holds those enemies back instead of
+//     placing them: they come out when a SIGNAL wakes them. See docs/AMBUSH.md.
+//   - `signal: { at: 'signal', oneIn: 2 }` is an unseen sensing area. Step
+//     within SIGNAL_RADIUS of it and every nest within WAKE_RADIUS empties at
+//     once. Live on only some seeds, and never on floor 1.
 //   - A tile that asks for a role it cannot get is never placed that shallow:
 //     `minDepth` is DERIVED from the roles used (nothing is `ranged` above
 //     floor 2), so the drawing cannot promise something the floor cannot
@@ -96,6 +101,34 @@ export const GEOMORPHS = {
     '###....###',
     '###....###',
     '####..####',
+    '####..####',
+    '####++####',
+  ]},
+
+  // A dry gully. You walk the length of it and nothing is there; the signal
+  // sits at the mouth, and what was waiting comes out behind you. On the seeds
+  // where the signal is dead the same three are simply standing in it, and you
+  // fight a normal fight without ever learning what you walked past.
+  //
+  // Chargers, because a corridor ambush is about tempo. A blocker in front and
+  // a blocker behind, with no room to sidestep, is a death sentence rather
+  // than an ambush - which is why `role` is required on a nest at all.
+  // Two or three of the four corners, not all four: without `n` this put four
+  // chargers in every gully, and at weight 2 that was eight enemies a floor
+  // out of a budget of eleven. Measured, floors ran to 28.
+  gully: { weight: 1,
+    anchors: { a: 'nest', s: 'signal' },
+    enemies: { at: 'nest', role: 'charger', n: [2, 3], nest: true },
+    signal: { at: 'signal', oneIn: 2 },
+    art: [
+    '####++####',
+    '####..####',
+    '###a..a###',
+    '###....###',
+    '+...ss...+',
+    '+...ss...+',
+    '###....###',
+    '###a..a###',
     '####..####',
     '####++####',
   ]},
@@ -504,6 +537,17 @@ export function validateTile(name, t) {
       if (at && !drawn.has(at)) bad.push(`${name}: enemies at '${at}', but no cell is drawn with that anchor`);
       if (role && !ROLES[role]) bad.push(`${name}: unknown role '${role}' - one of ${Object.keys(ROLES).join(', ')}`);
       if (role && !at) bad.push(`${name}: role '${role}' without at - a role needs cells to stand on`);
+      // A nest without a role would draw whatever the depth offers, and in a
+      // corridor that can be a blocker at each end with nowhere to step - a
+      // death sentence rather than an ambush.
+      if (entry.nest && !role) bad.push(`${name}: a nest must name a role - see docs/AMBUSH.md`);
+      if (entry.nest && !at) bad.push(`${name}: a nest must name the cells it comes out of`);
+    }
+    if (t.signal) {
+      if (!t.signal.at) bad.push(`${name}: signal needs an "at" naming its cells`);
+      else if (!drawn.has(t.signal.at)) bad.push(`${name}: signal at '${t.signal.at}', but no cell is drawn with that anchor`);
+      const one = t.signal.oneIn;
+      if (!Number.isInteger(one) || one < 1) bad.push(`${name}: signal.oneIn must be a whole number of 1 or more`);
     }
     if (t.special) bad.push(`${name}: enemies on a situation - a situation casts by role; use its cast list`);
     if (t.fixed) bad.push(`${name}: enemies on a fixed piece - the entry and the hall are populated by hand`);

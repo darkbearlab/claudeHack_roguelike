@@ -13,6 +13,7 @@ import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
 import { Level } from '../js/map/level.js';
 import * as geomorphsModule from '../js/data/geomorphs.js';
+import { armSignals, SIGNAL_RADIUS, WAKE_RADIUS } from '../js/game/populate.js';
 import { T, isWalkable, isChest, isCorpse, flyable, tileName } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
@@ -4041,6 +4042,9 @@ check('a tile that asks for enemies gets them, out of the budget, and nothing el
         if (!spec?.enemies) continue;
         const want = Array.isArray(spec.enemies) ? spec.enemies : spec.enemies.n;
         if (!want) continue;
+        // A nest is deliberately empty until a signal wakes it - that is the
+        // ambush test's subject, not this one's.
+        if (!Array.isArray(spec.enemies) && spec.enemies.nest) continue;
         rooms++;
         let n = 0, free = 0;
         for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) {
@@ -4080,6 +4084,7 @@ check('a marked cell always has something standing on it', () => {
       for (const room of lvl.rooms) {
         const spec = GEOMORPHS[room.tile];
         if (!spec?.enemies?.at || spec.enemies.n) continue;   // "all of them" only
+        if (spec.enemies.nest) continue;                      // nests wait for a signal
         rooms++;
         for (const c of room.anchors?.[spec.enemies.at] ?? []) {
           cells++;
@@ -4127,6 +4132,7 @@ check('a marked cell can ask for a kind, and only appears where it can get one',
         if (d < tileMinDepth(spec)) tooShallow.push(`${room.tile} on floor ${d}`);
         for (const entry of enemyEntries(spec)) {
           if (!entry.role || entry.n) continue;
+          if (entry.nest) continue;                           // nests wait for a signal
           const want = new Set(ROLES[entry.role]);
           for (const c of room.anchors?.[entry.at] ?? []) {
             cells++;
@@ -4142,6 +4148,96 @@ check('a marked cell can ask for a kind, and only appears where it can get one',
   assert(cells > 40, `only ${cells} role cells across 108 floors`);
   assert(wrong.length === 0, `${wrong.length} of ${cells}: ${wrong.slice(0, 3).join('; ')}`);
   return `${cells} cells, every one holding the kind it asked for`;
+});
+
+check('a signal calls, a nest answers, and neither does anything alone', () => {
+  // docs/AMBUSH.md. Nests have no trigger of their own; one signal empties
+  // every nest within reach at once, which is what makes it read as being
+  // called rather than as random spawning.
+  const { GEOMORPHS, enemyEntries } = geomorphsModule;
+  const nesting = Object.keys(GEOMORPHS).filter((n) => enemyEntries(GEOMORPHS[n]).some((e) => e.nest));
+  assert(nesting.length >= 1, 'no tile in the catalogue holds a nest');
+  assert(Object.keys(GEOMORPHS).some((n) => GEOMORPHS[n].signal), 'no tile carries a signal');
+
+  // Same seed, same signals live. Different seeds, a different set.
+  const armedOn = (seed, d) => {
+    const g = new Game(null); g.ui = new QuietUI();
+    g.newGame({ seed, name: 'A', hero: 'knight' });
+    return g.levelAt(d).signals.map((s) => `${s.x},${s.y}:${s.live}`).join('|');
+  };
+  assert(armedOn('amb-same', 4) === armedOn('amb-same', 4), 'the same seed armed a different set');
+
+  let live = 0, dead = 0, floorOneLive = 0, fired = 0, nestsSeen = 0;
+  for (let i = 0; i < 25; i++) {
+    const g = new Game(null); g.ui = new QuietUI();
+    g.newGame({ seed: `ambush${i}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const sg of lvl.signals) {
+        if (sg.live) { live++; if (d === 1) floorOneLive++; } else dead++;
+      }
+      nestsSeen += lvl.nests.length;
+
+      // A nest on its own does nothing: stand on every held cell and see.
+      const held = [...lvl.nests];
+      if (held.length && !lvl.signals.some((sg) => sg.live &&
+            Math.max(Math.abs(sg.x - held[0].x), Math.abs(sg.y - held[0].y)) <= SIGNAL_RADIUS)) {
+        g.level = lvl; g.player.depth = d;
+        const n0 = lvl.enemies.filter((e) => e.alive).length;
+        g.player.x = held[0].x; g.player.y = held[0].y;
+        g.afterMove();
+        assert(lvl.enemies.filter((e) => e.alive).length === n0,
+          `d${d}: standing on a nest set it off by itself`);
+      }
+
+      // A live signal empties what it reaches, once.
+      const sig = lvl.signals.find((sg) => sg.live && !sg.spent);
+      if (!sig || !lvl.nests.length) continue;
+      g.level = lvl; g.player.depth = d;
+      const before = lvl.enemies.filter((e) => e.alive).length;
+      const waiting = lvl.nests.filter((n) =>
+        Math.max(Math.abs(sig.x - n.x), Math.abs(sig.y - n.y)) <= WAKE_RADIUS).length;
+      g.player.x = sig.x; g.player.y = sig.y;
+      g.afterMove();
+      const after = lvl.enemies.filter((e) => e.alive).length;
+      if (waiting && after > before) {
+        fired++;
+        assert(sig.spent, `d${d}: a signal fired without being spent`);
+        for (const e of lvl.enemies.slice(before)) {
+          assert(e.aware, `d${d}: something arrived asleep - that is not an ambush`);
+        }
+        // and never twice
+        const again = lvl.enemies.filter((e) => e.alive).length;
+        g.player.x = sig.x; g.player.y = sig.y; g.afterMove();
+        assert(lvl.enemies.filter((e) => e.alive).length === again,
+          `d${d}: the same signal fired twice`);
+      }
+    }
+  }
+  assert(floorOneLive === 0, `${floorOneLive} live signals on floor 1 - it is the tutorial`);
+  assert(live > 0 && dead > 0, `arming is stuck: ${live} live, ${dead} dead`);
+  assert(nestsSeen > 0, 'no nest ever held anything back');
+  assert(fired > 3, `only ${fired} signals were seen to fire`);
+  return `${live} live / ${dead} dead, none on floor 1, ${fired} fired and none twice`;
+});
+
+check('adding ambush did not move a single tile', () => {
+  // The arming roll comes from a derived stream, never the floor's own.
+  // placeKeeper once drew mid-generation and shifted every decision after it,
+  // so the same seed built a different dungeon - and three A/B comparisons
+  // were measuring two different maps without anyone noticing.
+  //
+  // Stated as the consequence: generating a floor twice, with the signals
+  // armed in between, must produce the same tiles.
+  for (let i = 0; i < 6; i++) {
+    for (const d of [2, 5, 9]) {
+      const a = generateLevel(d, new RNG(`drift:${i}:${d}`));
+      const b = generateLevel(d, new RNG(`drift:${i}:${d}`));
+      armSignals(b, `drift:${i}`);
+      assert(a.tiles.join(',') === b.tiles.join(','), `d${d}/s${i}: arming moved the map`);
+    }
+  }
+  return 'the map is the same map whether or not anything is armed';
 });
 
 check('nobody stands where somebody else already is', () => {
