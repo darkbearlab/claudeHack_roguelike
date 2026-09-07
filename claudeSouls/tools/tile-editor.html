@@ -31,7 +31,7 @@
   textarea { width: 100%; min-height: 220px; resize: vertical; white-space: pre; tab-size: 2; }
   .problems { color: #ff7a6a; white-space: pre-wrap; }
   .ok { color: #8fd18a; }
-  .anchors { display:grid; grid-template-columns: auto auto auto auto; gap: 6px 10px; align-items:center; }
+  .anchors { display:grid; grid-template-columns: auto 1fr auto auto auto; gap: 6px 10px; align-items:center; }
   .hint { color: var(--dim); font-size: 12.5px; }
   kbd { background:#2a262c; border:1px solid var(--line); border-radius:4px; padding: 0 5px; }
 </style>
@@ -81,14 +81,13 @@
     <span id="kindExtra"></span>
   </div>
   <div class="row">
-    <label>預期敵人</label>
-    <select id="enAt"><option value="">在板塊裡隨機</option></select>
+    <label>板塊裡隨機幾隻</label>
     <input type="number" id="enLo" min="0" max="8" value="" placeholder="最少" style="width:6ch">
     <span>–</span>
     <input type="number" id="enHi" min="0" max="8" value="" placeholder="最多" style="width:6ch">
     <label><input type="checkbox" id="enAware"> 一開始就清醒</label>
-    <span class="hint">留空 = 交給隨機補怪。選一個錨點 = 那些格子<b>每格一隻</b>(再填數量就是從中挑幾格)。
-    種類由層數決定,數量算進該層預算。</span>
+    <span class="hint">留空 = 交給整層的隨機補怪。要「這一格一定有」就用下面錨點那排的「生怪」。
+    數量都算進該層預算。</span>
   </div>
   <div class="row">
     <label>錨點</label>
@@ -155,7 +154,8 @@ let letter = 'a';
 let anchors = {};             // letter -> name | {name, tile}
 let kind = 'pile';
 let weight = 2, special = CHAMBERS[0]?.key ?? '', bothEnds = false;
-let enemies = null;           // null | [lo, hi] | { n: [lo, hi], aware: true }
+let enemies = null;           // null | [lo, hi] | { ... } | [ { ... }, ... ]
+let spawnAt = {};             // anchor name -> '' | 'any' | role
 
 const $ = (id) => document.getElementById(id);
 const grid = $('grid'), ctx = grid.getContext('2d');
@@ -309,19 +309,30 @@ window.addEventListener('keydown', (ev) => {
 // ---- anchors ---------------------------------------------------------------
 function buildAnchors() {
   const box = $('anchors'); box.innerHTML = '';
+  const ROLE_LABEL = { '': '不生怪', any: '每格一隻(種類看層數)', ranged: '每格一隻:遠程',
+                       blocker: '每格一隻:擋路', charger: '每格一隻:衝鋒', guard: '每格一隻:守衛' };
   for (const [l, a] of Object.entries(anchors)) {
     const name = typeof a === 'string' ? a : a.name;
     const tile = typeof a === 'object' ? (a.tile ?? '') : '';
+    const spawn = spawnAt[name] ?? '';
     box.insertAdjacentHTML('beforeend', `
       <b>${l}</b>
-      <input type="text" data-l="${l}" data-k="name" value="${name}" placeholder="名字(lane / ledge…)" spellcheck="false">
+      <input type="text" data-l="${l}" data-k="name" value="${name}" placeholder="名字(front / back / lane…)" spellcheck="false">
       <select data-l="${l}" data-k="tile">
         <option value="">地板</option>
         <option value="BRIDGE" ${tile === 'BRIDGE' ? 'selected' : ''}>橋</option>
         <option value="RUBBLE" ${tile === 'RUBBLE' ? 'selected' : ''}>碎石</option>
       </select>
+      <select data-l="${l}" data-k="spawn">
+        ${Object.entries(ROLE_LABEL).map(([v, t]) => `<option value="${v}" ${spawn === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
       <button data-l="${l}" data-k="del">×</button>`);
   }
+  box.querySelectorAll('[data-k=spawn]').forEach((el) => el.addEventListener('change', () => {
+    const nm = currentName(el.dataset.l);
+    if (el.value) spawnAt[nm] = el.value; else delete spawnAt[nm];
+    emit();
+  }));
   box.querySelectorAll('[data-k=name]').forEach((el) => el.addEventListener('input', () => { setAnchor(el.dataset.l, el.value, currentTile(el.dataset.l)); }));
   box.querySelectorAll('[data-k=tile]').forEach((el) => el.addEventListener('change', () => { setAnchor(el.dataset.l, currentName(el.dataset.l), el.value); }));
   box.querySelectorAll('[data-k=del]').forEach((el) => el.addEventListener('click', () => { delete anchors[el.dataset.l]; buildAnchors(); redraw(); }));
@@ -349,23 +360,31 @@ function buildKind() {
 }
 $('kind').addEventListener('change', (e) => { kind = e.target.value; buildKind(); emit(); });
 $('name').addEventListener('input', emit);
-for (const id of ['enLo', 'enHi', 'enAware', 'enAt']) $(id).addEventListener('input', emit);
-$('enAt').addEventListener('change', emit);
+for (const id of ['enLo', 'enHi', 'enAware']) $(id).addEventListener('input', () => { buildAnchors(); emit(); });
 
 // ---- output ----------------------------------------------------------------
 function readEnemies() {
-  const lo = $('enLo').value, hi = $('enHi').value, at = $('enAt').value;
-  if (lo === '' && hi === '' && !at) return null;
+  const aware = $('enAware').checked;
+  const lo = $('enLo').value, hi = $('enHi').value;
   const n = (lo === '' && hi === '') ? null : [Math.max(0, +lo || 0), Math.max(0, +hi || +lo || 0)];
-  if (!at) return $('enAware').checked ? { n, aware: true } : n;
-  const o = { at };
-  if (n) o.n = n;
-  if ($('enAware').checked) o.aware = true;
-  return o;
+  const drawn = drawnAnchors();
+  const marked = Object.entries(spawnAt).filter(([nm, v]) => v && drawn.has(nm));
+  const entries = marked.map(([at, role]) => {
+    const e = { at };
+    if (role !== 'any') e.role = role;
+    if (aware) e.aware = true;
+    return e;
+  });
+  if (n) entries.unshift(aware ? { n, aware: true } : { n });
+  if (!entries.length) return null;
+  // Keep the short forms readable when there is only a count.
+  if (entries.length === 1 && entries[0].n && !entries[0].at) {
+    return entries[0].aware ? entries[0] : entries[0].n;
+  }
+  return entries.length === 1 ? entries[0] : entries;
 }
-/** The anchor names this tile actually draws, for the spawn-point picker. */
-function refreshAnchorPicker() {
-  const sel = $('enAt'), had = sel.value;
+/** The anchor names this tile actually draws. */
+function drawnAnchors() {
   const drawn = new Set();
   for (const row of art) for (const c of row) {
     if (!/[a-z]/.test(c)) continue;
@@ -373,9 +392,7 @@ function refreshAnchorPicker() {
     const nm = typeof a === 'string' ? a : a?.name;
     if (nm) drawn.add(nm);
   }
-  sel.innerHTML = '<option value="">在板塊裡隨機</option>' +
-    [...drawn].map((n) => `<option value="${n}">${n} 的每一格</option>`).join('');
-  sel.value = drawn.has(had) ? had : '';
+  return drawn;
 }
 function tileObject() {
   const t = { art: art.map((r) => r.join('')) };
@@ -391,7 +408,6 @@ function tileObject() {
   return t;
 }
 function emit() {
-  refreshAnchorPicker();
   const name = ($('name').value || 'newTile').replace(/[^A-Za-z0-9_]/g, '');
   const t = tileObject();
   const probs = validateTile(name, t);
@@ -411,14 +427,18 @@ function emit() {
   if (t.allEnds) head.push('allEnds: true');
   if (t.fixed) head.push('fixed: true');
   if (t.enemies) {
-    if (Array.isArray(t.enemies)) head.push(`enemies: [${t.enemies[0]}, ${t.enemies[1]}]`);
-    else {
+    const one = (e) => {
       const parts = [];
-      if (t.enemies.at) parts.push(`at: '${t.enemies.at}'`);
-      if (t.enemies.n) parts.push(`n: [${t.enemies.n[0]}, ${t.enemies.n[1]}]`);
-      if (t.enemies.aware) parts.push('aware: true');
-      head.push(`enemies: { ${parts.join(', ')} }`);
-    }
+      if (e.at) parts.push(`at: '${e.at}'`);
+      if (e.role) parts.push(`role: '${e.role}'`);
+      if (e.n) parts.push(`n: [${e.n[0]}, ${e.n[1]}]`);
+      if (e.aware) parts.push('aware: true');
+      return `{ ${parts.join(', ')} }`;
+    };
+    const e = t.enemies;
+    if (Array.isArray(e) && e.length === 2 && typeof e[0] === 'number') head.push(`enemies: [${e[0]}, ${e[1]}]`);
+    else if (Array.isArray(e)) head.push(`enemies: [${e.map(one).join(', ')}]`);
+    else head.push(`enemies: ${one(e)}`);
   }
   if (t.anchors) {
     const parts = Object.entries(t.anchors).map(([l, a]) =>
@@ -459,9 +479,14 @@ function buildLoad() {
     anchors = JSON.parse(JSON.stringify(t.anchors ?? {}));
     kind = t.special ? 'special' : t.fixed ? 'fixed' : 'pile';
     weight = t.weight ?? 2; special = t.special ?? special; bothEnds = !!t.allEnds;
-    const en = t.enemies == null ? null : (Array.isArray(t.enemies) ? { n: t.enemies } : t.enemies);
-    $('enLo').value = en?.n ? en.n[0] : ''; $('enHi').value = en?.n ? en.n[1] : ''; $('enAware').checked = !!en?.aware;
-    refreshAnchorPicker(); $('enAt').value = en?.at ?? '';
+    const list = t.enemies == null ? []
+               : (Array.isArray(t.enemies) && t.enemies.length === 2 && typeof t.enemies[0] === 'number') ? [{ n: t.enemies }]
+               : Array.isArray(t.enemies) ? t.enemies : [t.enemies];
+    spawnAt = {};
+    const count = list.find((e) => e.n && !e.at);
+    $('enLo').value = count ? count.n[0] : ''; $('enHi').value = count ? count.n[1] : '';
+    $('enAware').checked = list.some((e) => e.aware);
+    for (const e of list) if (e.at) spawnAt[e.at] = e.role ?? 'any';
     $('name').value = sel.value; $('kind').value = kind; $('size').value = `${W}x${H}`;
     buildKind(); buildAnchors(); layout(); redraw();
   });

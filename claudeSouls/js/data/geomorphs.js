@@ -26,6 +26,14 @@
 //     way to say "something stands exactly here". Add `n: [lo, hi]` to take
 //     only some of the marked cells instead of all of them. The species is
 //     still drawn for the depth; only the ground is fixed.
+//   - `role: 'ranged' | 'blocker' | 'charger' | 'guard'` on such an entry
+//     asks for a KIND rather than whatever the depth offers, using the same
+//     table a situation's cast uses. `enemies` may be a list of these, so one
+//     tile can want shooters at the back and something solid in front.
+//   - A tile that asks for a role it cannot get is never placed that shallow:
+//     `minDepth` is DERIVED from the roles used (nothing is `ranged` above
+//     floor 2), so the drawing cannot promise something the floor cannot
+//     supply. An explicit `minDepth` raises it further.
 //   - A socket drawn `^^` instead of `++` is the ARROW: the board game's
 //     marked entrance. A tile with an arrow can only be placed with the arrow
 //     facing the tile it is placed from, so it is always entered there; its
@@ -44,6 +52,9 @@
 // Legend:  # wall   . floor   I pillar   % rubble   O pit   ~ chasm
 //          (terrain glyphs are never lowercase letters - those are anchors)
 //          = bridge  < stairs up  * bonfire   D door   + socket   ^ arrow socket   a-z anchor
+
+import { ROLES } from './chambers.js';
+import { ENEMY_BY_KEY } from './enemies.js';
 
 export const GEOMORPHS = {
   // ==== the random pile ====================================================
@@ -248,13 +259,30 @@ export const GEOMORPHS = {
   // runs out to both edges - beside another chasm-edged tile it is one wide
   // drop - into a landing three rows deep with the way on at the north.
   // Drawn by the author in the editor; the catalogue's first tile that was.
-  // Measured before `enemies` existed: the ordinary fill left it empty 78% of
-  // the time. Now something is on the landing when you step off the bridge.
-  causeway: { weight: 1, enemies: [1, 3], art: [
+  //
+  // The bridge is the decision: two wide, five long, and while you are on it
+  // there is nowhere sideways to go. The landing holds two shooters at the
+  // back and two solid things in front of them, so crossing means arriving
+  // into a blocked line while being shot down its length - and the shooters
+  // are the reason you cannot simply wait on the near side.
+  //
+  // `blocker` for the front pair rather than `charger`: a charger would come
+  // out onto the bridge and turn the crossing into a fight in a corridor,
+  // which is a different tile. One word if that is ever wanted instead.
+  //
+  // Measured before `enemies` existed, the ordinary fill left this empty 78%
+  // of the time.
+  causeway: { weight: 1,
+    anchors: { a: 'front', b: 'back' },
+    enemies: [
+      { at: 'back', role: 'ranged', aware: true },
+      { at: 'front', role: 'blocker', aware: true },
+    ],
+    art: [
     '####++####',
     '..........',
-    '..........',
-    '..........',
+    '...b..b...',
+    '....aa....',
     '~~~~==~~~~',
     '~~~~==~~~~',
     '~~~~==~~~~',
@@ -456,25 +484,26 @@ export function validateTile(name, t) {
   if (arrows && t.fixed) bad.push(`${name}: an arrow on a fixed piece - fixed pieces are placed by hand and are not entered`);
   // enemies: a range, small, and not on a situation - a situation has a cast.
   if (t.enemies != null) {
-    const at = Array.isArray(t.enemies) ? null : t.enemies?.at;
-    const n = Array.isArray(t.enemies) ? t.enemies : t.enemies?.n;
-    // `n` is required without `at` (there is nothing else to go on) and
-    // optional with it (no `n` means every marked cell).
-    if (n != null || !at) {
-      if (!Array.isArray(n) || n.length !== 2 || !Number.isInteger(n[0]) || !Number.isInteger(n[1]) || n[0] < 0 || n[1] < n[0] || n[1] > 8) {
-        bad.push(`${name}: enemies must be [lo, hi] with 0 <= lo <= hi <= 8`);
-      }
+    const drawn = new Set();
+    for (const row of art) for (const c of row) {
+      if (!/[a-z]/.test(c)) continue;
+      const a = t.anchors?.[c];
+      drawn.add(typeof a === 'string' ? a : a?.name);
     }
-    if (at) {
+    for (const entry of enemyEntries(t)) {
+      const { at, role, n } = entry;
+      // `n` is required without `at` (there is nothing else to go on) and
+      // optional with it (no `n` means every marked cell).
+      if (n != null || !at) {
+        if (!Array.isArray(n) || n.length !== 2 || !Number.isInteger(n[0]) || !Number.isInteger(n[1]) || n[0] < 0 || n[1] < n[0] || n[1] > 8) {
+          bad.push(`${name}: enemies must be [lo, hi] with 0 <= lo <= hi <= 8`);
+        }
+      }
       // The anchor has to be one this tile actually draws, or the tile asks
       // for enemies on ground that does not exist and silently gets none.
-      const drawn = new Set();
-      for (const row of art) for (const c of row) {
-        if (!/[a-z]/.test(c)) continue;
-        const a = t.anchors?.[c];
-        drawn.add(typeof a === 'string' ? a : a?.name);
-      }
-      if (!drawn.has(at)) bad.push(`${name}: enemies at '${at}', but no cell is drawn with that anchor`);
+      if (at && !drawn.has(at)) bad.push(`${name}: enemies at '${at}', but no cell is drawn with that anchor`);
+      if (role && !ROLES[role]) bad.push(`${name}: unknown role '${role}' - one of ${Object.keys(ROLES).join(', ')}`);
+      if (role && !at) bad.push(`${name}: role '${role}' without at - a role needs cells to stand on`);
     }
     if (t.special) bad.push(`${name}: enemies on a situation - a situation casts by role; use its cast list`);
     if (t.fixed) bad.push(`${name}: enemies on a fixed piece - the entry and the hall are populated by hand`);
@@ -483,6 +512,42 @@ export function validateTile(name, t) {
   // rest of the border may be anything - wall, floor, chasm - because an edge
   // may be open now.
   return bad;
+}
+
+/**
+ * What a tile's `enemies` says, always as a list of entries.
+ *
+ * Three shorthands grew here - a bare range, one object, a list - and every
+ * reader had been re-deciding which it was looking at. One place decides now.
+ */
+export function enemyEntries(t) {
+  const e = t?.enemies;
+  if (e == null) return [];
+  if (Array.isArray(e)) {
+    // [lo, hi] is a count; anything else is a list of entries.
+    if (e.length === 2 && typeof e[0] === 'number') return [{ n: e }];
+    return e;
+  }
+  return [e];
+}
+
+/**
+ * The shallowest floor this tile may appear on.
+ *
+ * Derived from the roles it asks for, because nothing is `ranged` above floor
+ * 2 and a tile promising a shooter down there would get whatever the depth
+ * happened to offer instead. An explicit `minDepth` raises it further; it can
+ * never lower it below what the drawing needs.
+ */
+export function tileMinDepth(t) {
+  let d = t?.minDepth ?? 1;
+  for (const { role } of enemyEntries(t)) {
+    const pool = role ? ROLES[role] : null;
+    if (!pool?.length) continue;
+    const shallowest = Math.min(...pool.map((k) => ENEMY_BY_KEY[k]?.minDepth ?? 99));
+    d = Math.max(d, shallowest);
+  }
+  return d;
 }
 
 /** Every tile's art is the right shape, or the loader says which one is not. */

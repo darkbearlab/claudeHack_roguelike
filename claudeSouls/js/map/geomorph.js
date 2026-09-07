@@ -22,7 +22,7 @@
 //   - close the middle door of any straight run     (six rooms in a line)
 
 import { T } from './tiles.js';
-import { GEOMORPHS } from '../data/geomorphs.js';
+import { GEOMORPHS, tileMinDepth } from '../data/geomorphs.js';
 import { CHAMBER_BY_KEY } from '../data/chambers.js';
 
 export const U = 10;                 // one cell of the grid, in tiles
@@ -189,7 +189,11 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   }
 
   // ---- the piles ---------------------------------------------------------
-  const pileNames = Object.keys(GEOMORPHS).filter((n) => !GEOMORPHS[n].special && !GEOMORPHS[n].fixed);
+  // A tile that asks for a role it cannot get at this depth is not in the
+  // pile at all - see tileMinDepth. Nothing is `ranged` above floor 2, and a
+  // causeway on floor 1 would have put anything at all on its shooter cells.
+  const pileNames = Object.keys(GEOMORPHS)
+    .filter((n) => !GEOMORPHS[n].special && !GEOMORPHS[n].fixed && depth >= tileMinDepth(GEOMORPHS[n]));
   const weighted = pileNames.flatMap((n) => Array(GEOMORPHS[n].weight ?? 1).fill(n));
   // Specials only where their situation is allowed, and never on the boss
   // floor - populate places that floor by hand and would leave a cast unfilled.

@@ -20,7 +20,7 @@
 import { Enemy } from './actors.js';
 import { pickEnemy, ENEMY_BY_KEY } from '../data/enemies.js';
 import { CHAMBER_BY_KEY, castFor } from '../data/chambers.js';
-import { GEOMORPHS } from '../data/geomorphs.js';
+import { GEOMORPHS, enemyEntries } from '../data/geomorphs.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T } from '../map/tiles.js';
 import { DIRS } from '../../../engine/util.js';
@@ -140,10 +140,10 @@ export function stageTiles(game, lvl, rng, depth) {
   // One enemy at one place, retrying the SPECIES: the species is drawn for
   // the depth and may be two tiles across, and a 2x2 refuses ground its body
   // does not fit. One causeway in 148 came out empty when this tried once.
-  const put = (x, y, aware) => {
+  const put = (x, y, aware, key = null) => {
     for (let tries = 0; tries < 6; tries++) {
       const before = lvl.enemies.length;
-      spawn(game, lvl, pickEnemy(rng, depth).key, x, y, rng, true);
+      spawn(game, lvl, key ?? pickEnemy(rng, depth).key, x, y, rng, true);
       if (lvl.enemies.length > before) {
         placed++;
         if (aware) lvl.enemies[lvl.enemies.length - 1].aware = true;
@@ -156,33 +156,40 @@ export function stageTiles(game, lvl, rng, depth) {
   for (const room of lvl.rooms) {
     const spec = room.tile ? GEOMORPHS[room.tile] : null;
     if (!spec?.enemies) continue;
-    const cfg = Array.isArray(spec.enemies) ? { n: spec.enemies } : spec.enemies;
-    const aware = !!cfg.aware;
+    for (const cfg of enemyEntries(spec)) {
+      const aware = !!cfg.aware;
+      // A role asks for a KIND - the same table a situation's cast uses. It
+      // can come back empty on a floor too shallow for that role, which
+      // tileMinDepth is supposed to prevent; falling back to the ordinary
+      // draw rather than leaving the cell bare keeps the one promise `at`
+      // makes, and the test would catch the day it starts happening.
+      const key = cfg.role ? castFor(cfg.role, depth, ENEMY_BY_KEY) : null;
 
-    // Marked cells: `at` names an anchor, and every cell of it gets one -
-    // unless `n` asks for only some of them.
-    if (cfg.at) {
-      let cells = (room.anchors?.[cfg.at] ?? []).filter((c) => free(c.x, c.y));
-      if (cfg.n) {
-        const want = rng.int(cfg.n[0], cfg.n[1]);
-        cells = [...cells];
-        for (let i = cells.length - 1; i > 0; i--) { const j = rng.rn2(i + 1); [cells[i], cells[j]] = [cells[j], cells[i]]; }
-        cells = cells.slice(0, want);
+      // Marked cells: `at` names an anchor, and every cell of it gets one -
+      // unless `n` asks for only some of them.
+      if (cfg.at) {
+        let cells = (room.anchors?.[cfg.at] ?? []).filter((c) => free(c.x, c.y));
+        if (cfg.n) {
+          const want = rng.int(cfg.n[0], cfg.n[1]);
+          cells = [...cells];
+          for (let i = cells.length - 1; i > 0; i--) { const j = rng.rn2(i + 1); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+          cells = cells.slice(0, want);
+        }
+        for (const c of cells) put(c.x, c.y, aware, key);
+        continue;
       }
-      for (const c of cells) put(c.x, c.y, aware);
-      continue;
-    }
 
-    // Otherwise: a count, anywhere in the tile.
-    const n = rng.int(cfg.n[0], cfg.n[1]);
-    for (let i = 0; i < n; i++) {
-      const spots = [];
-      for (let y = room.y; y < room.y + room.h; y++) {
-        for (let x = room.x; x < room.x + room.w; x++) if (free(x, y)) spots.push({ x, y });
+      // Otherwise: a count, anywhere in the tile.
+      const n = rng.int(cfg.n[0], cfg.n[1]);
+      for (let i = 0; i < n; i++) {
+        const spots = [];
+        for (let y = room.y; y < room.y + room.h; y++) {
+          for (let x = room.x; x < room.x + room.w; x++) if (free(x, y)) spots.push({ x, y });
+        }
+        if (!spots.length) break;
+        const at = rng.pick(spots);
+        put(at.x, at.y, aware, key);
       }
-      if (!spots.length) break;
-      const at = rng.pick(spots);
-      put(at.x, at.y, aware);
     }
   }
   return placed;

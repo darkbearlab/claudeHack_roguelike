@@ -3966,6 +3966,54 @@ check('a marked cell always has something standing on it', () => {
   return `${cells} marked cells across ${rooms} tiles, every one occupied`;
 });
 
+check('a marked cell can ask for a kind, and only appears where it can get one', () => {
+  // `{ at: 'back', role: 'ranged' }` - the same role table a situation's cast
+  // uses, on a tile that is not a situation. And a tile asking for a role it
+  // cannot have is not in the pile at that depth: nothing is `ranged` above
+  // floor 2, so a causeway on floor 1 would have put whatever the depth
+  // offered on its shooter cells. tileMinDepth derives that from the drawing
+  // rather than leaving it to be remembered.
+  const { validateTile, GEOMORPHS, tileMinDepth, enemyEntries } = geomorphsModule;
+  assert(validateTile('r', { art: GEOMORPHS.hall.art, enemies: { at: 'x', role: 'wizard' } }).some((m) => /unknown role/.test(m)),
+    'an unknown role was allowed');
+  assert(validateTile('r2', { art: GEOMORPHS.hall.art, enemies: { role: 'ranged', n: [1, 1] } }).some((m) => /without at/.test(m)),
+    'a role with nowhere to stand was allowed');
+  assert(tileMinDepth(GEOMORPHS.causeway) >= 2, 'the causeway does not know it needs floor 2');
+  assert(tileMinDepth(GEOMORPHS.hall) === 1, 'a tile asking for nothing got a minDepth');
+
+  const roled = Object.keys(GEOMORPHS).filter((n) => enemyEntries(GEOMORPHS[n]).some((e) => e.role));
+  assert(roled.length >= 1, 'no tile in the catalogue asks for a role');
+
+  let cells = 0, wrong = [], tooShallow = [];
+  for (let sd = 0; sd < 12; sd++) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: `roled${sd}`, name: 'A', hero: 'knight' });
+    for (let d = 1; d < DUNGEON_DEPTH; d++) {
+      const lvl = g.levelAt(d);
+      for (const room of lvl.rooms) {
+        const spec = GEOMORPHS[room.tile];
+        if (!roled.includes(room.tile)) continue;
+        if (d < tileMinDepth(spec)) tooShallow.push(`${room.tile} on floor ${d}`);
+        for (const entry of enemyEntries(spec)) {
+          if (!entry.role || entry.n) continue;
+          const want = new Set(ROLES[entry.role]);
+          for (const c of room.anchors?.[entry.at] ?? []) {
+            cells++;
+            const e = lvl.enemyAt(c.x, c.y);
+            if (!e || !e.alive) { wrong.push(`${room.tile} d${d} ${entry.at} at ${c.x},${c.y}: empty`); continue; }
+            if (!want.has(e.key)) wrong.push(`${room.tile} d${d} ${entry.at}: ${e.key} is not ${entry.role}`);
+          }
+        }
+      }
+    }
+  }
+  assert(tooShallow.length === 0, `${tooShallow.length} placed too shallow: ${tooShallow.slice(0, 3).join('; ')}`);
+  assert(cells > 40, `only ${cells} role cells across 108 floors`);
+  assert(wrong.length === 0, `${wrong.length} of ${cells}: ${wrong.slice(0, 3).join('; ')}`);
+  return `${cells} cells, every one holding the kind it asked for`;
+});
+
 check('nobody stands where somebody else already is', () => {
   // The standing audit. Every entry here was a real defect found by measuring
   // the finished floor rather than by reading the placement code, and each one
