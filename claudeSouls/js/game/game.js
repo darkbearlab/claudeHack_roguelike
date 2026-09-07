@@ -293,6 +293,26 @@ export class Game {
     return true;
   }
 
+  /**
+   * Lay static over an area for a number of turns.
+   *
+   * Built as a capability with nobody using it yet. The shape it is meant for
+   * is a boss move: blanket almost everything, declare an attack in the same
+   * breath, and leave a few tiles uncovered as the only reading of where to
+   * go. Out of a fight the same thing is only weather.
+   *
+   * `gaps` is what makes it playable rather than a blindfold - the holes are
+   * the hint. They are chosen by the caller, not here, because which tiles are
+   * safe is a property of the attack, not of the static.
+   */
+  castSnow(tiles, turns, gaps = []) {
+    const holes = new Set(gaps.map((g) => `${g.x},${g.y}`));
+    this.level.castSnow(tiles.filter((t) => !holes.has(`${t.x},${t.y}`)), turns);
+    // Never over the player's own square: standing inside the anomaly should
+    // still show you where you are.
+    this.level.clearSnowAround(this.player.x, this.player.y, 0);
+  }
+
   worldTurn() {
     // The hall has no clock. Standing in it costs nothing, which is the
     // difference between a place to decide and a place to hurry.
@@ -301,6 +321,7 @@ export class Game {
     this.turn++;
     this.player.turns++;
     this.player.tick(this.inCombat());
+    this.level.tickSnow();
 
     stepProjectiles(this);
     if (!this.running) { this.fx.end(this); return; }
@@ -344,6 +365,9 @@ export class Game {
   afterMove() {
     const p = this.player;
     computeFOV(this.level, p.x, p.y, 11, false);
+    // Walking rubs the static off around you. Before the ambush check, so a
+    // wave that arrives on ground you just cleared is drawn on clear ground.
+    this.level.clearSnowAround(p.x, p.y, 1);
     this.checkAmbush();
 
     // Anything mid-swing is visible, whatever is between you and it.

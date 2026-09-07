@@ -175,6 +175,9 @@ export class Renderer {
         if (!lvl.inBounds(x, y)) continue;
         const i = lvl.idx(x, y);
         if (!lvl.seen[i] && !lvl.visible[i]) continue;
+        // Static hides the ground itself. Drawn instead of the terrain, not
+        // over it, so nothing shows through.
+        if (lvl.snow[i]) { this.drawSnow(ctx, x, y, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell); continue; }
         this.drawTerrain(ctx, lvl, x, y, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, !!lvl.visible[i]);
       }
     }
@@ -194,6 +197,9 @@ export class Renderer {
       // not vanish because the corner it is anchored at happens to be behind
       // the door frame you are looking through.
       if (!e.bodyTiles().some((t) => lvl.isVisible(t.x, t.y))) continue;
+      // Under the static you cannot see it. Its wind-up still draws - that is
+      // the line, and it is drawn below the actors on purpose.
+      if (e.bodyTiles().every((t) => lvl.snowAt(t.x, t.y))) continue;
       const off = this.anim?.offsetFor(e.uid);
       this.drawEnemy(ctx, e,
         rx * v.cell + v.offX + (off?.dx ?? 0) * v.cell,
@@ -206,6 +212,7 @@ export class Renderer {
       const rx = n.x - v.ox, ry = n.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       if (!lvl.isVisible(n.x, n.y)) continue;
+      if (lvl.snowAt(n.x, n.y)) continue;
       this.drawNpc(ctx, n, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
@@ -214,6 +221,7 @@ export class Renderer {
       const rx = pr.x - v.ox, ry = pr.y - v.oy;
       if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
       if (!lvl.isVisible(pr.x, pr.y)) continue;
+      if (lvl.snowAt(pr.x, pr.y)) continue;
       this.drawProjectile(ctx, pr, rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell);
     }
 
@@ -405,6 +413,29 @@ export class Renderer {
         ctx.fillRect(px, py, cell * 0.16, cell);
         ctx.fillRect(px + cell * 0.84, py, cell * 0.16, cell);
       }
+    }
+  }
+
+  /**
+   * Television snow.
+   *
+   * Animated off the turn counter rather than the clock, so it crawls when the
+   * game moves and holds still when the game does - a still frame of this is a
+   * still frame of the world, which is what the anomaly is meant to feel like.
+   */
+  drawSnow(ctx, x, y, px, py, cell) {
+    const t = this.game.turn ?? 0;
+    ctx.fillStyle = '#0a0a0c';
+    ctx.fillRect(px, py, cell, cell);
+    const grain = Math.max(1, Math.round(cell / 8));
+    const n = Math.max(6, Math.round((cell / grain) * (cell / grain) * 0.34));
+    for (let k = 0; k < n; k++) {
+      const h = hash2(x * 131 + k * 17 + t * 7, y * 89 + k * 29 - t * 5);
+      const gx = px + (h % Math.max(1, cell - grain + 1));
+      const gy = py + ((h >> 9) % Math.max(1, cell - grain + 1));
+      const v = 70 + ((h >> 3) % 150);
+      ctx.fillStyle = `rgb(${v},${v},${v + 6})`;
+      ctx.fillRect(gx, gy, grain, grain);
     }
   }
 

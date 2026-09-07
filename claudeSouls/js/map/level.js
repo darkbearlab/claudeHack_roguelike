@@ -31,6 +31,10 @@ export class Level {
     this.seen    = new Uint8Array(n);
     this.visible = new Uint8Array(n);
     this.noise   = new Uint8Array(n);
+    // Turns of static left on each tile. A world-anomaly layer: it hides what
+    // is THERE - terrain, creatures - and never what is ABOUT to happen. See
+    // castSnow for why that line is where it is.
+    this.snow    = new Uint8Array(n);
 
     this.rooms       = [];
     this.enemies     = [];
@@ -65,7 +69,7 @@ export class Level {
   reset() {
     this.tiles.fill(0); this.lit.fill(0); this.seen.fill(0); this.visible.fill(0);
     this.rooms = []; this.enemies = []; this.projectiles = []; this.bonfires = [];
-    this.signals = []; this.nests = [];
+    this.signals = []; this.nests = []; this.snow.fill(0);
     this.claims = new Map(); this.npcs = []; this.chambers = [];
     this.upStair = null; this.downStair = null; this.store = null; this._idx = null;
   }
@@ -385,6 +389,59 @@ export class Level {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       if (this.at(x + dx, y + dy) === T.DOOR_CLOSED) { this.set(x + dx, y + dy, T.DOOR_OPEN); break; }
     }
+  }
+
+  // ------------------------------------------------------------------ snow
+  //
+  // Television static laid over the map. Under it you cannot see the floor or
+  // what is standing on it; you CAN still see every wind-up, because the rule
+  // the whole combat system rests on is that a blow is announced, and there is
+  // code in Game.afterMove whose entire job is to guarantee it. Hiding a
+  // telegraph would not be a hard variant, it would be damage you cannot
+  // answer - so the static hides the WORLD, not the danger.
+  //
+  // The effect is informational and cosmetic only: nothing in the rules asks
+  // whether a tile is snowed. Attacks resolve, bodies block and paths route
+  // exactly as they did.
+
+  snowAt(x, y) { return this.inBounds(x, y) ? this.snow[this.idx(x, y)] : 0; }
+
+  /** Lay static over these tiles for this many turns. */
+  castSnow(tiles, turns) {
+    for (const t of tiles) {
+      if (this.inBounds(t.x, t.y)) this.snow[this.idx(t.x, t.y)] = turns;
+    }
+  }
+
+  /**
+   * Walking rubs it off.
+   *
+   * Sight is not enough - you have to go there. That is the whole feel of it:
+   * the map does not come back by looking, it comes back by walking, so the
+   * anomaly makes you commit ground rather than survey it.
+   */
+  clearSnowAround(x, y, r = 1) {
+    let wiped = 0;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.inBounds(nx, ny)) continue;
+        const i = this.idx(nx, ny);
+        if (this.snow[i]) { this.snow[i] = 0; wiped++; }
+      }
+    }
+    return wiped;
+  }
+
+  /** One turn off every snowed tile. */
+  tickSnow() {
+    for (let i = 0; i < this.snow.length; i++) if (this.snow[i]) this.snow[i]--;
+  }
+
+  /** Is anything snowed at all? Lets the renderer skip the whole layer. */
+  get snowed() {
+    for (let i = 0; i < this.snow.length; i++) if (this.snow[i]) return true;
+    return false;
   }
 
   describeTile(x, y) { return TILE[this.at(x, y)].name; }

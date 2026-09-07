@@ -4240,6 +4240,67 @@ check('adding ambush did not move a single tile', () => {
   return 'the map is the same map whether or not anything is armed';
 });
 
+check('static hides the world, and no rule can tell', () => {
+  // The anomaly layer. It exists to hide what IS there - ground, bodies - and
+  // must never hide what is ABOUT to happen: "every blow is announced" is the
+  // rule the whole combat system rests on, and Game.afterMove has code whose
+  // only job is to guarantee it. A hidden telegraph is not a hard variant, it
+  // is damage you cannot answer.
+  //
+  // What this test can honestly pin is the DATA half: no rule asks whether a
+  // tile is snowed, and the layer ticks down and rubs off by walking.
+  //
+  // It cannot pin the half that matters most. Whether a telegraph is drawn
+  // under the static is a property of the renderer, and there is no canvas
+  // here - the assertion below on `isSeen` passes with the guarantee in
+  // afterMove disabled, because the enemy is in plain sight and FOV marks
+  // those tiles anyway. Checked in the browser instead: static cast over a
+  // winding-up enemy, and the red tiles still drawn. Said here rather than
+  // left as a test that looks like it covers something it does not.
+  const { g, e } = arena('snow', 'husk', 1);
+  const p = g.player;
+  const lvl = g.level;
+
+  // Cover the whole neighbourhood, including the enemy.
+  const tiles = [];
+  for (let y = p.y - 4; y <= p.y + 4; y++) for (let x = p.x - 4; x <= p.x + 4; x++) tiles.push({ x, y });
+  g.castSnow(tiles, 5);
+  assert(lvl.snowAt(e.x, e.y) > 0, 'the enemy is not under static');
+  assert(lvl.snowAt(p.x, p.y) === 0, 'the player cannot see their own square');
+
+  // The rules do not care. It still gets hit, and it still hits back.
+  const hp = e.hp;
+  g.useSkill(p.hero ? p.hero.skills[0] : p.meleeSkill(), { dx: e.x - p.x, dy: e.y - p.y });
+  assert(e.hp < hp, 'static changed whether an attack lands');
+
+  // A wind-up under static is still marked seen - the telegraph survives.
+  e.hp = 99;
+  let wound = false;
+  for (let t = 0; t < 20 && !wound; t++) {
+    g.player.hp = g.player.hpMax;
+    g.worldTurn();
+    if (e.state === STATE.WINDUP && e.attackTiles?.length) wound = true;
+  }
+  if (wound) {
+    g.afterMove();
+    for (const t of e.attackTiles) {
+      assert(lvl.isSeen(t.x, t.y), `a telegraph tile at ${t.x},${t.y} was hidden by static`);
+    }
+  }
+
+  // It wears off, and walking rubs it out.
+  const before = lvl.snowAt(p.x + 3, p.y);
+  g.worldTurn();
+  assert(lvl.snowAt(p.x + 3, p.y) === before - 1, 'static did not tick down');
+  const near = { x: p.x + 3, y: p.y };
+  if (lvl.walkable(near.x, near.y)) {
+    p.x = near.x; p.y = near.y;
+    g.afterMove();
+    assert(lvl.snowAt(near.x, near.y) === 0, 'walking there did not rub it off');
+  }
+  return `covered ${tiles.length} tiles; no rule changed, ticks down, walking clears it`;
+});
+
 check('nobody stands where somebody else already is', () => {
   // The standing audit. Every entry here was a real defect found by measuring
   // the finished floor rather than by reading the placement code, and each one
