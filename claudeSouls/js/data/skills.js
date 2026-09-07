@@ -415,6 +415,58 @@ export const SKILLS = [
     key: 'bury', name: 'Bury', hint: 'up close, if they reached you',
     pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 2, advancesTurn: true,
   },
+
+  // ---- the farwayer -------------------------------------------------------
+  //
+  // Three entries, six faces. `beat2` overrides the base for the second beat
+  // of a turn, so each of these stays ONE button with ONE cooldown - the beat
+  // changes what the skill does, not which skill it is.
+  //
+  // Every face is cheap and every face marks. Her bar is not the constraint;
+  // beats are, and what costs her a beat is being made to dodge. See
+  // docs/FARWAYER.md and js/data/marks.js.
+  {
+    key: 'pace',
+    name: 'Pace',
+    hint: '她的普攻。第一拍前方一格,第二拍回刀掃三格——兩拍同印,所以連打兩下必定引爆',
+    // Both beats carry the same mark, which is what makes the basic attack the
+    // detonator and gives the whole system a floor: a player who learns
+    // nothing else still gets "two of these closes a set".
+    // 3 a beat, not 2. At 2 the laziest possible play - pace, pace, pace,
+    // for ever - beat her designed phrase on raw damage (56 to 51 over 24
+    // turns) because two cheap beats plus a free x1 detonation is 1.75 damage
+    // per stamina, nearly three times the old knight's rate. At 3 the same
+    // sweep reads 35 against 51 and the sentence is worth finishing.
+    //
+    // Note which number fixed it. Her phrase barely moved when the price
+    // changed, because the phrase pays for itself out of the refund; only the
+    // repetition felt it. That is the shape the whole character wants.
+    pattern: 'front', damage: 2, impact: 1, stamina: 3, cooldown: 0,
+    advancesTurn: true, mark: 'step',
+    beat2: { pattern: 'arc3', damage: 2, impact: 1, stamina: 3, mark: 'step' },
+  },
+  {
+    key: 'reach',
+    name: 'Reach',
+    hint: '第一拍刺兩格,留下棘印(易傷);第二拍穿三格,留下泉印(回血)',
+    pattern: 'reach2', damage: 2, impact: 1, stamina: 3, cooldown: 0,
+    advancesTurn: true, mark: 'thorn',
+    beat2: { pattern: 'line3', damage: 3, impact: 1, stamina: 4, mark: 'spring' },
+  },
+  {
+    key: 'return',
+    name: 'Return',
+    hint: '第一拍轉身掃八格,留下颯印(擊退);第二拍打身後一格,留下燼印(存拍)',
+    // The second beat is `behind` on purpose, and it is the boldest thing in
+    // the kit: the strongest thing she can do for herself requires something
+    // to be at her back. It may simply never land, which is why "how often
+    // does it hit" is an acceptance item rather than an assumption.
+    // 4, not 3: eight tiles is a band-1 shape, and against a recovery of 4 a
+    // 3-point cost is zero turns of commitment. Priced by the rule.
+    pattern: 'around', damage: 1, impact: 2, stamina: 4, cooldown: 0,
+    advancesTurn: true, mark: 'gale',
+    beat2: { pattern: 'behind', damage: 3, impact: 1, stamina: 3, mark: 'ember' },
+  },
 ];
 
 export const SKILL_BY_KEY = Object.fromEntries(SKILLS.map((s) => [s.key, s]));
@@ -437,6 +489,19 @@ export const SKILL_BY_KEY = Object.fromEntries(SKILLS.map((s) => [s.key, s]));
  * The rolling case falls out for free: a roll does not advance the turn, so
  * it never reaches a tick at all and has never earned recovery.
  */
+/**
+ * Which face of a skill is firing.
+ *
+ * Her three skills each have two: the first beat of the turn and the second.
+ * A `beat2` block overrides fields on the base, so a skill stays one entry,
+ * one button and one cooldown - the beat changes what it does, not what it is.
+ * Everything without a `beat2` reads the same on every beat, which is every
+ * skill in the game but hers.
+ */
+export function faceOf(def, beat = 0) {
+  return beat >= 1 && def?.beat2 ? { ...def, ...def.beat2 } : def;
+}
+
 export const EFFORT = {
   wait: 1,
   move: 0.5,

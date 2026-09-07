@@ -150,6 +150,14 @@ body { overflow: hidden; }
 #stbar .fill.low { background: #7a6a2a; }
 /* The one line on screen that says "you can still afford to dodge". */
 #stbar .mark { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.55); }
+/* Beats, for the one hero whose turn holds more than one. Sits just under the
+   stamina bar: how much is left, and how much of this turn is left. */
+#stbar .beats { position: absolute; left: 0; top: 100%; display: flex; gap: 3px; padding-top: 3px; }
+#stbar .beats i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.18);
+                  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+#stbar .beats i.on { background: #ffd75f; }
+#stbar .beats i.spare { border-radius: 2px; }
+#stbar .beats i.spare.on { background: #79c0ff; }
 
 /* --------------------------------------------------------------- controls */
 #controls {

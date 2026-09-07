@@ -43,6 +43,7 @@ export const ART_FACING = {
   hero_knight: 'S',
   hero_binder: 'S',
   hero_squire: 'S',
+  hero_farwayer: 'S',
   hero_rags: 'S',
   hero_leathers: 'S',
   hero_brigandine: 'S',

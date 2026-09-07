@@ -107,6 +107,55 @@ export const HEROES = [
     about: ['他倒下的時候旗還舉著。我只是把它接住而已。',
             '我跑起來就停不下來。師傅說那總有一天會害死我。'],
   },
+
+  {
+    key: 'farwayer',
+    sprite: 'hero_farwayer',
+    face: 'face_farwayer',
+    name: '巡禮者',
+    blurb: '銀髮,黑羽的披風。她走過的地方都留著記號。',
+
+    // The fourth engine, and the first one that is not paid for in stamina.
+    //
+    // Her bar is small and comes back fast on purpose: the point is that
+    // stamina is NOT her constraint. Beats are. A turn holds two of them, an
+    // attack spends one, and so does a roll - so what a dodge actually costs
+    // her is the second half of a phrase, which is where her own heal and her
+    // banked beats live. Being made to move is the expensive thing, exactly
+    // as it should be for someone whose whole kit is a sequence.
+    //
+    // If this makes her simply easier, the difficulty has to come from
+    // somewhere named - reach, positioning, the five-turn clock on her marks -
+    // and not from an accident. That is an open question in docs/FARWAYER.md,
+    // not a settled one.
+    // The spec guessed 10/5 with a 3-cost roll. Two existing rules refused it
+    // within a minute of her existing, and both were right:
+    //
+    //   "nobody can dodge for ever" - at cost 3 against a recovery of 5 she
+    //   gained stamina by rolling, so no wind-up in the game meant anything to
+    //   her. Exactly the bug the old knight had at cost 4 against regen 4.
+    //
+    //   "commitment is priced by the rule" - a cost you can pay by waiting is
+    //   not a cost, and at recovery 5 a 3-point eight-tile sweep is free.
+    //
+    // The fix is on brief rather than against it. Her ATTACKS stay cheap, so
+    // she can always sing; her DODGE is the most expensive in the game. That
+    // is precisely what the design asked for - what bites her is being made to
+    // move, not the swinging.
+    // 20, not 16: her phrase is six beats costing 18, and a bar that cannot
+    // hold one sequence is a character who can never do the thing she is for.
+    // Measured on a punching post before the number moved.
+    stamina: { max: 20, regen: 4 },
+    roll: { cost: 7, distance: 2 },
+    beats: 2,
+
+    skills: ['pace', 'reach', 'return'],
+    // Two blades, two beats. The weapon is the mechanic.
+    family: 'paired',
+    kit: { armour: 'leathers', main: 'knives', item: 'flask', magic: null },
+    about: ['我不記路。我在路上留記號,然後跟著記號走。',
+            '停下來的時候要小心。停下來的時候,記號會開始消失。'],
+  },
 ];
 
 export const HERO_BY_KEY = Object.fromEntries(HEROES.map((h) => [h.key, h]));

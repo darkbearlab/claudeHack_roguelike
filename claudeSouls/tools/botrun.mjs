@@ -285,7 +285,27 @@ function act(game, rng) {
   //
   // Squishier characters, and hurt ones, keep a second roll in reserve.
   const fragile = p.hpMax <= 13 || p.hp <= p.hpMax / 2;
-  const reserve = rollCost * (fragile ? 2 : 1);
+  // ...but never so much that the turn you are about to take is unaffordable.
+  //
+  // The farwayer broke this. Her roll costs 7 of a 16 bar and she counts as
+  // fragile, so the old line held back 14 of 16 and left her two points to
+  // play a turn that is two swings long. Measured over 8 runs she swung 710
+  // times against 25,562 rolls - the bot was not playing her badly, it was
+  // forbidden from playing her at all.
+  //
+  // A reserve is for surviving the next telegraph. Holding back more than the
+  // turn itself costs is not caution, it is not playing. Written against
+  // `beats` so it is the same rule for everybody: it changes nothing for the
+  // three one-beat heroes (7, 4 and 5 stay 7, 4 and 5).
+  let cheapest = 99;
+  for (const sk of p.skills) {
+    const d = SKILL_BY_KEY[sk.key];
+    if (!d || d.move || d.defend) continue;
+    cheapest = Math.min(cheapest, p.costOf(sk.key));
+  }
+  if (cheapest === 99) cheapest = 0;
+  const reserve = Math.min(rollCost * (fragile ? 2 : 1),
+                           Math.max(0, p.staminaMax - cheapest * p.beats));
 
   // 1. Standing somewhere that is about to be hit? Leave.
   if (inDanger(danger, p.x, p.y)) {
@@ -527,6 +547,39 @@ async function run(seed, maxTurns, vow) {
   // What is actually landing the killing blow. Per-floor death counts say
   // *where* the difficulty is; this says *what* it is, which is the number you
   // need before touching any of the tuning.
+  // MARKS: does the phrase system actually happen?
+  //
+  // Her whole design is "build a set, then close it", and none of that is
+  // visible in deaths or kills. Without this the tuning would be guesswork
+  // about a mechanic nobody had watched - the same mistake as tuning the
+  // stamina economy before STAM existed.
+  const marks = { fired: 0, byMult: [0, 0, 0, 0, 0], beats: [0, 0, 0], faceHits: {} };
+  if (process.env.MARKS) {
+    const fire = game.fireMark.bind(game);
+    game.fireMark = (e, mark, mult, dir) => {
+      marks.fired++;
+      marks.byMult[Math.min(4, mult - 1)]++;
+      return fire(e, mark, mult, dir);
+    };
+    const use = game.useSkill.bind(game);
+    game.useSkill = (key, dir, opts) => {
+      const b = game.player.beatFace;
+      const before = game.player.beat;
+      const out = use(key, dir, opts);
+      // Count anything the rules accepted. `out` alone is not enough: for a
+      // one-beat hero a roll returns false because it does not end the turn,
+      // so counting only `out` made every roll invisible for three of the four
+      // heroes and the comparison between them meaningless.
+      const took = game.player.beat !== before || out || (key === 'roll' && game.player.rolled);
+      if (took) {
+        marks.beats[Math.min(2, b)]++;
+        const id = `${key}/${b + 1}`;
+        marks.faceHits[id] = (marks.faceHits[id] ?? 0) + 1;
+      }
+      return out;
+    };
+  }
+
   const die = game.die.bind(game);
   game.die = (source) => {
     killers.set(source, (killers.get(source) ?? 0) + 1);
@@ -634,7 +687,7 @@ async function run(seed, maxTurns, vow) {
   return {
     seed, vow, steps, turn: game.turn,
     depth: game.player.depth, maxDepth: game.player.maxDepth,
-    deaths: game.player.deaths, kills: game.stats.kills, killers, mix, stam,
+    deaths: game.player.deaths, kills: game.stats.kills, killers, mix, stam, marks,
     how: game.gameOver?.how ?? 'timeout',
     floorDeaths: [...floorDeaths.entries()].sort((a, b) => a[0] - b[0]),
   };
@@ -657,6 +710,7 @@ const perFloor = new Map();
 const perKiller = new Map();
 const vowDeaths = new Map(), vowRuns = new Map(), vowDepth = new Map(), vowMix = new Map();
 const vowStam = new Map();
+const allMarks = { fired: 0, byMult: [0, 0, 0, 0, 0], beats: [0, 0, 0], faceHits: {} };
 const t0 = Date.now();
 
 for (let i = 0; i < runs; i++) {
@@ -674,6 +728,12 @@ for (let i = 0; i < runs; i++) {
       t.waited+=r.stam.waited; t.waitedBroke+=r.stam.waitedBroke;
       t.waitCd+=r.stam.waitCd; t.waitRich+=r.stam.waitRich;
       vowStam.set(r.vow,t); }
+    if (r.marks) {
+      allMarks.fired += r.marks.fired;
+      for (let i = 0; i < 5; i++) allMarks.byMult[i] += r.marks.byMult[i];
+      for (let i = 0; i < 3; i++) allMarks.beats[i] += r.marks.beats[i];
+      for (const [k, n] of Object.entries(r.marks.faceHits)) allMarks.faceHits[k] = (allMarks.faceHits[k] ?? 0) + n;
+    }
     vowDeaths.set(r.vow, (vowDeaths.get(r.vow) ?? 0) + r.deaths);
     vowRuns.set(r.vow, (vowRuns.get(r.vow) ?? 0) + 1);
     vowDepth.set(r.vow, (vowDepth.get(r.vow) ?? 0) + r.maxDepth);
@@ -695,6 +755,17 @@ if (report && perFloor.size) {
   for (const f of [...perFloor.keys()].sort((a, b) => a - b)) {
     console.log(`  floor ${String(f).padStart(2)}  ${'#'.repeat(Math.min(50, perFloor.get(f)))} ${perFloor.get(f)}`);
   }
+}
+if (process.env.MARKS) {
+  const b = allMarks.beats, total = b[0] + b[1] + b[2];
+  console.log('the phrase system:');
+  console.log(`  swings by beat:  first ${b[0]}  second ${b[1]}  banked ${b[2]}` +
+              `   (second beat reached on ${total ? ((100 * b[1]) / Math.max(1, b[0])).toFixed(0) : 0}% of first beats)`);
+  console.log(`  sets closed:     ${allMarks.fired}` +
+              (total ? `  (one every ${(total / Math.max(1, allMarks.fired)).toFixed(1)} swings)` : ''));
+  console.log(`  by multiplier:   ` + allMarks.byMult.map((n, i) => `x${i + 1}:${n}`).join('  '));
+  const faces = Object.entries(allMarks.faceHits).sort((a, b2) => b2[1] - a[1]);
+  console.log(`  faces used:      ` + faces.map(([k, n]) => `${k}:${n}`).join('  '));
 }
 if (process.env.ACTMIX) {
   console.log('what the bot spends its turns on:');

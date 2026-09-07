@@ -27,6 +27,7 @@ import { hash2 } from '../../../engine/util.js';
 import { spriteRotation } from '../game/patterns.js';
 import { STATE } from '../game/actors.js';
 import { NPC_BY_KEY } from '../data/npcs.js';
+import { MARK_BY_KEY } from '../data/marks.js';
 
 const SPRITE_DIR = '../assets/';
 
@@ -650,6 +651,40 @@ export class Renderer {
       const frac = e.hp / e.hpMax;
       ctx.fillStyle = frac > 0.5 ? '#56d364' : frac > 0.25 ? '#e3b341' : '#f85149';
       ctx.fillRect(bx, by, w * frac, h);
+    }
+
+    this.drawMarks(ctx, e, px, py, span);
+  }
+
+  /**
+   * The farwayer's marks, along the top of whatever is carrying them.
+   *
+   * Drawn as coloured pips rather than glyphs: at a 35-pixel tile there is
+   * room for five of something small and none of something legible, and what
+   * the player needs from across the board is HOW MANY and WHICH - the exact
+   * question the multiplier asks. The names are in the log.
+   *
+   * The count is the whole readout. Four pips means the next repeat is worth
+   * five times, and that is a decision, so it has to be on the creature and
+   * not in a panel.
+   */
+  drawMarks(ctx, e, px, py, span) {
+    const n = e.marks?.size ?? 0;
+    if (!n || span < 12) return;
+    const r = Math.max(1.5, span * 0.07);
+    const gap = r * 2.6;
+    let x = px + span / 2 - (gap * (n - 1)) / 2;
+    const y = py - r * 1.4;
+    for (const key of e.marks.keys()) {
+      const m = MARK_BY_KEY[key];
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = m?.colour ?? '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,.75)';
+      ctx.stroke();
+      x += gap;
     }
   }
 

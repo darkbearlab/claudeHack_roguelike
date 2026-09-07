@@ -157,6 +157,38 @@ export const ITEMS = [
     affixes: ['reaping'],
     desc: '很輕、很便宜。一條精力砍十次,配合擊殺退還 CD。',
   }),
+  // ---- the farwayer's family ---------------------------------------------
+  //
+  // Two blades, two beats: the weapon is the mechanic. Her ladder is the
+  // lightest in the game because her recovery is already fast and her real
+  // currency is beats - so what a heavier pair costs her is the recovery she
+  // was not using, which is nearly nothing, and the ladder has to earn its
+  // decisions somewhere else. `power` is the only axis that moves much.
+  //
+  // Every one of them names `pace` as its primary. meleeSkill() prefers the
+  // main hand's primary, so walking into something is her first beat by the
+  // preferred path rather than by a fallback - the fifth time this project has
+  // had to answer "what is your basic attack", and the first time the answer
+  // has consequences. See docs/FARWAYER.md.
+  weapon('knives', {
+    name: 'paired knives', family: 'paired', power: 0, weight: 1, primary: 'pace', secondary: 'reach',
+    desc: '幾乎沒有重量。她開始的那一對。',
+  }),
+  weapon('quills', {
+    name: 'quill blades', family: 'paired', power: 1, weight: 3, primary: 'pace', secondary: 'reach',
+    affixes: ['keen'],
+    desc: '刃薄得像羽管。輕,而且咬得進去。',
+  }),
+  weapon('pinions', {
+    name: 'pinion blades', family: 'paired', power: 1, weight: 2, primary: 'pace', secondary: 'return',
+    affixes: ['reaping'],
+    desc: '更輕的一對,而且殺掉東西會退還冷卻——給那些把句子唱到底的人。',
+  }),
+  weapon('longknives', {
+    name: 'long knives', family: 'paired', power: 2, weight: 6, regen: -1, primary: 'pace', secondary: 'reach',
+    desc: '這一對重到會拖慢她。換來的是每一拍都更痛。',
+  }),
+
   weapon('falchion', {
     name: 'falchion', family: 'blade', power: 1, weight: 5, primary: 'chop', secondary: 'shove', affixes: ['keen'],
     desc: '命中會把東西推開。次要技能幾乎不造成傷害——它是用來搬動敵人的。',

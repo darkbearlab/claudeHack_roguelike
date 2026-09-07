@@ -27,7 +27,8 @@ import { astar } from '../../../engine/path.js';
 import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, tileName, isWalkable, isChest, isCorpse } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
-import { SKILL_BY_KEY, SKILLS } from '../data/skills.js';
+import { SKILL_BY_KEY, SKILLS, faceOf } from '../data/skills.js';
+import { MARK_BY_KEY, MARK_TURNS, MAX_SPARE_BEATS, REFUND_PER_EXTRA } from '../data/marks.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
          CONSUMABLE_BY_KEY, isConsumable } from '../data/items.js';
 import { soulsFor, TRACKS, TRACK_BY_KEY, priceOf } from '../data/souls.js';
@@ -43,6 +44,15 @@ import { NPC_BY_KEY, weaverAt } from '../data/npcs.js';
 import { saveGame, clearSave } from './save.js';
 
 export const VERSION = '0.1.0';
+
+/**
+ * What an action costs, in the only currency the turn loop understands.
+ *
+ * This replaced a boolean `advancesTurn` that had exactly one `false` in the
+ * whole game (the roll). A hero whose turn holds two actions needs a third
+ * answer, and naming all three is clearer than a boolean plus a special case.
+ */
+const NOTHING = 0, BEAT = 1, TURN = 2;
 
 export class Game {
   constructor(ui) {
@@ -320,12 +330,17 @@ export class Game {
   worldTurn() {
     // The hall has no clock. Standing in it costs nothing, which is the
     // difference between a place to decide and a place to hurry.
-    if (this.inHub) return;
+    //
+    // But a phrase cannot span the hall either: this is where tick() would
+    // have reset it, and without that the farwayer's buttons showed their
+    // second beat to everyone who walked over to look at her.
+    if (this.inHub) { this.player.newPhrase(); return; }
     this.fx.begin(1, this);
     this.turn++;
     this.player.turns++;
     this.player.tick(this.inCombat());
     this.level.tickSnow();
+    this.tickMarks();
 
     stepProjectiles(this);
     if (!this.running) { this.fx.end(this); return; }
@@ -502,10 +517,95 @@ export class Game {
     return out;
   }
 
+  // ------------------------------------------------------------------ marks
+
+  /**
+   * Lay one of the farwayer's marks, or set off the set it completes.
+   *
+   * The whole mechanic is these eight lines. A mark that is already there is
+   * the trigger, the multiplier is how much company it had, and the set is
+   * eaten either way - so there is no such thing as a wasted close, only a
+   * small one.
+   */
+  applyMark(e, key, dir) {
+    const mark = MARK_BY_KEY[key];
+    if (!mark || !e.alive) return false;
+    if (!e.marks.has(key)) { e.marks.set(key, MARK_TURNS); return false; }
+    // Everything else that was on it is the multiplier, and then it all goes.
+    const mult = e.marks.size;          // 1 + others: the pair itself counts once
+    e.marks.clear();
+    this.fireMark(e, mark, mult, dir);
+    return true;
+  }
+
+  /**
+   * What a completed phrase does.
+   *
+   * Magnitude only. Which of the five it is was decided when you chose the
+   * beat; the multiplier never changes the kind, because five effects times
+   * five multipliers is a lookup table and this game is played on a phone.
+   */
+  fireMark(e, mark, mult, dir) {
+    const p = this.player;
+    const n = mark.base * mult;
+    // Her engine, before the effect itself: a set with company pays for the
+    // next phrase, a set closed on its own pays nothing. See marks.js.
+    const back = REFUND_PER_EXTRA * (mult - 1);
+    if (back > 0) {
+      const before = p.stamina;
+      p.stamina = Math.min(p.staminaMax, p.stamina + back);
+      if (p.stamina > before) this.msg(`唱完一句:回復 ${p.stamina - before} 精力。`, 'good');
+    }
+    switch (mark.effect) {
+      case 'damage':
+        this.msg(`${mark.name}印 ×${mult}:${n} 傷害。`, 'good');
+        this.hurtEnemy(e, n, true, 0);
+        break;
+      case 'vulnerable':
+        e.vuln = { amount: n, turns: mark.turns };
+        this.msg(`${mark.name}印 ×${mult}:它接下來 ${mark.turns} 回合多受 ${n} 傷害。`, 'good');
+        break;
+      case 'heal': {
+        const before = p.hp;
+        p.hp = Math.min(p.hpMax, p.hp + n);
+        this.msg(`${mark.name}印 ×${mult}:回復 ${p.hp - before}。`, 'good');
+        break;
+      }
+      case 'knock':
+        // Knockback rather than a stun, because the multiplier has to scale
+        // something linear - see js/data/marks.js. The stagger rides along but
+        // is not the point, and does nothing unless the target is winding up.
+        this.msg(`${mark.name}印 ×${mult}:擊退 ${n} 格。`, 'good');
+        e.stagger(mult);
+        if (e.alive) this.knockBack(e, dir ?? p.facing, n);
+        break;
+      case 'beat': {
+        const before = p.spareBeats;
+        p.spareBeats = Math.min(MAX_SPARE_BEATS, p.spareBeats + n);
+        this.msg(`${mark.name}印 ×${mult}:存下 ${p.spareBeats - before} 拍。`, 'good');
+        break;
+      }
+    }
+  }
+
+  /** Marks fade, and so does what they left behind. */
+  tickMarks() {
+    for (const e of this.level.enemies) {
+      if (!e.alive || !e.marks) continue;
+      for (const [k, t] of e.marks) {
+        if (t <= 1) e.marks.delete(k); else e.marks.set(k, t - 1);
+      }
+      if (e.vuln) { e.vuln.turns--; if (e.vuln.turns <= 0) e.vuln = null; }
+    }
+  }
+
   hurtEnemy(e, amount, byPlayer, impact = 0) {
     if (!e.alive) return;
     let dmg = amount;
     if (byPlayer && this.player.edge) { dmg += this.player.edge; this.player.edge = 0; }
+    // The thorn mark. Not restricted to your own blows: it is a property of
+    // the target, so anything that lands on it while it holds counts.
+    if (e.vuln?.turns > 0) dmg += e.vuln.amount;
     e.hp -= dmg;
     this.fx.add({ kind: 'hit', uid: e.uid, x: e.x, y: e.y });
     if (byPlayer && impact > 0) e.stagger(impact);
@@ -639,11 +739,17 @@ export class Game {
       return false;
     }
     const t = lvl.at(nx, ny);
-    if (t === T.DOOR_CLOSED) { lvl.openDoor(nx, ny); p.acted = 'move'; this.msg('You open the door.'); return true; }
+    if (t === T.DOOR_CLOSED) { lvl.openDoor(nx, ny); p.acted = 'move'; p.endPhrase(); this.msg('You open the door.'); return true; }
     if (!lvl.passable(nx, ny)) { this.msg(`${capitalise(tileName(t))} blocks the way.`); return false; }
 
     p.x = nx; p.y = ny;
     p.acted = 'move';
+    // Walking ends the turn, so it ends the phrase. For the farwayer that is
+    // the trade: a tile of ground for the second beat, and the second beat is
+    // where her own heal and her banked beats live. Her roll costs a beat
+    // too, so the choice is not "free tile vs paid tile" - it is one tile for
+    // nothing against two tiles for stamina, both paid for with the same beat.
+    p.endPhrase();
     this.afterMove();
     this.onEnterTile();
     return true;
@@ -704,7 +810,8 @@ export class Game {
     else if (t === T.STAIRS_UP) this.msg('Stairs up.');
   }
 
-  wait() { return true; }
+  /** Standing still is the whole turn, not one beat of it. */
+  wait() { this.player.endPhrase(); return true; }
 
   /**
    * Is anything currently hunting you?
@@ -1067,7 +1174,29 @@ export class Game {
 
   // -------------------------------------------------------------- skills
 
+  /**
+   * Use a skill, and decide whether that ended the turn.
+   *
+   * The inner call reports what the action COST - nothing, one beat, or the
+   * whole turn - and this is the only place that turns a cost into "the world
+   * moves now". For a one-beat hero the three answers collapse to the old
+   * boolean: a beat IS the turn, so BEAT and TURN mean the same thing and
+   * NOTHING is a refusal. Proving that collapse is exact is a test.
+   *
+   * Everything that is not an ordinary swing or a roll costs the whole turn.
+   * That default is deliberate: forget to classify something and it gets more
+   * conservative, never more generous. Same shape as the claim registry.
+   */
   useSkill(key, dir, opts = {}) {
+    const p = this.player;
+    const cost = this.useSkillOnce(key, dir, opts);
+    if (cost === NOTHING) return false;
+    if (cost === TURN) { p.endPhrase(); return true; }
+    p.spendBeat();
+    return p.turnOver();
+  }
+
+  useSkillOnce(key, dir, opts = {}) {
     // The two prepared slots ride the same path as a skill so that the button,
     // the drag gesture, the keyboard and the bot all have one way in.
     // Recovery burns the turn whatever you pressed, exactly as it does on the
@@ -1079,24 +1208,28 @@ export class Game {
     // responding, which is worse.
     if (this.player.recovering) {
       this.msg(`You are still recovering. (${this.player.recover})`, 'warn');
-      return true;
+      return TURN;
     }
     // Whatever you pressed, the swing you already committed to is what happens.
     // You cannot cancel it any more than a brute can cancel its overhead.
-    if (this.player.charging && !opts.resolving) return this.resolveCharge();
+    if (this.player.charging && !opts.resolving) return this.resolveCharge() ? TURN : NOTHING;
     // And a charge already under way carries you whether or not this is where
     // you wanted to go.
-    if (this.player.forced && !opts.forced) return this.resolveForced();
-    if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir);
+    if (this.player.forced && !opts.forced) return this.resolveForced() ? TURN : NOTHING;
+    if (typeof key === 'string' && key.startsWith('prep:')) return this.usePrepared(key.slice(5), dir) ? TURN : NOTHING;
     const p = this.player;
-    const def = SKILL_BY_KEY[key];
+    // Which beat of the turn this is decides which face of the skill fires.
+    // Read once, here, so every price, shape and mark below agrees - the four
+    // times this project has answered "what does this skill do" from two
+    // different places, it has been a bug.
+    const def = faceOf(SKILL_BY_KEY[key], p.beatFace);
     const slot = p.skill(key);
-    if (!def || !slot) return false;
+    if (!def || !slot) return NOTHING;
     // You can only use what you are holding. Checked here rather than only in
     // the UI, because the keyboard, the bot and a stale save all reach this
     // function without going past a button.
-    if (!p.hasSkill(key)) { this.msg(`You are not holding anything that does that.`, 'warn'); return false; }
-    if (slot.cd > 0 && !opts.resolving) { this.msg(`${def.name} is not ready.`, 'warn'); return false; }
+    if (!p.hasSkill(key)) { this.msg(`You are not holding anything that does that.`, 'warn'); return NOTHING; }
+    if (slot.cd > 0 && !opts.resolving) { this.msg(`${def.name} is not ready.`, 'warn'); return NOTHING; }
 
     // Paid on the turn it was declared, so it is not re-priced on the turn it
     // lands. Charging this twice would refuse the blow *because* you had
@@ -1109,19 +1242,19 @@ export class Game {
     // stamina reserve for her and for nobody else.
     let bleed = 0;
     if (!opts.resolving && !opts.forced && !p.canAfford(cost)) {
-      if (!def.bleed) { this.msg(`Not enough stamina.`, 'warn'); return false; }
+      if (!def.bleed) { this.msg(`Not enough stamina.`, 'warn'); return NOTHING; }
       bleed = cost - p.stamina;
-      if (p.hp <= bleed) { this.msg('That would kill you.', 'warn'); return false; }
+      if (p.hp <= bleed) { this.msg('That would kill you.', 'warn'); return NOTHING; }
     }
 
     if (def.defend) {
       const shield = p.shield;
-      if (!shield) { this.msg('You have no shield.', 'warn'); return false; }
+      if (!shield) { this.msg('You have no shield.', 'warn'); return NOTHING; }
       p.spend(cost);
       p.face(dir.dx, dir.dy);
       p.blocking = { dx: dir.dx, dy: dir.dy };
       this.msg(`You raise the ${shield.name}.`);
-      return true;
+      return TURN;
     }
 
     p.face(dir.dx, dir.dy);
@@ -1133,17 +1266,21 @@ export class Game {
       // turns - but without this the bar is the ONLY limit and a full bar
       // buys six to sixteen tiles of movement in a single turn while nothing
       // else on the floor moves.
-      if (!p.canRoll()) { this.msg('你這回合已經翻滾過了。', 'warn'); return false; }
+      if (!p.canRoll()) { this.msg('你這回合已經翻滾過了。', 'warn'); return NOTHING; }
       // Roll one tile or two, as asked. The exact landing tile is the whole
       // question now that packs draw overlapping telegraphs and bodies block
       // the diagonals - a fixed distance can only reach a ring, not a disc.
       const moved = this.dash(Math.min(p.rollDistance(), opts.steps ?? 99), dir);
-      if (!moved) { this.msg('No room to roll.'); return false; }
+      if (!moved) { this.msg('No room to roll.'); return NOTHING; }
       p.spend(cost);
       p.rolled = true;
       this.msg(`You roll ${moved} ${moved === 1 ? 'tile' : 'tiles'}.`);
       this.afterMove();
-      return false;                    // <- does not advance the turn
+      // Free of the turn for a one-beat hero, exactly as it always was. For
+      // the farwayer it costs one of her two beats: that is what stops her
+      // being a two-attacks-and-a-dodge character, and it is why her roll is
+      // footwork inside a phrase rather than an escape from one.
+      return p.rollCostsBeat() ? BEAT : NOTHING;
     }
 
     // ---- wind-up: declare now, land next turn ----------------------------
@@ -1159,7 +1296,7 @@ export class Game {
       };
       p.acted = 'attack';
       this.msg(`You draw back for ${def.name}.`, 'warn');
-      return true;                     // the declaration costs you the turn
+      return TURN;                     // the declaration costs you the turn
     }
 
     if (!def.move && !def.defend) {
@@ -1189,7 +1326,7 @@ export class Game {
       if (def.forced && !opts.forced) {
         p.forced = { key, dx: dir.dx, dy: dir.dy, left: def.forced.times };
       }
-      return true;
+      return TURN;
     }
     if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
     // Recovery is set AFTER the blow lands, and counts down in tick() - so the
@@ -1205,7 +1342,7 @@ export class Game {
         fromPlayer: true, life: def.range + 2,
       }));
       this.msg('You hurl a knife.');
-      return true;
+      return TURN;
     }
 
     if (def.dash) this.dash(def.dash, dir);
@@ -1221,6 +1358,10 @@ export class Game {
         const push = (def.knock ?? 0) + m.knock;
         if (push && e.alive) this.knockBack(e, dir, push);
         hit++;
+        // The mark goes on after the damage, and only if it is still standing:
+        // a corpse cannot hold a phrase. That also means a detonation is free
+        // to kill, because it happens inside applyMark below.
+        if (def.mark && e.alive) this.applyMark(e, def.mark, dir);
         if (def.disrupt && e.alive) undone += this.disrupt(e, def.disrupt, dir) ? 1 : 0;
         else if (wasWindup && e.alive) {
           if (e.poiseLeft === e.poise && poiseBefore !== e.poise) {
@@ -1247,7 +1388,7 @@ export class Game {
     }
     this.animateTrail(tiles, '/', '#ffd75f');
     if (!hit) this.msg(`${def.name} hits nothing.`);
-    return true;
+    return BEAT;
   }
 
   /**

@@ -29,7 +29,8 @@ import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
-import { EFFORT } from '../js/data/skills.js';
+import { EFFORT, faceOf } from '../js/data/skills.js';
+import { MARKS, MARK_TURNS, MAX_SPARE_BEATS } from '../js/data/marks.js';
 import { hasLOS } from '../../engine/fov.js';
 import { enemyTurn, tickEnemyState } from '../js/game/ai.js';
 import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
@@ -85,16 +86,16 @@ function await0(g) {
   g.command('h');
 }
 
-function freshGame(seed = 't', vow = 'light') {
+function freshGame(seed = 't', vow = 'light', hero = undefined) {
   const g = new Game(null);
   g.ui = new QuietUI();
-  g.newGame({ seed, name: 'Test', vow });
+  g.newGame({ seed, name: 'Test', vow, hero });
   return g;
 }
 
 /** Player and one enemy on clear floor, with nothing else in the way. */
-function arena(seed, enemyKey, gap = 1) {
-  const g = freshGame(seed);
+function arena(seed, enemyKey, gap = 1, hero = undefined) {
+  const g = freshGame(seed, 'light', hero);
   g.level.enemies.length = 0;
   g.level.projectiles.length = 0;
   g.level.markEnemiesDirty();
@@ -773,7 +774,15 @@ check('commitment is priced by the rule, not by feel', () => {
     return v >= 9.5 ? 2 : v >= 5.5 ? 1 : 0;
   };
   const wrong = [];
+  // Every FACE, not every skill. The farwayer's three entries are six shapes,
+  // and a second beat that skipped this rule would be the cheapest way in the
+  // game to buy a big shape for nothing.
+  const faces = [];
   for (const sk of SKILLS) {
+    faces.push(sk);
+    if (sk.beat2) faces.push({ ...sk, ...sk.beat2, key: `${sk.key}/2` });
+  }
+  for (const sk of faces) {
     if (sk.move || sk.defend) continue;
     const want = band(sk);
     if (want === null) continue;
@@ -790,7 +799,7 @@ check('commitment is priced by the rule, not by feel', () => {
     //
     // So: turns of commitment, plus turns of recovery the cost represents, for
     // whoever actually owns the skill.
-    const owner = HEROES.find((h) => h.skills.includes(sk.key));
+    const owner = HEROES.find((h) => h.skills.includes(sk.key.replace('/2', '')));
     const regen = owner ? owner.stamina.regen : PLAYER.staminaRegen + 2;
     const asTurns = Math.floor((sk.stamina ?? 0) / Math.max(1, regen));
     const got = (sk.windup ?? 0) + (sk.recovery ?? 0) + (owner ? asTurns : 0);
@@ -4782,6 +4791,279 @@ check('the boss is only on the bottom floor', () => {
     assert(g.levelAt(DUNGEON_DEPTH).enemies.some((e) => e.spec.boss), 'no boss on the last floor');
   }
   return '6 runs checked';
+});
+
+
+// ===========================================================================
+// The farwayer: beats and marks. See docs/FARWAYER.md.
+// ===========================================================================
+
+check('a beat is the turn for everybody but her', () => {
+  // The generalisation has to reproduce the boolean it replaced. One beat a
+  // turn, an attack spends it, a roll spends none - that IS the old rule, and
+  // if it drifts, every number ever measured on the other three is wrong.
+  const wrong = [];
+  for (const h of HEROES) {
+    const g = freshGame('collapse', 'light', h.key);
+    const p = g.player;
+    const want = h.key === 'farwayer' ? 2 : 1;
+    if (p.beats !== want) wrong.push(`${h.key} has ${p.beats} beats, wanted ${want}`);
+    if (p.rollCostsBeat() !== (want > 1)) wrong.push(`${h.key} prices the roll wrong`);
+  }
+  assert(wrong.length === 0, wrong.join('; '));
+  return 'three heroes at one beat a turn, one at two';
+});
+
+check('her turn holds two swings, and the world waits for both', () => {
+  const { g, e } = arena('twobeat', 'husk', 1, 'farwayer');
+  const p = g.player;
+  p.stamina = p.staminaMax;
+  const dir = { dx: Math.sign(e.x - p.x), dy: Math.sign(e.y - p.y) };
+  const t0 = g.turn;
+
+  assert(g.useSkill('pace', dir) === false, 'her first swing ended the turn');
+  assert(g.turn === t0, 'the world moved between her two beats');
+  assert(g.useSkill('pace', dir) === true, 'her second swing did not end the turn');
+  return 'two swings, one turn';
+});
+
+check('the second beat is a different blow, not the same one twice', () => {
+  // The test that was missing when it mattered. `beat` was read through a
+  // getter called `face`, and `face(dx, dy)` - turn to look that way - is a
+  // method on the same class. The method won, every beat fired its FIRST
+  // face, and all 160 tests passed while her entire mechanic did nothing.
+  //
+  // Pinned as the consequence: beat two differs from beat one in shape and in
+  // price, for every skill she owns.
+  const g = freshGame('faces', 'light', 'farwayer');
+  const p = g.player;
+  const same = [];
+  for (const key of p.hero.skills) {
+    const base = SKILL_BY_KEY[key];
+    assert(base.beat2, `${key} has no second beat`);
+    p.beat = 0;
+    const a = { pat: faceOf(base, p.beatFace).pattern, cost: p.costOf(key) };
+    p.beat = 1;
+    const b = { pat: faceOf(base, p.beatFace).pattern, cost: p.costOf(key) };
+    if (a.pat === b.pat) same.push(`${key}: both beats are ${a.pat}`);
+  }
+  p.beat = 0;
+  assert(same.length === 0, same.join('; '));
+  // Her basic attack is the deliberate exception: one mark on both beats, and
+  // that is what makes it the detonator.
+  assert(faceOf(SKILL_BY_KEY.pace, 0).mark === faceOf(SKILL_BY_KEY.pace, 1).mark,
+    'her basic attack must carry one mark on both beats - it is the detonator');
+  return 'three skills, six shapes, one shared mark on the basic';
+});
+
+check('rolling spends a beat of her phrase; walking ends it', () => {
+  const { g, e } = arena('phrase', 'husk', 2, 'farwayer');
+  const p = g.player;
+  p.stamina = p.staminaMax;
+  const t0 = g.turn;
+  assert(g.useSkill('roll', { dx: 0, dy: -1 }) === false, 'her roll ended the turn on the first beat');
+  assert(p.beat === 1, `her roll cost ${p.beat} beats, wanted 1`);
+  assert(g.turn === t0, 'the world moved when she rolled on her first beat');
+  assert(g.useSkill('roll', { dx: 0, dy: 1 }) === false, 'she rolled twice in one turn');
+
+  const { g: g3 } = arena('phrase3', 'husk', 4, 'farwayer');
+  const q = g3.player;
+  q.stamina = q.staminaMax;
+  assert(g3.step(0, -1) === true, 'walking did not end her turn');
+  assert(q.turnOver(), 'walking left her a beat');
+  return 'roll is footwork inside the phrase, walking is the end of it';
+});
+
+check('the same mark twice eats the set, and company makes it bigger', () => {
+  const { g, e } = arena('marks', 'husk', 1, 'farwayer');
+  e.hpMax = 400;
+  const sizes = [];
+  for (const others of [0, 1, 2, 3, 4]) {
+    e.marks.clear();
+    e.hp = 400;
+    for (const k of ['thorn', 'spring', 'gale', 'ember'].slice(0, others)) e.marks.set(k, MARK_TURNS);
+    e.marks.set('step', MARK_TURNS);
+    const before = e.hp;
+    assert(g.applyMark(e, 'step', { dx: 1, dy: 0 }), `a second step mark with ${others} others did not fire`);
+    assert(e.marks.size === 0, `the set survived a detonation (${others} others)`);
+    sizes.push(before - e.hp);
+  }
+  const want = [3, 6, 9, 12, 15];      // base 3, multiplier 1 + others
+  assert(sizes.join(',') === want.join(','), `damage by company: ${sizes} - wanted ${want}`);
+  return `x1 to x5 as company grows: ${sizes.join(' ')}`;
+});
+
+check('a mark that is never paired fades', () => {
+  const { g, e } = arena('fade', 'husk', 1, 'farwayer');
+  assert(g.applyMark(e, 'thorn', { dx: 1, dy: 0 }) === false, 'a first mark detonated');
+  for (let i = 0; i < MARK_TURNS; i++) {
+    assert(e.marks.has('thorn'), `it faded after ${i} turns, sooner than ${MARK_TURNS}`);
+    g.worldTurn();
+  }
+  assert(!e.marks.has('thorn'), `it outlived ${MARK_TURNS} turns`);
+  return `marks hold for ${MARK_TURNS} turns and then go`;
+});
+
+check('the shape decides who gets marked', () => {
+  // Her answer to a pack: build several sets at once rather than one slowly.
+  // Without this she cannot phrase against anything that arrives in numbers,
+  // which is most of the game.
+  const { g, e } = arena('spread', 'husk', 1, 'farwayer');
+  const p = g.player;
+  p.stamina = p.staminaMax;
+  const extra = [];
+  for (const dy of [-1, 1]) {
+    const n = new Enemy('husk', g.rng);
+    g.level.addEnemy(n, e.x, e.y + dy);
+    extra.push(n);
+  }
+  g.level.markEnemiesDirty();
+  p.beat = 1;                        // arc3 is her basic attack's second beat
+  g.useSkill('pace', { dx: 1, dy: 0 });
+  const marked = [e, ...extra].filter((x) => x.marks.has('step')).length;
+  assert(marked === 3, `arc3 marked ${marked} of 3`);
+  return 'three bodies in the arc, three marks';
+});
+
+check('walking into something is her first beat', () => {
+  // Fifth time this project has had to answer "what is your basic attack", and
+  // the first time the answer has consequences: a bump that skipped the beat
+  // machine would be a free way to opt out of the whole system.
+  const { g, e } = arena('bump', 'husk', 1, 'farwayer');
+  const p = g.player;
+  p.stamina = p.staminaMax;
+  assert(p.meleeSkill() === 'pace', `her bump attack is ${p.meleeSkill()}, not pace`);
+  const t0 = g.turn;
+  const spent = g.step(Math.sign(e.x - p.x), Math.sign(e.y - p.y));
+  assert(e.marks.has('step'), 'walking into it left no mark');
+  assert(p.beat === 1, `the bump cost ${p.beat} beats`);
+  assert(spent === false && g.turn === t0, 'the bump took her whole turn');
+  return 'bump is pace, and it costs one beat';
+});
+
+check('nothing in the world reads her marks', () => {
+  // Same discipline as the static: a player-side layer no rule consults.
+  // Pinned by running the same floor twice, once with every enemy marked to
+  // the brim, and comparing what they did.
+  //
+  // The first version compared two traces of a floor whose enemies were all
+  // asleep, so "forced to idle" and "idle anyway" looked identical - it passed
+  // with the AI deliberately rewired to read marks, which is no test at all.
+  // They are woken here, and the trace records what they CHOSE rather than
+  // only where they ended up.
+  const trace = (marked) => {
+    const { g, e: first } = arena('nomarks', 'husk', 1, 'farwayer');
+    g.player.hp = 999;
+    // Standing them next to the player, awake and pointed at them. Aware alone
+    // is not enough - with no `lastKnown` the AI has nowhere to go and idles,
+    // so "forced to idle" and "idle by default" look identical and the test
+    // proves nothing. They have to be close enough to actually swing.
+    for (const dy of [-1, 1]) {
+      const n = new Enemy('husk', g.rng);
+      g.level.addEnemy(n, first.x, first.y + dy);
+    }
+    g.level.markEnemiesDirty();
+    for (const e of g.level.livingEnemies()) {
+      e.aware = true; e.hunting = true;
+      e.lastKnown = { x: g.player.x, y: g.player.y };
+    }
+    const out = [];
+    for (let t = 0; t < 30; t++) {
+      for (const e of g.level.livingEnemies()) {
+        e.marks.clear();
+        if (marked) for (const m of MARKS) e.marks.set(m.key, MARK_TURNS);
+      }
+      g.worldTurn();
+      out.push(g.level.livingEnemies()
+        .map((e) => `${e.uid}:${e.x},${e.y}:${e.state}:${e.attack?.name ?? '-'}`)
+        .join('|'));
+    }
+    return out.join('\n');
+  };
+  const cold = trace(false);
+  assert(cold === trace(true), 'the enemies behaved differently when marked');
+  // And prove the trace has something in it to be different about: if nothing
+  // ever moved or changed state, two identical traces mean nothing at all.
+  // Wandering is not acting. Something has to have wound up, or a rewired AI
+  // that forces everything to idle would look exactly like this one.
+  assert(/:windup:/.test(cold), 'nothing on this floor ever attacked, so this test proves nothing');
+  return '30 turns of woken enemies, fully marked, not one decision changed';
+});
+
+
+check('her buttons show the beat she is actually on, even in the hall', () => {
+  // The hall has no clock, so worldTurn() returns early - and that is where
+  // tick() would have reset the phrase. Walking left her counter at `beats`
+  // and every skill button in the hall rendered its SECOND face: wrong shape,
+  // wrong price, on the one screen whose whole job is showing what a character
+  // does. Seen in a browser, not by a test.
+  //
+  // Driven at worldTurn() rather than by walking about: the hall is a room
+  // full of hero figures and walking into one CHANGES WHO YOU ARE, so a test
+  // that strolls around ends up asserting things about the soulbinder.
+  const g = freshGame('hall', 'light', 'farwayer');
+  g.enterHub();
+  g.player.hero = HERO_BY_KEY.farwayer;      // the hall clears it until you pick
+  const p = g.player;
+  const base = p.costOf('reach');
+
+  p.endPhrase();                              // what a step does
+  assert(p.beatFace > 0 && p.costOf('reach') !== base,
+    'endPhrase left her on the first beat, so this test is not testing anything');
+  g.worldTurn();
+  assert(p.beatFace === 0, `the hall left her on beat ${p.beatFace + 1}`);
+  assert(p.costOf('reach') === base,
+    `Reach costs ${p.costOf('reach')} in the hall and ${base} out of it`);
+  return 'a phrase cannot span the hall';
+});
+
+check('finishing a sentence feeds her; repeating a word starves her', () => {
+  // Her engine, and it was missing until a punching post measured her. Her
+  // phrase is six beats costing 18 stamina over three turns, every one of them
+  // an attacking turn, and an attacking turn earns no recovery at all - so she
+  // could not afford the sequence she exists for, even once, from a full bar.
+  //
+  // Pinned on DAMAGE OVER TIME, not on the bar. The first version of this test
+  // compared how much stamina each line had left and passed with the refund
+  // deleted - both lines end near empty whatever happens, because whichever
+  // one runs dry simply waits and refills. What separates them is what they
+  // got done: with the refund, 51 to 35 over 24 turns; without it, 28 to 35,
+  // and the mechanic is worse than ignoring the mechanic.
+  const drive = (keys, turns) => {
+    const { g, e } = arena('engine', 'husk', 1, 'farwayer');
+    const p = g.player;
+    e.hpMax = 100000; e.hp = 100000;
+    e.aware = false; e.hunting = false;      // a post, not a fight
+    p.stamina = p.staminaMax; p.staminaFrac = 0;
+    const dir = { dx: Math.sign(e.x - p.x), dy: Math.sign(e.y - p.y) };
+    let i = 0, swings = 0;
+    for (let t = 0; t < turns; t++) {
+      let guard = 0;
+      while (!p.turnOver() && guard++ < 4) {
+        const key = keys[i % keys.length];
+        if (!p.canAfford(p.costOf(key))) break;
+        i++; swings++;
+        if (g.useSkill(key, dir)) break;
+      }
+      g.worldTurn();
+    }
+    return { dealt: 100000 - e.hp, swings };
+  };
+
+  // Her best line against one body, found by measuring several: lay two marks
+  // with Reach, then close with the basic attack's two beats for a x3. Four
+  // beats, two turns. The six-beat version that uses Return as well is WORSE
+  // here (47 against spam's 63) because `behind` hits nothing when nothing is
+  // behind her - which is a real finding about that face, recorded in
+  // docs/FARWAYER.md rather than tuned away on the spot.
+  const phrase = drive(['reach', 'reach', 'pace', 'pace'], 24);
+  const spam = drive(['pace', 'pace'], 24);
+
+  assert(phrase.swings > 10 && spam.swings > 10,
+    `only ${phrase.swings} and ${spam.swings} swings landed - this test is not testing anything`);
+  assert(phrase.dealt > spam.dealt * 1.2,
+    `the phrase dealt ${phrase.dealt} against spam's ${spam.dealt} - the mechanic is not worth using`);
+  return `24 turns: the phrase deals ${phrase.dealt}, hammering the basic attack deals ${spam.dealt}`;
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

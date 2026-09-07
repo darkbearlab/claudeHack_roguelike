@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "name": "face_farwayer",
+  "style": "topdown-flat",
+  "kind": "portrait",
+  "desc": "a fair-skinned elf woman with pointed ears and warm amber eyes, long straight silver-white hair with a blunt fringe cut level across the brow, a collar of black feathers over pale ivory robes, calm and unhurried",
+  "prompt": "Clean flat-colour game art with bold, well-separated hues and a limited palette.\n\nHead and shoulders of a fair-skinned elf woman with pointed ears and warm amber eyes, long straight silver-white hair with a blunt fringe cut level across the brow, a collar of black feathers over pale ivory robes, calm and unhurried, centred in frame, nothing below the collarbone, on a fully transparent background.\n\nSeen from directly in front at eye level, square on to the camera.\n\nFlat vector illustration, solid fills, no gradients, no texture, no rendering.\n\nNo cast shadow, no ground plane, no scenery, no text, no labels, no frame, no border.",
+  "backend": "gpt-image",
+  "generation": {
+    "size": "768x1024",
+    "quality": "low",
+    "seed": 0,
+    "source_image": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_farwayer.src.png",
+    "source_origin": "C:\\claude_project\\_gptImageCaller\\outputs\\ma-face_farwayer_20260908_045612_01.png",
+    "source_sha256": "53899f0ffbabda45d73146534849e66aa3c2a595c770ab7e8c765070fd24404f",
+    "cost_usd": 0.00473,
+    "meta": {
+      "model": "gpt-image-2",
+      "size": "768x1024",
+      "quality": "low",
+      "background": "transparent"
+    }
+  },
+  "quantise": {
+    "target_size": 64,
+    "colors": 15,
+    "palette_set": "set_03.gpl",
+    "palette_set_path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+    "palette_sha256": "fa3cc996cbf45cb88a5ef1aa69bf269f9d7edf98cb7441636eac8c0e8a24e146",
+    "palette_choice_scores": [
+      {
+        "set": "set_00",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_00.gpl",
+        "estimated_delta_e76": 48.5271
+      },
+      {
+        "set": "set_01",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_01.gpl",
+        "estimated_delta_e76": 26.7511
+      },
+      {
+        "set": "set_02",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_02.gpl",
+        "estimated_delta_e76": 10.5809
+      },
+      {
+        "set": "set_03",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_03.gpl",
+        "estimated_delta_e76": 10.1069
+      },
+      {
+        "set": "set_04",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_04.gpl",
+        "estimated_delta_e76": 16.0097
+      },
+      {
+        "set": "set_05",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_05.gpl",
+        "estimated_delta_e76": 12.4876
+      },
+      {
+        "set": "set_06",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_06.gpl",
+        "estimated_delta_e76": 37.5202
+      },
+      {
+        "set": "set_07",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_07.gpl",
+        "estimated_delta_e76": 10.545
+      },
+      {
+        "set": "set_08",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_08.gpl",
+        "estimated_delta_e76": 16.7792
+      },
+      {
+        "set": "set_09",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_09.gpl",
+        "estimated_delta_e76": 29.0252
+      },
+      {
+        "set": "set_10",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_10.gpl",
+        "estimated_delta_e76": 13.0245
+      },
+      {
+        "set": "set_11",
+        "path": "C:\\claude_project\\asset_generator\\palettes\\topdown-flat\\set_11.gpl",
+        "estimated_delta_e76": 13.6095
+      }
+    ],
+    "palette_mode": "fixed",
+    "bg": "keep",
+    "params_sha256": "5714a338bef88620dc0165fc7dba7680c10eda389b536d5d2d9d52000e513293"
+  },
+  "versions": {
+    "make_asset": "2.0.0",
+    "sprite_quantize": "1.5.0",
+    "python": "3.14.3"
+  },
+  "result": {
+    "asset": "C:\\claude_project\\asset_generator\\library\\topdown-flat\\face_farwayer.png",
+    "size": [
+      48,
+      64
+    ],
+    "colours": 15,
+    "mean_delta_e_2000": 7.3817,
+    "palette_fit_delta_e76": 9.3369,
+    "warnings": [
+      "HIGH_QUANT_ERROR"
+    ],
+    "qa_report": "C:\\claude_project\\asset_generator\\library\\topdown-flat_info\\face_farwayer.qa.json"
+  },
+  "created": "20260908_045613",
+  "host": "DESKTOP-E0J5QFE",
+  "elapsed_s": 29.09
+}

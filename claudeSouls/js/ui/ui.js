@@ -27,7 +27,7 @@
 import { Renderer } from './render.js';
 import { Animator } from './anim.js';
 import { DIRS, DIR_BY_KEY, capitalise, fmtDuration } from '../../../engine/util.js';
-import { SKILLS, SKILL_BY_KEY } from '../data/skills.js';
+import { SKILLS, SKILL_BY_KEY, faceOf } from '../data/skills.js';
 import { attackTiles, snapDir } from '../game/patterns.js';
 import { DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, isChest, isCorpse } from '../map/tiles.js';
@@ -353,7 +353,9 @@ export class UI {
     if (typeof key === 'string' && key.startsWith('prep:')) {
       return this.game.player?.prepared(key.slice(5)) ?? null;
     }
-    return SKILL_BY_KEY[key] ?? null;
+    // The face that is about to fire, so the aim preview draws the shape you
+    // are about to make rather than the first beat's.
+    return faceOf(SKILL_BY_KEY[key], this.game.player?.beatFace ?? 0) ?? null;
   }
 
   startGesture(ev, skillKey, fromEl) {
@@ -701,9 +703,20 @@ export class UI {
 
     const frac = p.stamina / p.staminaMax;
     const rollCost = p.rollCost();
+    // Beat pips ride on the stamina bar, because for her the two bars ARE the
+    // question: how much is left, and how much of this turn is left. One filled
+    // pip per beat still unspent, plus any banked. Nothing is drawn for a
+    // one-beat hero - a pip that is always the same pip is furniture.
+    let beats = '';
+    if (p.beats > 1) {
+      const left = p.beatsLeft;
+      for (let i = 0; i < p.beats; i++) beats += `<i class="beat${i < left ? ' on' : ''}"></i>`;
+      for (let i = 0; i < p.spareBeats; i++) beats += '<i class="beat spare on"></i>';
+    }
     this.el.stbar.innerHTML =
       `<span class="fill${p.stamina < rollCost ? ' low' : ''}" style="width:${frac * 100}%"></span>` +
-      `<span class="mark" style="left:${(rollCost / p.staminaMax) * 100}%"></span>`;
+      `<span class="mark" style="left:${(rollCost / p.staminaMax) * 100}%"></span>` +
+      (beats ? `<span class="beats">${beats}</span>` : '');
 
     const lvl = this.game.level;
     const alive = lvl ? lvl.livingEnemies().length : 0;
@@ -751,11 +764,23 @@ export class UI {
       b.disabled = left <= 0;
     }
 
+    // Her buttons change between her two beats: different shape, different
+    // price, different mark. Rebuilt only when the beat actually turns over -
+    // for everyone else `beatFace` is 0 for ever and this never fires.
+    const beat = p.beatFace;
+    const beatChanged = this.shownBeat !== beat;
+    this.shownBeat = beat;
+
     for (const b of this.el.skills.querySelectorAll('.skill[data-skill]')) {
       const key = b.dataset.skill;
-      const def = SKILL_BY_KEY[key];
+      const def = faceOf(SKILL_BY_KEY[key], beat);
       const slot = p.skill(key);
       const cost = p.costOf(key);
+      if (beatChanged && SKILL_BY_KEY[key]?.beat2) {
+        const ico = b.querySelector('.ico');
+        if (ico) ico.outerHTML = skillIcon(def, p?.shield?.block?.arc ?? 1);
+        b.title = def.hint ?? '';
+      }
       b.querySelector('.cost').textContent = `${cost}`;
       b.querySelector('.cd').textContent = slot && slot.cd > 0 ? slot.cd : '';
       b.classList.toggle('cooling', !!slot && slot.cd > 0);

@@ -14,7 +14,7 @@
 // already see.
 
 import { ENEMY_BY_KEY } from '../data/enemies.js';
-import { PLAYER, SKILLS, SKILL_BY_KEY, EFFORT } from '../data/skills.js';
+import { PLAYER, SKILLS, SKILL_BY_KEY, EFFORT, faceOf } from '../data/skills.js';
 import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour,
          CONSUMABLE_BY_KEY } from '../data/items.js';
 import { modsFor, weightMod, affixesOn, canGrant, AFFIX_BY_KEY, TEMP_HITS } from '../data/affixes.js';
@@ -69,6 +69,19 @@ export class Player {
     // redeployment, and it contradicts her own design note about dancing
     // keeping her in the fight rather than circling it.
     this.rolled = false;
+    // ---- beats -----------------------------------------------------------
+    //
+    // How many things a turn holds. Everyone has one; the farwayer has two,
+    // and that IS her - see docs/FARWAYER.md.
+    //
+    // This replaces the old `advancesTurn` boolean, and it has to reproduce it
+    // exactly for the existing three: one beat a turn, an attack spends it, a
+    // roll spends none. That equivalence is a test, not a hope.
+    this.beat = 0;
+    // Beats banked by the farwayer's E mark. Spent one a turn, before the
+    // turn's own beats, so a stored beat is an extra action rather than a
+    // permanent upgrade.
+    this.spareBeats = 0;
     // A blow you have declared but not yet landed. Set by a skill with a
     // wind-up, resolved on your next turn, and lost entirely if something
     // hits you first - the same deal every enemy in the game is offered.
@@ -498,7 +511,9 @@ export class Player {
       return this.prepared(key.slice(5))?.stamina ?? 0;
     }
     if (key === 'roll') return this.rollCost();
-    const def = SKILL_BY_KEY[key];
+    // The face that is actually about to fire - so the number under the button
+    // is the number you will pay, not the number the first beat would cost.
+    const def = faceOf(SKILL_BY_KEY[key], this.beatFace);
     if (!def) return 0;
     return Math.max(1, def.stamina + this.mods(key).stamina) + this.loadSurcharge;
   }
@@ -576,13 +591,72 @@ export class Player {
       }
     }
     for (const s of this.skills) if (s.cd > 0) s.cd--;
-    // A new turn: one roll again, and nobody has claimed it yet.
-    this.rolled = false;
+    // A new turn: nobody has claimed it yet.
     this.acted = 'wait';
+    // A new turn is a new phrase.
+    this.newPhrase();
+  }
+
+  /**
+   * Start a fresh phrase: one roll again, both beats back.
+   *
+   * Called from tick(), and separately by the hall - which has no clock, so
+   * worldTurn() returns before tick() ever runs. Without that second caller
+   * her beat counter stayed wherever walking left it (at `beats`, from
+   * endPhrase) and every button in the hall showed its SECOND beat: the wrong
+   * shape and the wrong price, on the one screen whose whole job is telling
+   * you what a character does.
+   */
+  newPhrase() {
+    this.rolled = false;
+    this.beat = 0;
+    // A banked beat plays as a first beat and leaves the turn's own two
+    // intact, which is what "an extra action" has to mean.
+    if (this.spareBeats > 0 && this.beats > 1) { this.spareBeats--; this.beat = -1; }
   }
 
   /** Have you already rolled this turn? */
   canRoll() { return !this.rolled; }
+
+  // ------------------------------------------------------------------ beats
+
+  /** How many actions this turn holds. One for everybody but her. */
+  get beats() { return this.hero?.beats ?? 1; }
+
+  /** Beats left in this turn, counting a banked one. */
+  get beatsLeft() { return this.beats - this.beat; }
+
+  /**
+   * Which face of a skill fires: 0 is the first beat of the turn, 1 the
+   * second. A banked beat sets `beat` to -1, so it plays as a first beat and
+   * still leaves both of the turn's own beats - which is what "an extra
+   * action" has to mean for the phrase to be worth banking.
+   *
+   * NOT called `face`. It was, for about an hour, and `face(dx, dy)` - turn to
+   * look that way - is a method on this same class declared below it. The
+   * method won, `p.face` was a function, `beat >= 1` was false for ever, and
+   * every one of her six beats quietly fired its first face: right shape, right
+   * cost, right mark, always the wrong one of the two. Nothing threw and all
+   * 160 tests passed, because no test had asked what the second beat does.
+   */
+  get beatFace() { return Math.max(0, this.beat); }
+
+  spendBeat() { this.beat++; }
+
+  /** Did that use the last of them? */
+  turnOver() { return this.beat >= this.beats; }
+
+  /** Walking, waiting, and anything the world takes from you. */
+  endPhrase() { this.beat = this.beats; }
+
+  /**
+   * Does a roll cost a beat?
+   *
+   * Derived rather than declared: if your turn has room for more than one
+   * thing, then dodging is one of those things. For a one-beat hero this is
+   * false and the roll is free of the turn exactly as it always was.
+   */
+  rollCostsBeat() { return this.beats > 1; }
 
   /** A kill refunds one turn of every cooldown. This is the combo engine. */
   onKill() {
@@ -659,6 +733,11 @@ export class Enemy {
     // `hunting` implies `aware`; the reverse is not true and was never meant
     // to be. Every writer of one is on the same line as the writer of the
     // other, so they cannot drift apart.
+    // The farwayer's marks: key -> turns left. Never more than one of each,
+    // because the second one detonates the set. Nothing in the AI reads this;
+    // it is a player-side layer, the same discipline as the static.
+    this.marks = new Map();
+    this.vuln = null;               // {amount, turns} from the thorn mark
     this.aware = false;
     this.hunting = false;
     this.lost = 0;              // turns since it last had eyes on you
