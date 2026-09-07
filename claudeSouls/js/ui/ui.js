@@ -327,7 +327,7 @@ export class UI {
       // far as the player is concerned, and "something is still hunting you" is
       // information they can act on.
       const n = g.hunters();
-      if (n > 0) return { name: 'Hunted', sub: `${n} aware`, cmd: null, kind: 'blocked' };
+      if (n > 0) return { name: 'Hunted', sub: `${n} on your trail`, cmd: null, kind: 'blocked' };
       return { name: 'Bonfire', sub: `${p.souls} souls`, cmd: 'FIRE', kind: 'rest' };
     }
     if (here === T.STAIRS_DOWN) {
@@ -918,7 +918,7 @@ export class UI {
       <table>${rows}</table>
       <div class="foot">
         ${hunted
-          ? `<span class="dim">還有 ${hunted} 個東西在找你,不能休息。</span>`
+          ? `<span class="dim">還有 ${hunted} 個東西知道你在哪,不能休息。甩掉它們。</span>`
           : '<button class="btn" data-act="rest">休息(回滿,敵人復活)</button>'}
         <button class="btn" data-act="close">關閉 (Esc)</button>
       </div>`;

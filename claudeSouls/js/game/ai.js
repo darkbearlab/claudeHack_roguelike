@@ -103,7 +103,7 @@ export function enemyTurn(game, e) {
   const lvl = game.level;
 
   const seen = canSee(game, e);
-  if (seen) { e.aware = true; e.lost = 0; e.lastKnown = { x: p.x, y: p.y }; }
+  if (seen) { e.aware = true; e.hunting = true; e.lost = 0; e.lastKnown = { x: p.x, y: p.y }; }
   else if (e.aware) {
     // Awareness has to decay, or it is a latch: one glimpse on arriving at a
     // floor and every enemy on it hunts you for the rest of the run. That
@@ -111,7 +111,7 @@ export function enemyTurn(game, e) {
     // stamina bar - without forgetting, the fast refill would never fire once
     // and the weight rule would quietly become a tax on exploring.
     e.lost = (e.lost ?? 0) + 1;
-    if (e.lost > FORGET_AFTER) { e.aware = false; e.lastKnown = null; }
+    if (e.lost > FORGET_AFTER) { e.aware = false; e.hunting = false; e.lastKnown = null; }
   }
 
   if (!e.aware) { idle(game, e); return; }

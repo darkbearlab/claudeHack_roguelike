@@ -649,7 +649,18 @@ export class Enemy {
     this.attack = null;             // the attack being wound up
     this.attackTiles = null;        // resolved at wind-up start, shown to the player
     this.attackDir = null;
+    // Two different things, and conflating them cost us the arrival bonfire.
+    //
+    //   aware   - awake and taking turns. Set at spawn by tiles, situations,
+    //             guards and escorts: "this one is not asleep."
+    //   hunting - it knows where YOU are, because it saw you or an ambush
+    //             signal called it to you.
+    //
+    // `hunting` implies `aware`; the reverse is not true and was never meant
+    // to be. Every writer of one is on the same line as the writer of the
+    // other, so they cannot drift apart.
     this.aware = false;
+    this.hunting = false;
     this.lost = 0;              // turns since it last had eyes on you
     this.lastKnown = null;
   }

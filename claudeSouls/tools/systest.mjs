@@ -31,6 +31,7 @@ import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js
 import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
 import { EFFORT } from '../js/data/skills.js';
 import { hasLOS } from '../../engine/fov.js';
+import { enemyTurn, tickEnemyState } from '../js/game/ai.js';
 import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
@@ -1987,30 +1988,89 @@ check('you cannot sit down while something is hunting you', () => {
   // on its spawn. Without this it is a reset button you can press mid-fight,
   // and the obvious use is to un-stick a bad position rather than recover from
   // one - which is exactly what a speedrun would do with it.
+  //
+  // This used to set `aware` by hand, which tested the flag rather than the
+  // rule. It now drives the sight path, because the bug this test failed to
+  // catch was precisely that `aware` means two things.
   const g = freshGame('hunted');
   const p = g.player;
   const b = g.level.bonfires[0];
   p.x = b.x; p.y = b.y;
   p.hp = 1;
+  for (const e of g.level.enemies) { e.aware = false; e.hunting = false; }
 
+  // Stand one next to you, where it cannot fail to see you, and let it look.
   const watcher = g.level.livingEnemies()[0];
   assert(watcher, 'this floor has no enemies to be hunted by');
-  for (const e of g.level.enemies) e.aware = false;
-  watcher.aware = true;
+  const spot = DIRS.map((d) => ({ x: p.x + d.dx, y: p.y + d.dy }))
+    .find((c) => g.level.walkable(c.x, c.y) && !g.level.occupant(c.x, c.y));
+  assert(spot, 'no free tile beside the bonfire to stand a watcher on');
+  watcher.x = spot.x; watcher.y = spot.y;
+  g.level.markEnemiesDirty();
+  enemyTurn(g, watcher);
+  assert(watcher.hunting, 'something standing next to you did not notice you');
 
-  assert(g.hunters() === 1, 'one aware enemy should count as one hunter');
+  assert(g.hunters() === 1, 'one enemy with eyes on you should count as one hunter');
   // rest() returns whether the turn was spent, not whether it worked - resting
   // does not advance the turn either way - so the effect is what to check.
   g.rest();
   assert(p.hp === 1, 'rested with something hunting');
 
   // Awareness decays once you are out of sight, so breaking away is the way
-  // out - which makes disengaging a skill rather than a formality.
-  watcher.aware = false;
+  // out - which makes disengaging a skill rather than a formality. Drive that
+  // through the real path too: move it out of the room and let it give up.
+  let away = null;
+  for (let y = 0; y < g.level.h && !away; y++) {
+    for (let x = 0; x < g.level.w; x++) {
+      if (Math.max(Math.abs(x - p.x), Math.abs(y - p.y)) <= 14) continue;
+      if (g.level.walkable(x, y) && !g.level.occupant(x, y)) { away = { x, y }; break; }
+    }
+  }
+  assert(away, 'nowhere on this floor is far enough to break away to');
+  watcher.x = away.x; watcher.y = away.y;
+  g.level.markEnemiesDirty();
+  // tickEnemyState as well as enemyTurn: a thing that has just seen you is
+  // mid-wind-up, and enemyTurn returns immediately while that lasts - so
+  // driving only enemyTurn never advances the forgetting counter at all.
+  for (let i = 0; i < 60 && watcher.hunting; i++) {
+    watcher.x = away.x; watcher.y = away.y;   // it walks back; keep it away
+    tickEnemyState(g, watcher);
+    enemyTurn(g, watcher);
+  }
+  assert(!watcher.hunting, 'it never gave up looking');
   assert(g.hunters() === 0, 'losing awareness did not clear the hunt');
   g.rest();
   assert(p.hp === p.hpMax, 'could not rest with nothing hunting');
-  return 'no reset button mid-fight';
+  return 'no reset button mid-fight, and breaking away still works';
+});
+
+check('the fire you land next to is one you can actually sit at', () => {
+  // The bug: `aware` means "awake, not asleep", and tiles, situations and
+  // guards set it on things that have never seen you. hunters() counted those,
+  // so arriving on a floor announced ten hunters with nothing in sight and
+  // refused the arrival bonfire.
+  //
+  // Pinned as the consequence, not the flag: there must BE spawn-awake enemies
+  // (or this proves nothing), and none of them may block the fire.
+  let floors = 0, awake = 0, blocked = 0, withFire = 0;
+  for (let s = 0; s < 12; s++) {
+    const g = freshGame(`arrive${s}`);
+    for (let d = 2; d <= 5; d++) {
+      g.player.depth = d - 1;
+      g.gotoLevel(d, 'up');
+      floors++;
+      const p = g.player;
+      awake += g.level.livingEnemies().filter((e) => e.aware).length;
+      if (g.hunters() > 0) blocked++;
+      const near = g.level.bonfires.some((f) =>
+        Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y)) <= 5);
+      if (near) withFire++;
+    }
+  }
+  assert(awake > floors, `only ${awake} spawn-awake enemies over ${floors} floors - this test is not testing anything`);
+  assert(withFire > floors * 0.5, `only ${withFire}/${floors} arrivals had a fire within 5 tiles`);
+  assert(blocked === 0, `${blocked} of ${floors} arrivals were refused their bonfire`);
+  return `${floors} arrivals, ${awake} enemies awake on them, 0 hunting you`;
 });
 
 check('a doorway two leaves wide does not pinch you', () => {
