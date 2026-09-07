@@ -308,9 +308,13 @@ export class Game {
   castSnow(tiles, turns, gaps = []) {
     const holes = new Set(gaps.map((g) => `${g.x},${g.y}`));
     this.level.castSnow(tiles.filter((t) => !holes.has(`${t.x},${t.y}`)), turns);
-    // Never over the player's own square: standing inside the anomaly should
-    // still show you where you are.
-    this.level.clearSnowAround(this.player.x, this.player.y, 0);
+    // The player always stands in a cleared 3x3, from the moment it lands.
+    //
+    // This is what keeps the telegraph contract intact while the static hides
+    // telegraphs: every tile a blow could reach you on is a tile you can see.
+    // You always know whether you are in it. What the static takes away is how
+    // far the shape extends - so you know to move, and not which way.
+    this.level.clearSnowAround(this.player.x, this.player.y, 1);
   }
 
   worldTurn() {

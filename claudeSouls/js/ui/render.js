@@ -489,6 +489,12 @@ export class Renderer {
       for (const t of e.attackTiles) {
         const rx = t.x - v.ox, ry = t.y - v.oy;
         if (rx < 0 || ry < 0 || rx >= v.cols || ry >= v.rows) continue;
+        // Static hides the telegraph too - but the player always stands in a
+        // cleared 3x3, so the part of a blow that can reach them is always
+        // drawn. You always know whether you are in it; what the static takes
+        // is how far it goes, which is the difference between reacting and
+        // knowing where to run. See Level.castSnow.
+        if (lvl.snowAt(t.x, t.y)) continue;
         const a = 0.18 + heat * 0.4;
         ctx.fillStyle = `rgba(220,60,50,${a})`;
         ctx.fillRect(rx * v.cell + v.offX, ry * v.cell + v.offY, v.cell, v.cell);

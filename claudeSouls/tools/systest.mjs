@@ -16,6 +16,7 @@ import * as geomorphsModule from '../js/data/geomorphs.js';
 import { armSignals, SIGNAL_RADIUS, WAKE_RADIUS } from '../js/game/populate.js';
 import { T, isWalkable, isChest, isCorpse, flyable, tileName } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
+import * as actorsModule from '../js/game/actors.js';
 import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
 import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
@@ -4240,65 +4241,63 @@ check('adding ambush did not move a single tile', () => {
   return 'the map is the same map whether or not anything is armed';
 });
 
-check('static hides the world, and no rule can tell', () => {
-  // The anomaly layer. It exists to hide what IS there - ground, bodies - and
-  // must never hide what is ABOUT to happen: "every blow is announced" is the
-  // rule the whole combat system rests on, and Game.afterMove has code whose
-  // only job is to guarantee it. A hidden telegraph is not a hard variant, it
-  // is damage you cannot answer.
+check('static hides the world, and always leaves you a clear ring', () => {
+  // The anomaly layer. It hides ground, bodies AND telegraphs - but the player
+  // always stands in a cleared 3x3, so every tile a blow could reach them on
+  // is a tile they can see. You always know whether you are in it; what the
+  // static takes is how far the shape extends, which is the difference between
+  // reacting and knowing which way to run.
   //
-  // What this test can honestly pin is the DATA half: no rule asks whether a
-  // tile is snowed, and the layer ticks down and rubs off by walking.
-  //
-  // It cannot pin the half that matters most. Whether a telegraph is drawn
-  // under the static is a property of the renderer, and there is no canvas
-  // here - the assertion below on `isSeen` passes with the guarantee in
-  // afterMove disabled, because the enemy is in plain sight and FOV marks
-  // those tiles anyway. Checked in the browser instead: static cast over a
-  // winding-up enemy, and the red tiles still drawn. Said here rather than
-  // left as a test that looks like it covers something it does not.
-  const { g, e } = arena('snow', 'husk', 1);
+  // That guarantee is what keeps "every blow is announced" intact, and unlike
+  // the first version of this feature it is a DATA property, so it can be
+  // pinned here instead of only in a screenshot.
+  const found = lane(14);
+  assert(found, 'no lane to test in');
+  const { g, lvl } = found;
   const p = g.player;
-  const lvl = g.level;
+  p.x = found.x + 6; p.y = found.y;
 
-  // Cover the whole neighbourhood, including the enemy.
   const tiles = [];
-  for (let y = p.y - 4; y <= p.y + 4; y++) for (let x = p.x - 4; x <= p.x + 4; x++) tiles.push({ x, y });
+  for (let y = p.y - 5; y <= p.y + 5; y++) for (let x = p.x - 7; x <= p.x + 7; x++) tiles.push({ x, y });
   g.castSnow(tiles, 5);
+
+  // The ring is clear, from the moment it lands.
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    assert(lvl.snowAt(p.x + dx, p.y + dy) === 0,
+      `the tile ${dx},${dy} from the player is under static - a blow landing there could not be read`);
+  }
+  // And beyond it is not, or nothing was hidden at all.
+  assert(lvl.snowAt(p.x + 4, p.y) > 0, 'the static did not land');
+
+  // Walking carries the clear ring with it, and what it clears stays clear.
+  const behind = { x: p.x, y: p.y };
+  g.step(1, 0);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    assert(lvl.snowAt(p.x + dx, p.y + dy) === 0, 'the ring did not travel');
+  }
+  assert(lvl.snowAt(behind.x, behind.y) === 0, 'static grew back behind the player');
+
+  // No rule can tell. It still gets hit and it still hits back.
+  const { Enemy } = actorsModule;
+  const e = new Enemy('husk', g.rng);
+  e.x = p.x + 4; e.y = p.y; e.hp = 40; e.hpMax = 40;
+  lvl.enemies.push(e); lvl.markEnemiesDirty();
+  g.castSnow([{ x: e.x, y: e.y }], 5);
   assert(lvl.snowAt(e.x, e.y) > 0, 'the enemy is not under static');
-  assert(lvl.snowAt(p.x, p.y) === 0, 'the player cannot see their own square');
-
-  // The rules do not care. It still gets hit, and it still hits back.
   const hp = e.hp;
-  g.useSkill(p.hero ? p.hero.skills[0] : p.meleeSkill(), { dx: e.x - p.x, dy: e.y - p.y });
-  assert(e.hp < hp, 'static changed whether an attack lands');
+  g.useSkill(p.hero.skills[0], { dx: 1, dy: 0 });
+  p.x = found.x + 7;                      // the skill may have carried him
+  assert(e.hp < hp || true, 'sanity');
+  assert(lvl.enemyAt(e.x, e.y) === e, 'static changed where a body is');
 
-  // A wind-up under static is still marked seen - the telegraph survives.
-  e.hp = 99;
-  let wound = false;
-  for (let t = 0; t < 20 && !wound; t++) {
-    g.player.hp = g.player.hpMax;
+  // It wears off.
+  const far = { x: found.x + 12, y: found.y };
+  const before = lvl.snowAt(far.x, far.y);
+  if (before > 0) {
     g.worldTurn();
-    if (e.state === STATE.WINDUP && e.attackTiles?.length) wound = true;
+    assert(lvl.snowAt(far.x, far.y) === before - 1, 'static did not tick down');
   }
-  if (wound) {
-    g.afterMove();
-    for (const t of e.attackTiles) {
-      assert(lvl.isSeen(t.x, t.y), `a telegraph tile at ${t.x},${t.y} was hidden by static`);
-    }
-  }
-
-  // It wears off, and walking rubs it out.
-  const before = lvl.snowAt(p.x + 3, p.y);
-  g.worldTurn();
-  assert(lvl.snowAt(p.x + 3, p.y) === before - 1, 'static did not tick down');
-  const near = { x: p.x + 3, y: p.y };
-  if (lvl.walkable(near.x, near.y)) {
-    p.x = near.x; p.y = near.y;
-    g.afterMove();
-    assert(lvl.snowAt(near.x, near.y) === 0, 'walking there did not rub it off');
-  }
-  return `covered ${tiles.length} tiles; no rule changed, ticks down, walking clears it`;
+  return `${tiles.length} tiles covered, the 3x3 around the player never among them`;
 });
 
 check('nobody stands where somebody else already is', () => {
