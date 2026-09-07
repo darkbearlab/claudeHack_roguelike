@@ -14,7 +14,7 @@
 // already see.
 
 import { ENEMY_BY_KEY } from '../data/enemies.js';
-import { PLAYER, SKILLS, SKILL_BY_KEY } from '../data/skills.js';
+import { PLAYER, SKILLS, SKILL_BY_KEY, EFFORT } from '../data/skills.js';
 import { ITEM_BY_KEY, SLOT, skillsFrom, slotsFor, isArmour,
          CONSUMABLE_BY_KEY } from '../data/items.js';
 import { modsFor, weightMod, affixesOn, canGrant, AFFIX_BY_KEY, TEMP_HITS } from '../data/affixes.js';
@@ -58,6 +58,17 @@ export class Player {
     this.prep = { item: null, magic: null };
     this.edge = 0;                    // a whetstone's bonus, spent on the next hit
     this.recover = 0;                 // turns you are still swinging
+    // What this turn was spent on, for the recovery tiers. Defaults to the
+    // most generous: a turn nobody has claimed is a turn spent standing
+    // still, which is what waiting is.
+    this.acted = 'wait';
+    // A roll does not advance the turn, so nothing else stops you rolling
+    // until the bar is empty. Measured: 3 rolls and 6 tiles for the old
+    // knight, 8 rolls and SIXTEEN tiles for the binder, in a single turn
+    // while nothing else moved - which is not a dodge, it is free
+    // redeployment, and it contradicts her own design note about dancing
+    // keeping her in the fight rather than circling it.
+    this.rolled = false;
     // A blow you have declared but not yet landed. Set by a skill with a
     // wind-up, resolved on your next turn, and lost entirely if something
     // hits you first - the same deal every enemy in the game is offered.
@@ -555,7 +566,9 @@ export class Player {
       // Carried as a fraction, because a rate below one per turn has to
       // accumulate or it rounds to nothing. Everyone else's rate is a whole
       // number and this behaves exactly as it always did for them.
-      this.staminaFrac = (this.staminaFrac ?? 0) + this.regenRate(inCombat);
+      // Scaled by what the turn was spent on. See EFFORT.
+      const effort = EFFORT[this.acted] ?? 1;
+      this.staminaFrac = (this.staminaFrac ?? 0) + this.regenRate(inCombat) * effort;
       const whole = Math.floor(this.staminaFrac);
       if (whole > 0) {
         this.staminaFrac -= whole;
@@ -563,7 +576,13 @@ export class Player {
       }
     }
     for (const s of this.skills) if (s.cd > 0) s.cd--;
+    // A new turn: one roll again, and nobody has claimed it yet.
+    this.rolled = false;
+    this.acted = 'wait';
   }
+
+  /** Have you already rolled this turn? */
+  canRoll() { return !this.rolled; }
 
   /** A kill refunds one turn of every cooldown. This is the combo engine. */
   onKill() {

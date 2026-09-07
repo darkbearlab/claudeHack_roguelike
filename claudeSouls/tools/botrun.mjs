@@ -177,7 +177,13 @@ function rollLanding(game, d) {
 function escapeRoutes(game, danger) {
   const p = game.player;
   const rolls = [];
-  if (p.stamina >= p.rollCost()) {
+  // `canRoll` as well as the cost: a roll is once a turn now, and a refused
+  // action does not advance the turn. Proposing one the rules will refuse is
+  // the infinite loop this project has already written down four times - the
+  // bonfire, the recovery path, walking into an NPC, and bumping the horned
+  // one. This is the one place that offers a roll, so it is the one place
+  // that has to ask.
+  if (p.canRoll() && p.stamina >= p.rollCost()) {
     for (const d of DIRS) {
       const land = rollLanding(game, d);
       if (!land.moved) continue;

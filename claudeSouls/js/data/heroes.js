@@ -34,7 +34,11 @@ export const HEROES = [
     // cannot parry twice in a row, so the counter has to be chosen rather
     // than leaned on.
     stamina: { max: 12, regen: 4 },
-    roll: { cost: 4, distance: 2 },
+    // 7, not 4. At 4 his roll cost exactly equalled his recovery, so he could
+    // dodge every turn for ever and no wind-up in the game meant anything to
+    // him - which is what made telegraphs read as theatre. At 7 a bar of
+    // continuous rolling lasts four turns.
+    roll: { cost: 7, distance: 2 },
 
     skills: ['thrust', 'sweep', 'turnaside'],
     // "一把長劍" - so he holds one, and every blade he finds is a version of
@@ -89,7 +93,10 @@ export const HEROES = [
     // game (see the note on rollDistance in actors.js) - and his answer to
     // that attack is the charge, aimed the other way.
     stamina: { max: 14, regen: 2 },
-    roll: { cost: 3, distance: 1 },
+    // 5, not 3. Same reason as the knight, one step gentler: he drained a
+    // point a turn, which is fourteen turns of dodging - long enough to be
+    // for ever inside one fight.
+    roll: { cost: 5, distance: 1 },
 
     skills: ['pierce2', 'bannersweep', 'onward'],
     // The banner is on a shaft, so what he can hold is a shaft. His family has

@@ -610,10 +610,11 @@ export class Game {
       return false;
     }
     const t = lvl.at(nx, ny);
-    if (t === T.DOOR_CLOSED) { lvl.openDoor(nx, ny); this.msg('You open the door.'); return true; }
+    if (t === T.DOOR_CLOSED) { lvl.openDoor(nx, ny); p.acted = 'move'; this.msg('You open the door.'); return true; }
     if (!lvl.passable(nx, ny)) { this.msg(`${capitalise(tileName(t))} blocks the way.`); return false; }
 
     p.x = nx; p.y = ny;
+    p.acted = 'move';
     this.afterMove();
     this.onEnterTile();
     return true;
@@ -1050,12 +1051,19 @@ export class Game {
 
     // ---- roll: the one action that does not advance the turn --------------
     if (def.move) {
+      // Once a turn. The roll is the only action that does not advance the
+      // turn, which is the heart of the design - the clock is stamina, not
+      // turns - but without this the bar is the ONLY limit and a full bar
+      // buys six to sixteen tiles of movement in a single turn while nothing
+      // else on the floor moves.
+      if (!p.canRoll()) { this.msg('你這回合已經翻滾過了。', 'warn'); return false; }
       // Roll one tile or two, as asked. The exact landing tile is the whole
       // question now that packs draw overlapping telegraphs and bodies block
       // the diagonals - a fixed distance can only reach a ring, not a disc.
       const moved = this.dash(Math.min(p.rollDistance(), opts.steps ?? 99), dir);
       if (!moved) { this.msg('No room to roll.'); return false; }
       p.spend(cost);
+      p.rolled = true;
       this.msg(`You roll ${moved} ${moved === 1 ? 'tile' : 'tiles'}.`);
       this.afterMove();
       return false;                    // <- does not advance the turn
@@ -1072,6 +1080,7 @@ export class Game {
         key, dx: dir.dx, dy: dir.dy,
         tiles: def.pattern ? attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern) : null,
       };
+      p.acted = 'attack';
       this.msg(`You draw back for ${def.name}.`, 'warn');
       return true;                     // the declaration costs you the turn
     }
@@ -1079,6 +1088,14 @@ export class Game {
     if (!def.move && !def.defend) {
       this.fx.add({ kind: 'attack', uid: 0, x: p.x, y: p.y, dx: dir.dx, dy: dir.dy });
     }
+
+    // Everything that gets this far is exertion, so it earns no recovery this
+    // turn. Placed here rather than at the top because every refusal - not
+    // enough stamina, no room, on cooldown - has already returned above, and a
+    // refused action must not quietly cost you the turn's recovery. The roll
+    // returned above too, and is the one skill that is not exertion for this
+    // purpose: it does not advance the turn, so it never reaches a tick.
+    if (!def.move) p.acted = 'attack';
 
     const m = p.mods(key);
     if (!opts.resolving && !opts.forced) {

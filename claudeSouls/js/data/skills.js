@@ -419,6 +419,30 @@ export const SKILLS = [
 
 export const SKILL_BY_KEY = Object.fromEntries(SKILLS.map((s) => [s.key, s]));
 
+/**
+ * How much of your recovery a turn gives you back, by what you did with it.
+ *
+ * Standing still is the whole rate - that number was tuned as "the recovery
+ * rate" and stays the best case. Moving is half of it. Swinging is none.
+ *
+ * The point is that stamina stops being a thing time hands you and starts
+ * being a thing you stop spending to get. Measured before this existed: the
+ * old knight could attack for twelve consecutive turns from a full bar,
+ * because his 5-stamina thrust was refunded 4 by the clock every turn.
+ *
+ * A multiplier rather than a flat bonus, because the three heroes recover at
+ * 4, 2 and 0.25 a turn - sixteen times apart - and any flat number would be a
+ * rounding error for one of them and the whole economy for another.
+ *
+ * The rolling case falls out for free: a roll does not advance the turn, so
+ * it never reaches a tick at all and has never earned recovery.
+ */
+export const EFFORT = {
+  wait: 1,
+  move: 0.5,
+  attack: 0,
+};
+
 export const PLAYER = {
   hpMax: 12,          // three heavy hits, or five light ones
   staminaMax: 20,

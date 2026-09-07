@@ -27,6 +27,7 @@ import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
+import { EFFORT } from '../js/data/skills.js';
 import { hasLOS } from '../../engine/fov.js';
 import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
 import { stepProjectiles } from '../js/game/projectile.js';
@@ -441,6 +442,131 @@ check('snapDir returns one of the eight directions for any vector', () => {
 // ===========================================================================
 console.log('\n--- the core contract -----------------------------------------');
 
+check('one roll a turn, and rolling never pays for itself', () => {
+  // A roll does not advance the turn, which is the heart of the design - the
+  // clock is stamina, not turns. But that made the bar the ONLY limit, and a
+  // full bar bought the whole retreat at once: measured before this rule, 3
+  // rolls and 6 tiles for the old knight, and 8 rolls and SIXTEEN tiles for
+  // the binder, in one turn, while nothing else on the floor moved.
+  // A built corridor, not a found one. The first version rolled north twice
+  // in an arena and passed with the rule DISABLED, because the second roll hit
+  // a wall - the assertion was true for the wrong reason. Room has to be
+  // guaranteed or the test proves nothing.
+  // The binder, because she is the only hero who can AFFORD two rolls in a
+  // turn: 20 stamina at 2 apiece. The knight cannot (12 at 7), so with him the
+  // second roll is refused for price and the test passes whether the rule
+  // exists or not - which is how the first two versions of this passed with
+  // the rule disabled.
+  const found = lane(14, 'binder');
+  assert(found, 'no lane to roll down');
+  const { g, lvl } = found;
+  const p = g.player;
+  p.x = found.x; p.y = found.y;
+  p.stamina = p.staminaMax; p.staminaFrac = 0; p.rolled = false;
+  const start = { x: p.x, y: p.y };
+  // Prove the room exists before relying on it.
+  for (let i = 1; i <= 6; i++) assert(lvl.walkable(start.x + i, start.y), `no room ${i} east`);
+
+  assert(p.stamina >= p.rollCost() * 2,
+    `this hero cannot afford two rolls (${p.stamina} vs ${p.rollCost()} each) - the test would prove nothing`);
+  assert(p.canRoll(), 'a fresh turn does not allow a roll');
+  assert(g.useSkill('roll', { dx: 1, dy: 0 }) === false, 'the roll advanced the turn');
+  const afterFirst = { x: p.x, y: p.y, st: p.stamina };
+  assert(afterFirst.x > start.x, 'the first roll did not move');
+  assert(!p.canRoll(), 'a second roll is still on offer in the same turn');
+
+  g.useSkill('roll', { dx: 1, dy: 0 });
+  assert(p.x === afterFirst.x && p.y === afterFirst.y,
+    `a second roll moved in the same turn (${start.x} -> ${afterFirst.x} -> ${p.x})`);
+  assert(p.stamina === afterFirst.st, 'a refused roll still charged for it');
+
+  // And the turn that follows hands it back.
+  g.worldTurn();
+  assert(p.canRoll(), 'the roll never came back');
+
+  // A roll earns no recovery, because it reaches no tick.
+  p.x = found.x; p.y = found.y;
+  p.stamina = p.staminaMax; p.rolled = false;
+  const before = p.stamina;
+  g.useSkill('roll', { dx: 1, dy: 0 });
+  assert(p.stamina === before - p.rollCost(), 'a roll came back cheaper than it cost');
+  return `one roll a turn, ${p.rollCost()} stamina, none of it refunded`;
+});
+
+check('what a turn was spent on decides what it gives back', () => {
+  // Standing still is the whole rate; walking is half; swinging is none.
+  // Before this, the old knight could attack for TWELVE consecutive turns
+  // from a full bar, because the clock refunded 4 of his 5-stamina thrust
+  // every turn. A cost the clock pays back is not a cost.
+  const cases = [];
+  for (const key of ['knight', 'squire']) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: 'effort', name: 'A', hero: key });
+    const p = g.player;
+    const rate = p.regenRate(true);
+
+    // stand still
+    p.stamina = 0; p.staminaFrac = 0; p.acted = 'wait';
+    g.worldTurn();
+    const waited = p.stamina;
+
+    // walk a tile
+    p.stamina = 0; p.staminaFrac = 0;
+    let stepped = false;
+    for (const d of DIRS) {
+      if (!g.level.walkable(p.x + d.dx, p.y + d.dy)) continue;
+      if (g.level.enemyAt(p.x + d.dx, p.y + d.dy)) continue;
+      g.step(d.dx, d.dy); stepped = true; break;
+    }
+    assert(stepped, `${key}: nowhere to walk`);
+    g.worldTurn();
+    const moved = p.stamina;
+
+    // swing at nothing
+    p.stamina = p.staminaMax; p.staminaFrac = 0;
+    const before = p.stamina;
+    g.useSkill(p.hero.skills[0], { dx: 1, dy: 0 });
+    const cost = before - p.stamina;
+    g.worldTurn();
+    const attacked = p.stamina - (before - cost);
+
+    cases.push({ key, rate, waited, moved, attacked });
+    assert(waited === Math.floor(rate * EFFORT.wait), `${key}: waiting gave ${waited}, rate is ${rate}`);
+    assert(moved === Math.floor(rate * EFFORT.move), `${key}: walking gave ${moved}, expected half of ${rate}`);
+    assert(attacked === 0, `${key}: swinging gave back ${attacked}`);
+    assert(waited > moved && moved >= attacked, `${key}: the tiers are not in order (${waited}/${moved}/${attacked})`);
+  }
+  return cases.map((c) => `${c.key} ${c.waited}/${c.moved}/${c.attacked}`).join(', ');
+});
+
+check('nobody can dodge for ever', () => {
+  // The knight's roll cost used to equal his recovery exactly, so he could
+  // roll every turn without end and no wind-up in the game meant anything to
+  // him. Stated as the consequence: rolling every turn must run the bar dry.
+  const slow = [];
+  for (const h of HEROES) {
+    const g = new Game(null);
+    g.ui = new QuietUI();
+    g.newGame({ seed: 'forever', name: 'A', hero: h.key });
+    const p = g.player;
+    p.stamina = p.staminaMax; p.staminaFrac = 0;
+    let turns = 0;
+    for (; turns < 40; turns++) {
+      if (p.stamina < p.rollCost()) break;
+      p.rolled = false;
+      const before = { x: p.x, y: p.y };
+      g.useSkill('roll', { dx: 1, dy: 0 });
+      if (p.x === before.x && p.y === before.y) { p.stamina -= p.rollCost(); }  // walled in; charge it anyway
+      g.worldTurn();          // a turn of standing still, the best case
+    }
+    if (turns >= 40) slow.push(`${h.key} rolled 40 turns without running dry`);
+    else if (turns > 12) slow.push(`${h.key} managed ${turns} turns of dodging`);
+  }
+  assert(slow.length === 0, slow.join('; '));
+  return 'every hero runs dry inside a dozen turns of continuous dodging';
+});
+
 check('rolling costs stamina and does NOT advance the turn', () => {
   const { g } = arena('roll', 'husk', 6);
   const t0 = g.turn, s0 = g.player.stamina;
@@ -461,7 +587,11 @@ check('a roll can be one tile or two, for the same price', () => {
   const start = { x: p.x, y: p.y };
 
   const go = (opts) => {
-    p.x = start.x; p.y = start.y; p.stamina = p.staminaMax;
+    // `rolled` with the rest: a roll is once a turn now, so putting the player
+    // back where they started without clearing it is not a fresh turn. This
+    // test is about the distance choice, not about the per-turn limit - that
+    // has its own test below.
+    p.x = start.x; p.y = start.y; p.stamina = p.staminaMax; p.rolled = false;
     g.useSkill('roll', { dx: 1, dy: 0 }, opts);
     return { moved: Math.max(Math.abs(p.x - start.x), Math.abs(p.y - start.y)),
              spent: p.staminaMax - p.stamina };
