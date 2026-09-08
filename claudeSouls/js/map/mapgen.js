@@ -12,12 +12,14 @@
 import { Level, MAP_W, MAP_H } from './level.js';
 import { T, isWalkable } from './tiles.js';
 import { CHAMBERS } from '../data/chambers.js';
-import { assemble } from './geomorph.js';
+import { assemble, LAYOUT, MAP_FOR } from './geomorph.js';
 
 export const DUNGEON_DEPTH = 10;
 
 export function generateLevel(depth, rng) {
-  const lvl = new Level(depth, MAP_W, MAP_H);
+  // The map is a property of the layout, not a constant - see MAP_FOR.
+  const [mw, mh] = MAP_FOR[LAYOUT()] ?? [MAP_W, MAP_H];
+  const lvl = new Level(depth, mw, mh);
   // The floor is assembled from tiles - see geomorph.js for the mechanism and
   // docs/DESIGN.md for why. What comes out is a level full of ordinary rooms,
   // with the stairs, the arrival fire and any situations already in place and

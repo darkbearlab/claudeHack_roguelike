@@ -96,7 +96,51 @@ const isFloorAt = (p, cells) => cells.every(([x, y]) => standable(p.g[y]?.[x]));
  * Fill `lvl` with tiles. Returns the assembly's statistics, which the tests
  * read; the level itself carries everything the game reads.
  */
-export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace = null } = {}) {
+/**
+ * How a floor is laid out.
+ *
+ *   'fill'   grow in every direction until the grid is full. What this game
+ *            shipped with: ~16 pieces, 890 walkable tiles, and a route from
+ *            the stairs to the stairs that crosses 5.5 of them. Two thirds of
+ *            every floor was off the path, and 19 of 22 tiles carried no
+ *            enemies, so the detour usually paid nothing.
+ *
+ *   'route'  walk a spine instead, with a dead end hung off it and one loop
+ *            back. Fewer pieces, all of them on the way, and the map shrinks
+ *            to match.
+ *
+ * Both live here on purpose. This is a change to how every floor in the game
+ * feels, and the honest way to judge it is to be able to switch back inside
+ * the same build - `?layout=fill` on the URL does it without a rebuild.
+ */
+/**
+ * DEFAULT is what a normal run gets. `route` is opt-in with `?layout=route`
+ * until it can guarantee what a filled floor guaranteed by sheer volume - see
+ * the five tests it currently fails, all of them one root cause: six pieces
+ * cannot promise "a narrow tile AND a room AND something fast AND something
+ * slow" the way sixteen could without trying.
+ */
+let CURRENT = 'fill';
+
+/** Read it, or set it once at boot from the URL. */
+export const LAYOUT = () => CURRENT;
+export const setLayout = (v) => { if (v === 'fill' || v === 'route') CURRENT = v; };
+
+/**
+ * The grid each layout wants, in tiles.
+ *
+ * A fill needs room to spread; a route needs room to snake and no more. Left
+ * at 60x30 a six-piece route sat in a corner of a map two thirds undug - which
+ * works, because undug rock is undug rock, but it wastes the camera and the
+ * minimap on nothing.
+ */
+export const MAP_FOR = { fill: [60, 30], route: [40, 30] };
+
+/** Pieces on the spine, by depth. Deeper floors are a little longer. */
+const ROUTE_LEN = (depth) => 5 + Math.min(3, Math.floor(depth / 3));
+
+export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace = null,
+                                     layout = LAYOUT() } = {}) {
   const cols = lvl.w / U, rows = lvl.h / U;
   const cells = Array.from({ length: rows }, () => Array(cols).fill(null));
   const pieces = [];
@@ -271,9 +315,34 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   // ever rolled for mid-growth, 7% once a miss kept it pending, and the rest
   // of the way here. The per-socket roll below still adds a second one.
   let pendingSpecial = (specialNames.length && rng.rn2(2) === 0) ? pick(specialNames) : null;
-  while (frontier.length || (filledCells() < MIN_FILL && (reopen() || unstick()))) {
+  // Route mode wants a spine and then a couple of deliberate extras, so it
+  // needs a length to stop at. The boss floor is laid by hand either way.
+  const routing = layout === 'route' && !boss;
+  const wantPieces = routing ? ROUTE_LEN(depth) : Infinity;
+  // A dead end for a reward, and one loop so that breaking away from something
+  // is still a thing you can do with your feet. Both are spent once.
+  let wantPocket = routing ? 1 : 0;
+  let wantLoop = routing ? 1 : 0;
+
+  while (frontier.length || (!routing && filledCells() < MIN_FILL && (reopen() || unstick()))) {
     if (!frontier.length) continue;
-    const { pl, s } = frontier.splice(rng.rn2(frontier.length), 1)[0];
+    // THE whole difference between the two layouts, in one expression.
+    //
+    // Taking a socket at random is what makes a floor spread: every open edge
+    // anywhere is equally likely to be the next one built on, so the shape
+    // grows outward in all directions at once. Taking the most recent one
+    // walks instead - depth first - and the same code lays a chain.
+    const idx = routing ? frontier.length - 1 : rng.rn2(frontier.length);
+    const { pl, s } = frontier.splice(idx, 1)[0];
+    // Long enough. Everything still open becomes a wall, except that we keep
+    // one socket back for the pocket and one for the loop.
+    if (routing && stats.pieces >= wantPieces) {
+      // One more piece past the end, hung off the spine: a dead end worth
+      // walking into. After that the route is closed and every remaining
+      // socket becomes rock, open edges included.
+      if (wantPocket > 0 && !s.done) { wantPocket--; }
+      else { wallAt(pl, s); continue; }
+    }
     // Resolved already - possibly from the other side, when a later piece
     // found this socket facing it. A flag rather than the character, because
     // an open edge is drawn as floor from the start and would otherwise look
@@ -509,8 +578,30 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       }
       return seen;
     };
+    /** Is there any walkable character the flood did not reach? */
+    const anyUnreached = (seen) => {
+      for (const pl of pieces) {
+        for (let y = 0; y < pl.p.g.length; y++) {
+          for (let x = 0; x < pl.p.g[0].length; x++) {
+            if (!walk(pl.p.g[y][x])) continue;
+            if (!seen[(pl.oy * U + y) * W + (pl.ox * U + x)]) return true;
+          }
+        }
+      }
+      return false;
+    };
+
     for (let pass = 0; pass < 20; pass++) {
       const seen = flood();
+      // Stop when there is nothing to fix.
+      //
+      // This pass used to run all twenty rounds unconditionally. That was
+      // invisible while every floor filled the grid, because with nowhere to
+      // grow the rounds did nothing - but it is not a no-op, it is "grow a
+      // piece toward the unreached ground" with no check that any exists. A
+      // six-piece route came out of here with EIGHTEEN pieces, and the trace
+      // read "after runs: 6 / after reach: 18".
+      if (!anyUnreached(seen)) break;
       // Candidate doors: socket positions on a boundary between a reached
       // tile and an unreached one, with floor behind both.
       const cands = [];

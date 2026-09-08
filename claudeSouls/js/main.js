@@ -8,6 +8,7 @@ import { ITEMS, CONSUMABLES } from './data/items.js';
 import { NPC_BY_KEY } from './data/npcs.js';
 import { SKILLS } from './data/skills.js';
 import { HEROES, PLAYABLE } from './data/heroes.js';
+import { setLayout } from './map/geomorph.js';
 import { saveSummary, loadGame, clearSave, saveGame } from './game/save.js';
 
 const splash = document.getElementById('splash');
@@ -15,7 +16,12 @@ const body = document.getElementById('splash-body');
 
 function render() {
   const save = saveSummary();
-  const seedParam = new URLSearchParams(location.search).get('seed') ?? '';
+  const params = new URLSearchParams(location.search);
+  const seedParam = params.get('seed') ?? '';
+  // ?layout=route lays floors as a spine instead of filling the grid. Opt-in
+  // while it is still being measured against the one it would replace; see
+  // docs/COMMITMENT.md's sibling, docs/LAYOUT.md.
+  setLayout(params.get('layout'));
 
   // Rendered from HEROES rather than written out, for the same reason the hall
   // places them from HEROES: two lists of the same people go out of step, and
