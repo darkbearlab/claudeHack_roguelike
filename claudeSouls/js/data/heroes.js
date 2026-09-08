@@ -119,15 +119,6 @@ export const HEROES = [
 
   {
     key: 'farwayer',
-    // PARKED. Playable in nothing; still in HEROES, so every rule and every
-    // test still holds her to the same standard as the other three.
-    //
-    // She works, and the numbers are honest - a punching post puts her at 1.27
-    // damage a turn against the old knight's 1.10, and her phrase beats
-    // hammering her basic attack two to one. She is parked because the SHAPE
-    // is under review, not because she is broken: see docs/FARWAYER.md, the
-    // section on what the wind-up refactor changes about the question.
-    wip: true,
     sprite: 'hero_farwayer',
     face: 'face_farwayer',
     name: '巡禮者',
