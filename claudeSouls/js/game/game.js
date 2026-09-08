@@ -144,7 +144,7 @@ export class Game {
     }
     this.afterMove();
 
-    this.msg(`You wake at the bonfire. ${DUNGEON_DEPTH} floors down, something is still burning.`, 'magic');
+    this.msg(`You wake at the hearth. ${DUNGEON_DEPTH} floors down, something is still burning.`, 'magic');
     this.msg('You cannot take a hit. Read the wind-up, and be somewhere else.');
     return this;
   }
@@ -867,7 +867,7 @@ export class Game {
 
   onEnterTile() {
     const t = this.level.at(this.player.x, this.player.y);
-    if (isBonfire(t)) this.msg('A bonfire. Press e to rest.', 'magic');
+    if (isBonfire(t)) this.msg(`A hearth. Press ${REST_KEY} to rest.`, 'magic');
     else if (t === T.STAIRS_DOWN) this.msg('Stairs down. Press > to descend.');
     else if (t === T.STAIRS_UP) this.msg('Stairs up.');
   }
@@ -985,7 +985,7 @@ export class Game {
     const c = this.corpse;
     if (!c || c.depth !== p.depth || c.x !== p.x || c.y !== p.y) return false;
     for (const key of c.items) this.gain(key, 'You take back');
-    if (c.souls) { p.souls += c.souls; this.msg(`You take back ${c.souls} souls.`, 'good'); }
+    if (c.souls) { p.souls += c.souls; this.msg(`You take back ${c.souls} embers.`, 'good'); }
     this.level.set(p.x, p.y, c.under ?? T.FLOOR);
     this.corpse = null;
     return true;
@@ -1598,7 +1598,7 @@ export class Game {
 
   rest() {
     const p = this.player;
-    if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('There is no bonfire here.'); return false; }
+    if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('There is no hearth here.'); return false; }
     // You cannot sit down while something is hunting you.
     //
     // Resting heals, refills stamina, refills charges AND puts every enemy on
@@ -1723,7 +1723,7 @@ export class Game {
     for (const s of p.skills) s.cd = 0;
     this.level.projectiles = [];
     this.afterMove();
-    this.msg('You wake at the bonfire.', 'warn');
+    this.msg('You wake at the hearth.', 'warn');
     saveGame(this);
     this.ui?.onDeath?.(p.deaths);
   }

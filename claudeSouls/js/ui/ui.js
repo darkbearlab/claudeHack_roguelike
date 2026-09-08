@@ -329,7 +329,7 @@ export class UI {
       // information they can act on.
       const n = g.hunters();
       if (n > 0) return { name: 'Hunted', sub: `${n} on your trail`, cmd: null, kind: 'blocked' };
-      return { name: 'Bonfire', sub: `${p.souls} souls`, cmd: 'FIRE', kind: 'rest' };
+      return { name: 'Hearth', sub: `${p.souls} embers`, cmd: 'FIRE', kind: 'rest' };
     }
     if (here === T.STAIRS_DOWN) {
       return { name: 'Descend', sub: `to ${p.depth + 1}`, cmd: '>', kind: 'descend' };
@@ -943,8 +943,8 @@ export class UI {
     }).join('');
 
     const hunted = g.hunters();
-    ov.innerHTML = `<h2>篝火</h2>
-      <p>身上的魂:<b>${p.souls}</b>。<b>死了會掉在原地</b>,只有走回火邊才算數。</p>
+    ov.innerHTML = `<h2>爐</h2>
+      <p>身上的燼:<b>${p.souls}</b>。<b>死了會掉在原地</b>,只有走回爐邊才算數。</p>
       <table>${rows}</table>
       <div class="foot">
         ${hunted
@@ -1143,7 +1143,7 @@ export class UI {
     return [
       `你下到第 ${p.depth} 層,最深到過第 ${p.maxDepth} 層。`,
       `倒下 ${p.deaths} 次,殺了 ${g.stats.kills} 個東西,坐過 ${g.stats.rests} 次火。`,
-      `身上有 ${p.souls} 個魂,走了 ${p.turns} 個回合,${elapsed}。`,
+      `身上有 ${p.souls} 點燼,走了 ${p.turns} 個回合,${elapsed}。`,
       '',
       '——火還記得這些。其他的它不說。',
     ];

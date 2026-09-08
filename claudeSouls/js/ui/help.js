@@ -43,15 +43,15 @@ export const HELP_HTML = `
 <p><b>鍵盤:</b><code>1</code>~<code>5</code> 選技能,再按方向鍵發動。
 移動走進敵人就是普通攻擊。<code>Shift</code>+方向 = 直接翻滾。</p>
 
-<h3>篝火</h3>
-<p>踩到篝火按 <code>r</code> 休息:<b>回滿血和精力、冷卻歸零</b>,但<b>整層的敵人會全部復活</b>。
-死掉會回到最後坐過的篝火,一樣全部復活。</p>
+<h3>爐</h3>
+<p>踩到爐按 <code>r</code> 休息:<b>回滿血和精力、冷卻歸零</b>,但<b>整層的敵人會全部復活</b>。
+死掉會回到最後坐過的爐,一樣全部復活。</p>
 <p><b>樓層是固定的。</b> 同一層永遠長一樣、敵人永遠在同一個位置——死幾次之後你會記住它,
 而那就是這個遊戲的成長。</p>
 
 <h3>可以跑</h3>
 <p>不是每隻敵人都追得上你。<b>殭屍很慢、獵犬很快</b>——繞過去是正當戰術,
-從篝火走回死掉的地方通常不需要重打整層。</p>
+從爐走回死掉的地方通常不需要重打整層。</p>
 
 <h3>會飛的攻擊</h3>
 <p>弓箭是<b>場上的物件</b>,不是瞬間的傷害。它每回合飛幾格,你有時間閃開——
@@ -66,7 +66,7 @@ export const HELP_HTML = `
 <tr><td class="key">Shift + 方向</td><td>朝那個方向翻滾</td></tr>
 <tr><td class="key">1 2 3 4 5</td><td>選技能,再按方向</td></tr>
 <tr><td class="key">.</td><td>等一回合(回精力)</td></tr>
-<tr><td class="key">r</td><td>在篝火休息</td></tr>
+<tr><td class="key">r</td><td>在爐邊休息</td></tr>
 <tr><td class="key">&gt; &lt;</td><td>下樓 / 上樓</td></tr>
 <tr><td class="key">:</td><td>看看附近有什麼</td></tr>
 <tr><td class="key">Ctrl-P</td><td>訊息記錄</td></tr>

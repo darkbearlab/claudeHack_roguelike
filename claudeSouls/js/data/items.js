@@ -366,7 +366,7 @@ export const CONSUMABLES = [
   // that absorbs that - so it stays a constant we tune, not one players raise.
   consumable('flask', {
     name: 'ember flask', kind: 'item', charges: 3, heal: 5, weight: 1, stamina: 6,
-    desc: '回 5 點生命,花 6 點精力。三次,在篝火補滿。和翻滾、格擋搶同一條資源。',
+    desc: '回 5 點生命,花 6 點精力。三次,在爐邊補滿。和翻滾、格擋搶同一條資源。',
   }),
   consumable('whetstone', {
     name: 'whetstone', kind: 'item', charges: 2, weight: 1,

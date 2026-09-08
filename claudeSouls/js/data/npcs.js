@@ -25,7 +25,7 @@ import { HEROES } from './heroes.js';
 export const NPCS = [
   {
     key: 'firekeeper',
-    name: '火防女',
+    name: '守夜人',
     sprite: 'npc_firekeeper',      // on the map, top-down
     // A separate piece of art for the conversation. The map sprite is drawn
     // from directly overhead - it is a shape, not a face - and shrinking it
