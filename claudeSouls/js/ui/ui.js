@@ -492,7 +492,12 @@ export class UI {
     // The readout goes in the message line because a finger covers the tiles.
     this.renderMessages(`${def.name} → ${dirName(dir)}` +
       `${def.move ? ` ${steps} tile${steps === 1 ? '' : 's'}` : ''}` +
-      `   (${cost} stamina${def.advancesTurn === false ? ', free turn' : ''})   release to commit`);
+      // Whether this ends your turn is a property of the beat model now, not
+      // of a flag on the skill - the roll is free of the turn for a one-beat
+      // hero and costs a beat for the farwayer, and the same field could not
+      // have said both.
+      `   (${cost} stamina${def.move ? (this.game.player.rollCostsBeat() ? ', one beat' : ', free turn') : ''})` +
+      `   release to commit`);
     this.render();
   }
 

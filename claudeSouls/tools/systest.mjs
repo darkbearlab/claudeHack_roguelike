@@ -17,7 +17,7 @@ import { armSignals, SIGNAL_RADIUS, WAKE_RADIUS } from '../js/game/populate.js';
 import { T, isWalkable, isChest, isCorpse, flyable, tileName } from '../js/map/tiles.js';
 import { Enemy, STATE } from '../js/game/actors.js';
 import * as actorsModule from '../js/game/actors.js';
-import { ENEMIES, ENEMY_BY_KEY } from '../js/data/enemies.js';
+import { ENEMIES, ENEMY_BY_KEY, validateAttacks } from '../js/data/enemies.js';
 import { SKILLS, SKILL_BY_KEY, PLAYER } from '../js/data/skills.js';
 import { ITEMS, ITEM_BY_KEY, SLOT, skillsFrom, STARTING_KIT,
          CONSUMABLES, CONSUMABLE_BY_KEY } from '../js/data/items.js';
@@ -29,7 +29,7 @@ import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY, PLAYABLE } from '../js/data/heroes.js';
-import { EFFORT, faceOf } from '../js/data/skills.js';
+import { EFFORT, faceOf, validateSkills } from '../js/data/skills.js';
 import { MARKS, MARK_TURNS, MAX_SPARE_BEATS } from '../js/data/marks.js';
 import { hasLOS } from '../../engine/fov.js';
 import { enemyTurn, tickEnemyState } from '../js/game/ai.js';
@@ -1046,7 +1046,7 @@ check('poise decides what can be interrupted', () => {
   let poise = 0, stamina = PLAYER.staminaMax;
   for (let t = 0; t < overhead.windup; t++) {
     const best = SKILLS
-      .filter((k) => k.advancesTurn && !(cd[k.key] > 0) && k.stamina <= stamina)
+      .filter((k) => k.damage && !k.move && !k.defend && !(cd[k.key] > 0) && k.stamina <= stamina)
       .sort((x, y) => (y.impact ?? 0) - (x.impact ?? 0))[0];
     if (!best) break;
     for (const k of Object.keys(cd)) cd[k]--;
@@ -1532,8 +1532,20 @@ check('some attacks go straight through a shield, and they say so', () => {
 check('block advances the turn, so rolling still wins where there is room', () => {
   // The whole reason block is not simply better than rolling: rolling does not
   // advance the turn and this does. Block is what you do with nowhere to go.
-  assert(SKILL_BY_KEY.block.advancesTurn === true, 'block became a free action');
-  assert(SKILL_BY_KEY.roll.advancesTurn === false, 'rolling started costing a turn');
+  // Asserted through the rules rather than through a field. `advancesTurn`
+  // used to say this and stopped being read when the beat model landed; a flag
+  // that describes a rule nobody consults is the shape of three bugs in this
+  // project's history, so it is gone and this asks the engine instead.
+  {
+    const probe = arena('blk:flags', 'husk', 4);
+    const q = probe.g.player;
+    q.stamina = q.staminaMax;
+    q.equipItem(SLOT.OFF, 'buckler');
+    // useSkill returns whether the TURN is over; the caller is what runs the
+    // world. So the return value is the assertion, not the clock.
+    assert(probe.g.useSkill('block', { dx: 1, dy: 0 }) === true, 'block became a free action');
+    assert(probe.g.useSkill('roll', { dx: 0, dy: -1 }) === false, 'rolling started costing a turn');
+  }
 
   const { g } = arena('blk:turn', 'husk', 4);
   g.player.equipItem(SLOT.OFF, 'buckler');
@@ -1682,7 +1694,7 @@ check('you are never left with only committed options', () => {
   // turn - that is the guarantee, and it belongs to the player rather than to
   // any weapon.
   const roll = SKILL_BY_KEY.roll;
-  assert(!roll.recovery && roll.always && !roll.advancesTurn,
+  assert(!roll.recovery && roll.always && roll.move,
          'the roll is the escape hatch from an all-commitment weapon; it must stay free');
   const block = SKILL_BY_KEY.block;
   assert(!block.recovery, 'block must not commit you; it is the answer to nowhere to go');
@@ -5072,6 +5084,55 @@ check('finishing a sentence feeds her; repeating a word starves her', () => {
   assert(phrase.dealt > spam.dealt * 1.2,
     `the phrase dealt ${phrase.dealt} against spam's ${spam.dealt} - the mechanic is not worth using`);
   return `24 turns: the phrase deals ${phrase.dealt}, hammering the basic attack deals ${spam.dealt}`;
+});
+
+
+check('every action says what it costs in turns, out loud', () => {
+  // The contract this game rests on is that a blow is announced. That was only
+  // true on one side of the board: every one of the eighteen enemy attacks
+  // declares a wind-up, while SEVENTEEN of the thirty-six player skills
+  // declared no commitment at all - press, done, no cost.
+  //
+  // Missing is now an error rather than a zero. The two are identical at
+  // runtime and completely different to whoever adds the next skill: one makes
+  // them decide, the other lets the cheapest possible answer be the one they
+  // forgot to type.
+  const bad = [...validateSkills(), ...validateAttacks()];
+  assert(bad.length === 0, bad.slice(0, 4).join('; '));
+
+  // And prove it is looking at something. A validator over an empty list is a
+  // validator that always passes.
+  let faces = 0;
+  for (const sk of SKILLS) faces += sk.beat2 ? 2 : 1;
+  let blows = 0;
+  for (const e of ENEMIES) for (let a of e.attacks ?? []) { for (; a; a = a.next) blows++; }
+  assert(faces >= 36 && blows >= 18, `only ${faces} faces and ${blows} blows were checked`);
+  return `${faces} player faces and ${blows} enemy blows, every one priced in turns`;
+});
+
+check('the dead flag cannot come back', () => {
+  // `advancesTurn` described a real rule until the beat model replaced it,
+  // then sat on all 36 skills looking authoritative while nothing read it.
+  // Three bugs in this project have had exactly that shape: `aware` meaning
+  // two things, a `face` getter shadowed by a `face()` method, and this.
+  //
+  // Pinned as a consequence rather than a grep: a skill carrying the flag
+  // fails validation, so it cannot be reintroduced by copy-paste.
+  const withFlag = SKILLS.filter((s) => 'advancesTurn' in s);
+  assert(withFlag.length === 0, `${withFlag.map((s) => s.key).join(', ')} still carry advancesTurn`);
+
+  // The validator has to be the thing that catches it, not the line above -
+  // otherwise this test is a grep and the rule lives in the test rather than
+  // in the data layer where the next person will meet it.
+  const faked = { ...SKILL_BY_KEY.thrust, advancesTurn: true };
+  const caught = validateSkills([faked]);
+  assert(caught.length === 1 && /advancesTurn/.test(caught[0]),
+    `a skill carrying the flag was accepted: ${JSON.stringify(caught)}`);
+  // And a well-formed one still passes, so it is refusing the flag rather than
+  // refusing everything.
+  assert(validateSkills([SKILL_BY_KEY.thrust]).length === 0,
+    'the validator rejects a skill that is fine');
+  return 'gone from the data, and the validator refuses it if it comes back';
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

@@ -42,7 +42,7 @@ export const SKILLS = [
     stamina: 4,
     staminaHeavy: 7,
     cooldown: 0,
-    advancesTurn: false,
+    windup: 0, recovery: 0,
     move: true,
     always: true,
   },
@@ -63,7 +63,7 @@ export const SKILLS = [
     // Block is what you do when there is nowhere to go.
     stamina: 2,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
     defend: true,
     needsShield: true,
   },
@@ -99,7 +99,7 @@ export const SKILLS = [
     impact: 0,
     stamina: 5,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
     disrupt: { needsPush: true, shove: 1, advance: true, random: true },
   },
 
@@ -114,7 +114,7 @@ export const SKILLS = [
     stamina: 2,
     refund: 5,             // on a hit. Missing feeds you nothing.
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'unmake',
@@ -126,7 +126,7 @@ export const SKILLS = [
     stamina: 9,
     bleed: true,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
     // No push needed, so unlike Turn Aside this works on anything - the two
     // characters cancel by different grammar, and hers reaches what his
     // cannot.
@@ -142,7 +142,7 @@ export const SKILLS = [
     stamina: 10,
     bleed: true,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
 
   // ---- the squire ---------------------------------------------------------
@@ -155,7 +155,7 @@ export const SKILLS = [
     impact: 2,
     stamina: 4,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'bannersweep',
@@ -167,7 +167,7 @@ export const SKILLS = [
     stamina: 6,
     cooldown: 0,
     recovery: 1,
-    advancesTurn: true,
+    windup: 0,
   },
   {
     key: 'onward',
@@ -183,7 +183,7 @@ export const SKILLS = [
     impact: 4,
     stamina: 6,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
 
   // ---- sword --------------------------------------------------------------
@@ -196,7 +196,7 @@ export const SKILLS = [
     impact: 2,          // poise damage: enough to stagger something small
     stamina: 4,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'sweep',
@@ -207,7 +207,7 @@ export const SKILLS = [
     impact: 3,
     stamina: 6,
     cooldown: 3,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
 
   // ---- dagger -------------------------------------------------------------
@@ -220,7 +220,7 @@ export const SKILLS = [
     impact: 4,          // the interrupt tool: breaks a mid-tier wind-up alone
     stamina: 6,
     cooldown: 3,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
     dash: 2,
   },
   {
@@ -232,7 +232,7 @@ export const SKILLS = [
     impact: 2,
     stamina: 7,
     cooldown: 3,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
 
   // ---- spear: reach, so retreating in a line does not save them ------------
@@ -245,7 +245,7 @@ export const SKILLS = [
     impact: 2,
     stamina: 5,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'skewer',
@@ -256,7 +256,7 @@ export const SKILLS = [
     impact: 3,
     stamina: 7,
     cooldown: 0, recovery: 1,
-    advancesTurn: true,
+    windup: 0,
   },
 
   // ---- mace: the poise breaker --------------------------------------------
@@ -269,7 +269,7 @@ export const SKILLS = [
     impact: 5,
     stamina: 6,
     cooldown: 0,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'smash',
@@ -280,7 +280,7 @@ export const SKILLS = [
     impact: 7,
     stamina: 8,
     cooldown: 0, recovery: 1,
-    advancesTurn: true,
+    windup: 0,
   },
 
   // ---- greataxe: the wall --------------------------------------------------
@@ -293,7 +293,7 @@ export const SKILLS = [
     impact: 4,
     stamina: 7,
     cooldown: 0, recovery: 1,
-    advancesTurn: true,
+    windup: 0,
   },
   {
     key: 'rend',
@@ -305,7 +305,6 @@ export const SKILLS = [
     impact: 6,
     stamina: 9,
     cooldown: 0, recovery: 1,
-    advancesTurn: true,
   },
 
   // ---- bow ----------------------------------------------------------------
@@ -327,7 +326,7 @@ export const SKILLS = [
     projectile: { speed: 3, glyph: '/', colour: '#cfd6dd' },
     stamina: 5,
     cooldown: 2,
-    advancesTurn: true,
+    windup: 0, recovery: 0,
   },
   {
     key: 'pierce',
@@ -340,7 +339,7 @@ export const SKILLS = [
     projectile: { speed: 4, glyph: '/', colour: '#e8dcb8' },
     stamina: 8,
     cooldown: 2, windup: 1,
-    advancesTurn: true,
+    recovery: 0,
   },
 
   // ---- halberd: the two-stage sweep, finally on the player's side ---------
@@ -349,17 +348,17 @@ export const SKILLS = [
   // button order, and it costs you two turns like it costs them.
   {
     key: 'hew', name: 'Hew', hint: 'the left half of a sweep',
-    pattern: 'sweepL', damage: 4, impact: 4, stamina: 6, cooldown: 0, recovery: 1, advancesTurn: true,
+    pattern: 'sweepL', damage: 4, impact: 4, stamina: 6, cooldown: 0, recovery: 1, windup: 0,
   },
   {
     key: 'backsweep', name: 'Backsweep', hint: 'the other half; follow a Hew with it',
-    pattern: 'sweepR', damage: 4, impact: 4, stamina: 5, cooldown: 0, recovery: 1, advancesTurn: true,
+    pattern: 'sweepR', damage: 4, impact: 4, stamina: 5, cooldown: 0, recovery: 1, windup: 0,
   },
 
   // ---- warhammer: the answer to being surrounded, and a gamble ------------
   {
     key: 'pound', name: 'Pound', hint: 'slow and very heavy',
-    pattern: 'front', damage: 5, impact: 6, stamina: 7, cooldown: 0, advancesTurn: true,
+    pattern: 'front', damage: 5, impact: 6, stamina: 7, cooldown: 0, windup: 0, recovery: 0,
   },
   {
     key: 'sunder', name: 'Sunder', hint: 'everything around you - then you are standing still for two turns',
@@ -367,41 +366,40 @@ export const SKILLS = [
     // only makes you use it less; being helpless afterwards makes it a gamble -
     // you clear the ring and then stand in the middle of what is left of it.
     pattern: 'around', damage: 4, impact: 5, stamina: 9, cooldown: 0, recovery: 2,
-    advancesTurn: true,
+    windup: 0,
   },
 
   // ---- pike: reach past everything ---------------------------------------
   {
     key: 'brace', name: 'Brace', hint: 'three tiles of lane',
-    pattern: 'line3', damage: 3, impact: 3, stamina: 6, cooldown: 0, recovery: 1, advancesTurn: true,
+    pattern: 'line3', damage: 3, impact: 3, stamina: 6, cooldown: 0, recovery: 1, windup: 0,
   },
   {
     key: 'impale', name: 'Impale', hint: 'six tiles of lane, and a long recovery',
     pattern: 'line6', damage: 4, impact: 3, stamina: 8, cooldown: 0, windup: 1, recovery: 1,
-    advancesTurn: true,
   },
 
   // ---- paired blades: cheap, fast, feeds the kill-refunds-cooldowns engine -
   {
     key: 'slice', name: 'Slice', hint: 'barely costs anything',
-    pattern: 'front', damage: 2, impact: 1, stamina: 2, cooldown: 0, advancesTurn: true,
+    pattern: 'front', damage: 2, impact: 1, stamina: 2, cooldown: 0, windup: 0, recovery: 0,
   },
   {
     key: 'flurry', name: 'Flurry', hint: 'three tiles, still cheap',
-    pattern: 'arc3', damage: 2, impact: 2, stamina: 5, cooldown: 2, advancesTurn: true,
+    pattern: 'arc3', damage: 2, impact: 2, stamina: 5, cooldown: 2, windup: 0, recovery: 0,
   },
 
   // ---- falchion: the push ------------------------------------------------
   {
     key: 'chop', name: 'Chop', hint: 'knocks them back a tile',
-    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 0, knock: 1, advancesTurn: true,
+    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 0, knock: 1, windup: 0, recovery: 0,
   },
   {
     key: 'shove', name: 'Shove', hint: 'almost no damage - it is for moving them',
     // Position is this game's language, so a tool that only moves things is a
     // real weapon: push something out of your lane, or into the lane the horned
     // one is about to charge down.
-    pattern: 'front', damage: 1, impact: 4, stamina: 3, cooldown: 2, knock: 2, advancesTurn: true,
+    pattern: 'front', damage: 1, impact: 4, stamina: 3, cooldown: 2, knock: 2, windup: 0, recovery: 0,
   },
 
   // ---- hatchet: ranged in ONE hand, which the bow cannot be ---------------
@@ -409,11 +407,11 @@ export const SKILLS = [
     key: 'sling', name: 'Sling', hint: 'thrown, and you keep your off hand',
     ranged: true, damage: 3, impact: 1, range: 6,
     projectile: { speed: 3, glyph: '/', colour: '#c8b48a' },
-    stamina: 4, cooldown: 1, advancesTurn: true,
+    stamina: 4, cooldown: 1, windup: 0, recovery: 0,
   },
   {
     key: 'bury', name: 'Bury', hint: 'up close, if they reached you',
-    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 2, advancesTurn: true,
+    pattern: 'front', damage: 4, impact: 3, stamina: 5, cooldown: 2, windup: 0, recovery: 0,
   },
 
   // ---- the farwayer -------------------------------------------------------
@@ -442,7 +440,7 @@ export const SKILLS = [
     // changed, because the phrase pays for itself out of the refund; only the
     // repetition felt it. That is the shape the whole character wants.
     pattern: 'front', damage: 2, impact: 1, stamina: 3, cooldown: 0,
-    advancesTurn: true, mark: 'step',
+    windup: 0, recovery: 0, mark: 'step',
     beat2: { pattern: 'arc3', damage: 2, impact: 1, stamina: 3, mark: 'step' },
   },
   {
@@ -450,7 +448,7 @@ export const SKILLS = [
     name: 'Reach',
     hint: '第一拍刺兩格,留下棘印(易傷);第二拍穿三格,留下泉印(回血)',
     pattern: 'reach2', damage: 2, impact: 1, stamina: 3, cooldown: 0,
-    advancesTurn: true, mark: 'thorn',
+    windup: 0, recovery: 0, mark: 'thorn',
     beat2: { pattern: 'line3', damage: 3, impact: 1, stamina: 4, mark: 'spring' },
   },
   {
@@ -464,7 +462,7 @@ export const SKILLS = [
     // 4, not 3: eight tiles is a band-1 shape, and against a recovery of 4 a
     // 3-point cost is zero turns of commitment. Priced by the rule.
     pattern: 'around', damage: 1, impact: 2, stamina: 4, cooldown: 0,
-    advancesTurn: true, mark: 'gale',
+    windup: 0, recovery: 0, mark: 'gale',
     beat2: { pattern: 'behind', damage: 3, impact: 1, stamina: 3, mark: 'ember' },
   },
 ];
@@ -514,3 +512,39 @@ export const PLAYER = {
   staminaRegen: 3,    // just under one light roll, on purpose
   speed: 12,
 };
+
+/**
+ * Every action has to say what it costs in turns. Out loud.
+ *
+ * Not "defaults to zero": **missing is an error**. The two are the same at
+ * runtime and completely different to a person adding the thirty-seventh
+ * skill - one of them makes them decide, the other lets the cheapest possible
+ * answer be the one they forgot to type. Same rule as a geomorph that forgets
+ * to name a role.
+ *
+ * It also refuses `advancesTurn`. That field described a real rule until the
+ * beat model replaced it, then sat on all thirty-six skills for a while
+ * looking authoritative while nothing read it. This project has now shipped
+ * three bugs of exactly that shape - `aware` meaning two things, a `face`
+ * getter shadowed by a `face()` method, `advancesTurn` outliving its reader -
+ * so a field that stops being consulted has to stop existing.
+ */
+export function validateSkills(list = SKILLS) {
+  const bad = [];
+  const check = (label, d) => {
+    for (const f of ['windup', 'recovery']) {
+      if (!Number.isInteger(d[f]) || d[f] < 0) {
+        bad.push(`${label}: ${f} is ${JSON.stringify(d[f])}, wanted a whole number of turns`);
+      }
+    }
+    if ('advancesTurn' in d) {
+      bad.push(`${label}: advancesTurn is gone - a turn's length is a property of the hero now, not the skill`);
+    }
+  };
+  for (const sk of list) {
+    check(sk.key, sk);
+    // A second beat is a whole other blow and is priced like one.
+    if (sk.beat2) check(`${sk.key}/2`, { ...sk, ...sk.beat2 });
+  }
+  return bad;
+}

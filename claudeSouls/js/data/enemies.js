@@ -289,3 +289,29 @@ export function pickEnemy(rng, depth) {
   if (!pool.length) return POOL[0];
   return rng.pickWeighted(pool, (e) => e.freq * (1 + (depth - e.minDepth) * 0.15));
 }
+
+/**
+ * The same demand, pointed at the bestiary.
+ *
+ * The enemies were already the well-behaved half - every one of the eighteen
+ * attacks declares a wind-up - but `atk()` takes the two fields with no
+ * default, so a new one that omitted them would resolve instantly and silently
+ * break the contract the whole game rests on. Follow-ups (`next`) are checked
+ * too: a chain is a sequence of blows, and every blow is announced.
+ */
+export function validateAttacks() {
+  const bad = [];
+  const walk = (label, a, depth = 0) => {
+    if (depth > 4) { bad.push(`${label}: follow-up chain is too deep`); return; }
+    for (const f of ['windup', 'recovery']) {
+      if (!Number.isInteger(a[f]) || a[f] < 0) {
+        bad.push(`${label}: ${f} is ${JSON.stringify(a[f])}, wanted a whole number of turns`);
+      }
+    }
+    if (a.next) walk(`${label} -> ${a.next.name}`, a.next, depth + 1);
+  };
+  for (const e of ENEMIES) {
+    for (const a of e.attacks ?? []) walk(`${e.key}.${a.name}`, a);
+  }
+  return bad;
+}
