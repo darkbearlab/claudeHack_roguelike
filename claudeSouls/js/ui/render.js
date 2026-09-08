@@ -632,9 +632,7 @@ export class Renderer {
     // exclamation said THAT something was coming and the ticks said when, in
     // two different alphabets, and neither of them was the alphabet the
     // player's own skill buttons already use.
-    this.drawClock(ctx, px, py, span,
-      winding ? e.timer : 0,
-      e.state === STATE.RECOVER ? e.timer : 0);
+    this.drawClock(ctx, px, py, span, e.clock, e.clockPassed);
     // Out of stamina is not a commitment - it has no length, so it gets no
     // dots. It stays its own mark rather than borrowing the clock's.
     if (e.state === STATE.RESTING) {
@@ -654,52 +652,70 @@ export class Renderer {
   }
 
   /**
-   * How many turns until it happens, and how many until they can act again.
+   * The whole committed action, as a row you read left to right.
    *
-   * Hollow before the blow, solid after. That is not a new vocabulary - it is
-   * the one the player's own skill buttons have used all along:
+   *     ○ ○ ● ○        two turns of wind-up, the blow, one turn of recovery
+   *     ▪ ○ ● ○        one turn in: the first pip has gone grey
    *
-   *     `${'○'.repeat(def.windup)}${'●'.repeat(def.recovery)}`
+   *   hollow red     a turn where nothing happens yet
+   *   SOLID red      the turn the blow actually lands
+   *   hollow green   a turn they cannot act
+   *   grey           already spent
    *
-   * The hollow half is the one that can still be taken away from you. All this
-   * does is put the same sentence over the other side of the board, which is
-   * what "every blow is announced" was always supposed to mean.
+   * The first version of this drew only what REMAINED, and the row shrank as
+   * it went. That could not say the one thing the player most needs, which is
+   * *when* - it drew "two turns of wind-up" and left them to work out that the
+   * blow falls on the third. A fixed row that greys as it runs says both, and
+   * says it in the same glance.
    *
    * Colour says what, not who: red is a wind-up wherever it appears, green is
    * a recovery wherever it appears. An enemy wearing green is your opening; you
-   * wearing green are its opening. Colouring by side would be easier to read
-   * and would say nothing - the player already knows which one is theirs.
+   * wearing green are its opening. Colouring by side would read more easily and
+   * say nothing - the player already knows which one is theirs.
+   *
+   * More than one solid pip means the commitment owes more than one blow. A
+   * charge still ANNOUNCES one stride at a time on purpose (see beginWindup) -
+   * this does not reveal where the next one lands, only that it is owed.
    *
    * The floor keeps the shape and this keeps the time. They never overlap.
    */
-  drawClock(ctx, px, py, span, windup, recovery) {
-    const n = Math.min(6, (windup ?? 0) + (recovery ?? 0));
-    if (n <= 0 || span < 14) return;
-    // The row has to stay over its own creature. Six dots at a comfortable
-    // size are wider than a 35-pixel tile, and a clock that spills onto the
-    // neighbour is a clock you read off the wrong body - which in a game about
-    // reading wind-ups is worse than not drawing it at all. So the dots shrink
-    // to fit rather than the row growing.
+  drawClock(ctx, px, py, span, clock, passed = 0) {
+    if (!clock || span < 14) return;
+    const { windup = 0, strikes = 1, recovery = 0 } = clock;
+    const n = Math.min(8, windup + strikes + recovery);
+    if (n <= 0) return;
+
+    // The row has to stay over its own creature. Eight pips at a comfortable
+    // size are wider than a 35-pixel tile, and in a game whose entire skill is
+    // knowing which tile you are standing on, a clock you read off the wrong
+    // body is worse than no clock. The pips shrink to fit; the row never grows.
     const wide = span * 1.05;
-    const r = Math.max(1.6, Math.min(span * 0.085, wide / (n * 2.7)));
+    const r = Math.max(1.5, Math.min(span * 0.085, wide / (n * 2.7)));
     const gap = r * 2.7;
     const y = py - r * 1.5;
     let x = px + span / 2 - (gap * (n - 1)) / 2;
+
     for (let i = 0; i < n; i++) {
-      const hollow = i < (windup ?? 0);
+      // Read left to right, it is the whole commitment: the turns before
+      // anything happens, the turn it lands, the turns they cannot answer.
+      const strike = i >= windup && i < windup + strikes;
+      const solid = strike;
+      const done = i < passed;
+      const colour = done ? '#5a5a66' : strike ? '#ff5a44' : i < windup ? '#ff5a44' : '#56d364';
+
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      // A dark disc behind either kind, so both read against pale stone and
+      // A dark disc behind every pip, so the row reads against pale stone and
       // against the static.
       ctx.fillStyle = 'rgba(0,0,0,.72)';
       ctx.fill();
       ctx.lineWidth = Math.max(1, r * 0.55);
-      ctx.strokeStyle = hollow ? '#ff5a44' : '#56d364';
+      ctx.strokeStyle = colour;
       ctx.stroke();
-      if (!hollow) {
+      if (solid) {
         ctx.beginPath();
         ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
-        ctx.fillStyle = '#56d364';
+        ctx.fillStyle = colour;
         ctx.fill();
       }
       x += gap;
@@ -765,7 +781,7 @@ export class Renderer {
     // recovery is that many solid ones. The buttons say what an action WILL
     // cost; this says what you are already paying, which is the half you can
     // no longer choose.
-    this.drawClock(ctx, px, py, cell, p.charging ? 1 : 0, p.recover ?? 0);
+    this.drawClock(ctx, px, py, cell, p.clock, p.clockPassed);
   }
 
   /**

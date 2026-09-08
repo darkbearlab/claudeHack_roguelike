@@ -25,15 +25,9 @@
 /** How long a mark sits on a target before it fades. */
 export const MARK_TURNS = 5;
 
-/**
- * The most banked beats she can hold.
- *
- * The multiplier reaches x5 and five stored actions is another whole turn and
- * a half; the spec said this was the number most likely to be wrong and it is
- * capped here rather than trusted. The grant is still scaled - a x5 close
- * fills the bank in one go - but the ceiling is low.
- */
-export const MAX_SPARE_BEATS = 2;
+/** How long the ember aura holds, and how far it reaches. */
+export const AURA_TURNS = 5;
+export const AURA_RADIUS = 5;
 
 /**
  * Stamina back for every mark ABOVE the pair, when a set goes off.
@@ -86,8 +80,19 @@ export const MARKS = [
   },
   {
     key: 'ember', name: '燼', glyph: '✦', colour: '#ffd75f',
-    effect: 'beat', base: 1,
-    hint: '存下額外的拍',
+    // The only mark whose effect is not aimed at the target it went off on.
+    // It opens a window over the ground instead: for AURA_TURNS, everything
+    // inside AURA_RADIUS needs one more turn to wind up.
+    //
+    // It replaced a bank of spare beats, which was the second stored resource
+    // in a character who only needed one - and the banked beats were the
+    // number the spec said it trusted least.
+    //
+    // Note what it does NOT do: it does not stack, and re-earning it while it
+    // is up does not extend it. You have to let it lapse and earn it again,
+    // which is what keeps it a window you open rather than a pace you set.
+    effect: 'aura', base: 1,
+    hint: '五回合內,五格內的敵人前搖 +1',
   },
 ];
 

@@ -716,7 +716,6 @@ export class UI {
     if (p.beats > 1) {
       const left = p.beatsLeft;
       for (let i = 0; i < p.beats; i++) beats += `<i class="beat${i < left ? ' on' : ''}"></i>`;
-      for (let i = 0; i < p.spareBeats; i++) beats += '<i class="beat spare on"></i>';
     }
     this.el.stbar.innerHTML =
       `<span class="fill${p.stamina < rollCost ? ' low' : ''}" style="width:${frac * 100}%"></span>` +

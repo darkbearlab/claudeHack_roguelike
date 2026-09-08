@@ -28,7 +28,7 @@ import { generateLevel, DUNGEON_DEPTH } from '../map/mapgen.js';
 import { T, isBonfire, tileName, isWalkable, isChest, isCorpse } from '../map/tiles.js';
 import { Player, Enemy, STATE, NORMAL_SPEED, resetUids } from './actors.js';
 import { SKILL_BY_KEY, SKILLS, faceOf } from '../data/skills.js';
-import { MARK_BY_KEY, MARK_TURNS, MAX_SPARE_BEATS, REFUND_PER_EXTRA } from '../data/marks.js';
+import { MARK_BY_KEY, MARK_TURNS, AURA_TURNS, AURA_RADIUS, REFUND_PER_EXTRA } from '../data/marks.js';
 import { STARTING_KIT, SLOT, ITEM_BY_KEY, slotsFor,
          CONSUMABLE_BY_KEY, isConsumable } from '../data/items.js';
 import { soulsFor, TRACKS, TRACK_BY_KEY, priceOf } from '../data/souls.js';
@@ -76,6 +76,7 @@ export class Game {
     // A hero brings their own skills and their own stamina economy; the vow is
     // what the game had before people existed, and still drives the bot and
     // the tests.
+    this.aura = 0;                    // turns of the ember aura left
     this.player.hero = HERO_BY_KEY[hero] ?? null;
     this.hero = this.player.hero;
     this.vow = vow ?? 'light';
@@ -341,6 +342,7 @@ export class Game {
     this.player.tick(this.inCombat());
     this.level.tickSnow();
     this.tickMarks();
+    this.tickAura();
 
     stepProjectiles(this);
     if (!this.running) { this.fx.end(this); return; }
@@ -579,12 +581,38 @@ export class Game {
         e.stagger(mult);
         if (e.alive) this.knockBack(e, dir ?? p.facing, n);
         break;
-      case 'beat': {
-        const before = p.spareBeats;
-        p.spareBeats = Math.min(MAX_SPARE_BEATS, p.spareBeats + n);
-        this.msg(`${mark.name}印 ×${mult}:存下 ${p.spareBeats - before} 拍。`, 'good');
+      case 'aura':
+        // Never extends. An aura you can top up is a pace you set rather than
+        // a window you open, and the whole cost of this one is that you have
+        // to let it lapse and earn it again.
+        if (this.aura > 0) {
+          this.msg(`${mark.name}印:光還亮著,不會更久。`, 'warn');
+        } else {
+          this.aura = AURA_TURNS;
+          this.msg(`${mark.name}印 ×${mult}:${AURA_TURNS} 回合內,${AURA_RADIUS} 格內的東西都慢了一拍。`, 'magic');
+        }
         break;
-      }
+    }
+  }
+
+  /**
+   * The ember aura: one more turn of wind-up, for anything standing near you.
+   *
+   * Applied every turn rather than once at cast, because it is a place and not
+   * a list - something that walks in while it is up is slowed too. `slowed` is
+   * per wind-up, so a blow gets the extra turn once however long it stands
+   * there; without that the aura would simply freeze a wind-up in place for
+   * its whole duration, which is not a slow, it is a stun with extra steps.
+   */
+  tickAura() {
+    if (!(this.aura > 0)) return;
+    this.aura--;
+    const p = this.player;
+    for (const e of this.level.livingEnemies()) {
+      if (e.state !== STATE.WINDUP || e.clock?.slowed) continue;
+      if (Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) > AURA_RADIUS) continue;
+      e.timer++;
+      if (e.clock) { e.clock.windup++; e.clock.slowed = true; }
     }
   }
 
@@ -1294,6 +1322,9 @@ export class Game {
         key, dx: dir.dx, dy: dir.dy,
         tiles: def.pattern ? attackTiles(p.x, p.y, dir.dx, dir.dy, def.pattern) : null,
       };
+      // The same clock the enemies wear, over your own head. A declared blow
+      // is the one commitment of yours that can still be taken away.
+      p.clock = { windup: def.windup || 1, strikes: 1, recovery: def.recovery ?? 0 };
       p.acted = 'attack';
       this.msg(`You draw back for ${def.name}.`, 'warn');
       return TURN;                     // the declaration costs you the turn
@@ -1331,7 +1362,12 @@ export class Game {
     if (def.cooldown) slot.cd = Math.max(0, def.cooldown + m.cooldown);
     // Recovery is set AFTER the blow lands, and counts down in tick() - so the
     // turn you swung is yours and the turns after it are not.
-    if (def.recovery) p.recover = def.recovery;
+    if (def.recovery) {
+      p.recover = def.recovery;
+      // Struck already, so the wind-up half is behind us: the row opens on
+      // its strike pip and greys from there.
+      p.clock = { windup: 0, strikes: 1, recovery: def.recovery };
+    }
 
     if (def.ranged) {
       this.level.projectiles.push(makeProjectile({

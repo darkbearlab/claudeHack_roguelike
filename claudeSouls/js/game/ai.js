@@ -83,7 +83,7 @@ export function tickEnemyState(game, e) {
   }
   if (e.state === STATE.RECOVER) {
     e.timer--;
-    if (e.timer <= 0) e.state = STATE.READY;
+    if (e.timer <= 0) { e.state = STATE.READY; e.clock = null; }
     return true;
   }
   if (e.state === STATE.RESTING) {
@@ -297,6 +297,14 @@ function beginWindup(game, e, attack, dir) {
 
   e.state = STATE.WINDUP;
   e.timer = attack.windup;
+  // How many blows this commitment still owes. A charge announces one stride
+  // at a time on purpose - see the note above - but how MANY are still coming
+  // is not a secret, it is the shape of the thing, and showing it is the whole
+  // point of pricing commitment out loud.
+  let strikes = 1;
+  if (attack.rush) strikes = Math.max(1, e.rushLeft ?? attack.rush.times);
+  else for (let n = attack.next, d = 0; n && d < 4; n = n.next, d++) strikes++;
+  e.clock = { windup: attack.windup, strikes, recovery: attack.recovery };
   if (game.level.isVisible(e.x, e.y)) {
     game.msg(`The ${e.name} readies ${attack.name}.`, 'warn');
   }

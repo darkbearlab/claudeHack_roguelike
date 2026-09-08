@@ -30,7 +30,7 @@ import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY, PLAYABLE } from '../js/data/heroes.js';
 import { EFFORT, faceOf, validateSkills } from '../js/data/skills.js';
-import { MARKS, MARK_TURNS, MAX_SPARE_BEATS } from '../js/data/marks.js';
+import { MARKS, MARK_TURNS, AURA_TURNS, AURA_RADIUS } from '../js/data/marks.js';
 import { hasLOS } from '../../engine/fov.js';
 import { enemyTurn, tickEnemyState } from '../js/game/ai.js';
 import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
@@ -5133,6 +5133,103 @@ check('the dead flag cannot come back', () => {
   assert(validateSkills([SKILL_BY_KEY.thrust]).length === 0,
     'the validator rejects a skill that is fine');
   return 'gone from the data, and the validator refuses it if it comes back';
+});
+
+
+check('the clock is the whole action, and it greys rather than shrinking', () => {
+  // The first version drew only what REMAINED, so the row shrank as it ran.
+  // That could not say the one thing the player most needs - WHEN - it drew
+  // "two turns of wind-up" and left them to work out that the blow falls on
+  // the third. A fixed row with a strike pip in it says both.
+  const { g, e } = arena('clock', 'sentinel', 2);
+  const a = e.spec.attacks[0];
+  assert(a.windup >= 1, 'this test needs something that winds up');
+
+  // One commitment, not several. An enemy that finishes a swing and starts
+  // another has a new clock with a new shape, and comparing across the two
+  // would be comparing two different actions - which is what the first draft
+  // of this test did, and it read like a bug in the renderer.
+  const seen = [];
+  let shape = null;
+  for (let t = 0; t < 14; t++) {
+    g.worldTurn();
+    if (!e.clock) { if (seen.length) break; continue; }
+    const len = e.clock.windup + e.clock.strikes + e.clock.recovery;
+    if (shape === null) shape = len;
+    else if (len !== shape) break;                 // a second action began
+    seen.push({ state: e.state, ...e.clock, passed: e.clockPassed });
+  }
+  assert(seen.length >= 2, 'it never committed to anything');
+  const first = seen[0];
+  assert(first.windup === a.windup, `the clock says ${first.windup} wind-up, the attack says ${a.windup}`);
+  assert(first.strikes >= 1, 'no strike pip, so the row cannot say when it lands');
+  assert(first.recovery === a.recovery, `the clock says ${first.recovery} recovery, the attack says ${a.recovery}`);
+
+  // The row length is constant while the action runs; only `passed` moves.
+  const lens = seen.map((s) => s.windup + s.strikes + s.recovery);
+  assert(new Set(lens).size === 1, `the row changed length: ${lens.join(',')}`);
+  const passed = seen.map((s) => s.passed);
+  assert(passed.some((v, i) => i > 0 && v > passed[i - 1]),
+    `nothing ever moved through the row: ${passed.join(',')}`);
+  return `${first.windup} wind-up, ${first.strikes} strike, ${first.recovery} recovery; progress ${passed.join('→')}`;
+});
+
+check('the ember aura is a place, and it neither stacks nor renews', () => {
+  // Four properties, all load-bearing, all named by the design:
+  //   an aura, not a stamp - something that walks in later is slowed too
+  //   never stacks         - one extra turn, never two
+  //   never extends        - re-earning it while it is up does nothing
+  //   must lapse first     - so it is a window you open, not a pace you set
+  const { g, e } = arena('aura', 'sentinel', 3, 'farwayer');
+  const p = g.player;
+
+  // Fire it by hand: two ember marks on one target is what a phrase buys.
+  e.marks.set('ember', MARK_TURNS);
+  g.applyMark(e, 'ember', { dx: 1, dy: 0 });
+  assert(g.aura === AURA_TURNS, `the aura came up at ${g.aura}, wanted ${AURA_TURNS}`);
+
+  // Never extends. Let it burn down FIRST: re-earning it on the same turn it
+  // was cast is indistinguishable from not renewing, and the first draft of
+  // this check passed with the rule deliberately removed for exactly that
+  // reason.
+  g.tickAura(); g.tickAura();
+  const before = g.aura;
+  assert(before > 0 && before < AURA_TURNS, `the aura did not burn down (${before})`);
+  e.marks.set('ember', MARK_TURNS);
+  g.applyMark(e, 'ember', { dx: 1, dy: 0 });
+  assert(g.aura === before, `re-earning it pushed the aura to ${g.aura} from ${before}`);
+
+  // A place, not a stamp: something standing in it that starts a wind-up
+  // during those turns is slowed, and slowed exactly once.
+  const far = new Enemy('sentinel', g.rng);
+  g.level.addEnemy(far, p.x + 2, p.y);
+  g.level.markEnemiesDirty();
+  far.aware = true; far.hunting = true;
+  far.state = STATE.WINDUP;
+  far.timer = 2;
+  far.clock = { windup: 2, strikes: 1, recovery: 1 };
+
+  g.tickAura();
+  assert(far.timer === 3, `an enemy inside the aura was not slowed (timer ${far.timer})`);
+  g.tickAura();
+  assert(far.timer === 3, `it was slowed twice - timer ran to ${far.timer}, which is a stun not a slow`);
+
+  // And out of range is out of range.
+  const away = new Enemy('sentinel', g.rng);
+  g.level.addEnemy(away, p.x, p.y);          // placed then moved, to dodge occupancy
+  away.x = p.x + AURA_RADIUS + 3; away.y = p.y;
+  away.state = STATE.WINDUP; away.timer = 2;
+  away.clock = { windup: 2, strikes: 1, recovery: 1 };
+  g.tickAura();
+  assert(away.timer === 2, `something ${AURA_RADIUS + 3} tiles away was slowed`);
+
+  // Must lapse: run it out, then it can be earned again.
+  for (let i = 0; i < AURA_TURNS + 2; i++) g.tickAura();
+  assert(g.aura <= 0, `the aura outlived ${AURA_TURNS} turns`);
+  e.marks.set('ember', MARK_TURNS);
+  g.applyMark(e, 'ember', { dx: 1, dy: 0 });
+  assert(g.aura === AURA_TURNS, 'it could not be earned again after lapsing');
+  return `${AURA_TURNS} turns, ${AURA_RADIUS} tiles, +1 once each, no renewal`;
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

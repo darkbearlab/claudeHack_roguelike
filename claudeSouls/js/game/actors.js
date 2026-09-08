@@ -78,10 +78,7 @@ export class Player {
     // exactly for the existing three: one beat a turn, an attack spends it, a
     // roll spends none. That equivalence is a test, not a hope.
     this.beat = 0;
-    // Beats banked by the farwayer's E mark. Spent one a turn, before the
-    // turn's own beats, so a stored beat is an extra action rather than a
-    // permanent upgrade.
-    this.spareBeats = 0;
+
     // A blow you have declared but not yet landed. Set by a skill with a
     // wind-up, resolved on your next turn, and lost entirely if something
     // hits you first - the same deal every enemy in the game is offered.
@@ -573,7 +570,7 @@ export class Player {
     // No stamina while you are still recovering - the same rule the enemies
     // live under, and the reason a heavy swing is a commitment rather than a
     // price.
-    if (this.recover > 0) this.recover--;
+    if (this.recover > 0) { this.recover--; if (this.recover <= 0) this.clock = null; }
     else if (!this.charging) {
       // Nor while a blow is still in the air. Wind-up and recovery are the two
       // halves of the same commitment; if the bar refilled through one of them
@@ -610,13 +607,25 @@ export class Player {
   newPhrase() {
     this.rolled = false;
     this.beat = 0;
-    // A banked beat plays as a first beat and leaves the turn's own two
-    // intact, which is what "an extra action" has to mean.
-    if (this.spareBeats > 0 && this.beats > 1) { this.spareBeats--; this.beat = -1; }
   }
 
   /** Have you already rolled this turn? */
   canRoll() { return !this.rolled; }
+
+  /**
+   * How far into the committed action we are, in pips.
+   *
+   * Derived rather than counted. A second counter advanced alongside `timer`
+   * is a counter that eventually disagrees with it, and this project has
+   * already paid for one of those.
+   */
+  get clockPassed() {
+    if (!this.clock) return 0;
+    const c = this.clock;
+    if (this.charging) return Math.max(0, c.windup - 1);   // lands next turn
+    // Recovering: the wind-up and the blow are behind us.
+    return c.windup + c.strikes + (c.recovery - Math.max(0, this.recover));
+  }
 
   // ------------------------------------------------------------------ beats
 
@@ -721,6 +730,15 @@ export class Enemy {
     this.state = STATE.READY;
     this.timer = 0;                 // turns left in the current state
     this.attack = null;             // the attack being wound up
+    // The shape of the committed action, for the clock over its head:
+    // {windup, strikes, recovery}. Set when a wind-up begins and kept through
+    // the recovery, because `attack` is nulled the moment the blow lands and
+    // the player still needs to see the tail of what just hit them.
+    //
+    // Progress is DERIVED from state and timer rather than counted here - a
+    // second counter that has to be advanced in step with the first is a
+    // counter that will eventually disagree with it.
+    this.clock = null;
     this.attackTiles = null;        // resolved at wind-up start, shown to the player
     this.attackDir = null;
     // Two different things, and conflating them cost us the arrival bonfire.
@@ -844,6 +862,17 @@ export class Enemy {
   stun(turns) {
     this.state = STATE.RECOVER;
     this.timer = Math.max(this.timer ?? 0, turns);
+  }
+
+  /** Same derivation as the player's, off the state machine it actually has. */
+  get clockPassed() {
+    if (!this.clock) return 0;
+    const c = this.clock;
+    if (this.state === STATE.WINDUP) return Math.max(0, c.windup - this.timer);
+    if (this.state === STATE.RECOVER) {
+      return c.windup + c.strikes + Math.max(0, c.recovery - this.timer);
+    }
+    return 0;
   }
 
   stagger(impact = 1) {
