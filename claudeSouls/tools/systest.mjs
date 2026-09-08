@@ -5232,6 +5232,66 @@ check('the ember aura is a place, and it neither stacks nor renews', () => {
   return `${AURA_TURNS} turns, ${AURA_RADIUS} tiles, +1 once each, no renewal`;
 });
 
+
+check('QWE/ASD/ZXC is the nine squares on the screen, under one hand', () => {
+  // A laptop has no numpad and hjklyubn is something you have to have been
+  // taught. This is the same nine buttons the game already draws, mapped onto
+  // the letters that sit in that shape.
+  const g = freshGame('qwe', 'light', 'knight');
+  const want = {
+    q: [-1, -1], w: [0, -1], e: [1, -1],
+    a: [-1, 0], /* s waits */ d: [1, 0],
+    z: [-1, 1], x: [0, 1], c: [1, 1],
+  };
+  const wrong = [];
+  for (const [key, [dx, dy]] of Object.entries(want)) {
+    const d = g.dirFromKey(key);
+    if (!d) { wrong.push(`${key} is not a direction`); continue; }
+    if (d.dx !== dx || d.dy !== dy) wrong.push(`${key} -> ${d.dx},${d.dy}, wanted ${dx},${dy}`);
+    // Shift is the roll, on this layout as on the other.
+    const r = g.rollDirFromKey(key.toUpperCase());
+    if (!r || r.dir.dx !== dx || r.dir.dy !== dy) wrong.push(`Shift+${key.toUpperCase()} does not roll that way`);
+  }
+  assert(wrong.length === 0, wrong.join('; '));
+
+  // The middle of the nine is standing still, and it must not be a direction.
+  assert(!g.dirFromKey('s'), 's is a direction; it is the middle of the pad and has to be waiting');
+  assert(!g.rollDirFromKey('S'), 'Shift+S rolls; it is how you save');
+
+  // And the old layout still works - this is an addition, not a replacement.
+  for (const [key, [dx, dy]] of Object.entries({ h: [-1, 0], j: [0, 1], k: [0, -1], l: [1, 0],
+                                                 y: [-1, -1], u: [1, -1], b: [-1, 1], n: [1, 1] })) {
+    const d = g.dirFromKey(key);
+    assert(d && d.dx === dx && d.dy === dy, `${key} stopped meaning ${dx},${dy}`);
+  }
+  return 'eight letters, eight directions, s in the middle, and hjklyubn untouched';
+});
+
+check('resting moved off e, because e is now northeast', () => {
+  // A movement key that sometimes sits you down at a fire instead would be the
+  // worst kind of surprise: it costs a turn and it revives the whole floor.
+  const g = freshGame('restkey', 'light', 'knight');
+  const b = g.level.bonfires[0];
+  assert(b, 'no fire on this floor to test with');
+  g.player.x = b.x; g.player.y = b.y;
+  g.player.hp = 1;
+  for (const e of g.level.enemies) { e.aware = false; e.hunting = false; }
+
+  // doCommand, not command: command() sets a `busy` flag it only clears in a
+  // finally after an await, so two calls in a row from a synchronous test
+  // silently drop the second one. doCommand's body runs to the first await,
+  // and neither of these reaches one.
+  const was = { x: g.player.x, y: g.player.y };
+  g.doCommand('e');
+  assert(g.player.hp === 1, 'pressing e rested at the fire');
+  assert(g.player.x !== was.x || g.player.y !== was.y, 'pressing e did nothing at all');
+
+  g.player.x = was.x; g.player.y = was.y;
+  g.doCommand('r');
+  assert(g.player.hp === g.player.hpMax, 'r did not rest at the fire');
+  return 'e walks northeast, r sits down';
+});
+
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 if (failed.length) console.log('failed: ' + failed.join(', '));
 process.exit(fail ? 1 : 0);

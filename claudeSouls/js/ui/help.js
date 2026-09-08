@@ -11,7 +11,9 @@ export const HELP_HTML = `
 <h3>讀招</h3>
 <p>敵人出手前會先<b>舉手</b>。這時候會發生三件事,全部畫在畫面上:</p>
 <ul>
-<li>牠頭上出現 <b style="color:#ff5a44">!</b>,旁邊的短橫是<b>還有幾回合會打下來</b></li>
+<li>牠頭上排出<b>一整條時間軸</b>:<b style="color:#ff5a44">空心紅圈</b>是還沒發生的回合、
+    <b style="color:#ff5a44">實心紅點</b>是<b>它真正打下來的那一拍</b>、
+    <b style="color:#8fd48f">空心綠圈</b>是它打完動不了的回合。走過的會<b>變灰</b>,不會消失</li>
 <li>牠<b>即將打到的格子會變紅</b>,越接近越亮</li>
 <li>牠<b>轉向</b>你——貼圖的朝向就是攻擊的方向</li>
 </ul>
@@ -20,8 +22,9 @@ export const HELP_HTML = `
 <li><b>翻滾走開</b>(離開紅色格子)</li>
 <li><b>打斷牠</b>——在牠蓄力的時候打中,攻擊會<b>延後一回合</b></li>
 </ul>
-<p>牠打完之後會有<b>收招硬直</b>(頭上出現 <b style="color:#8fd48f">·</b>),那是你的輸出時間。
-精力用光的敵人會停下來喘氣(<b style="color:#8fd48f">~</b>),那也是。</p>
+<p>綠圈就是你的輸出時間。精力用光的敵人會停下來喘氣(<b style="color:#8fd48f">~</b>),那也是。</p>
+<p><b>你自己頭上也有同一條軸。</b> 同一組符號、同一個意思——掛著綠圈的敵人是你的機會,
+掛著綠圈的你是牠的機會。</p>
 
 <h3>精力就是一切</h3>
 <p>攻擊和翻滾<b>吃同一條精力</b>,每回合只回一點點——<b>剛好不夠一次翻滾</b>。
@@ -41,7 +44,7 @@ export const HELP_HTML = `
 移動走進敵人就是普通攻擊。<code>Shift</code>+方向 = 直接翻滾。</p>
 
 <h3>篝火</h3>
-<p>踩到篝火按 <code>e</code> 休息:<b>回滿血和精力、冷卻歸零</b>,但<b>整層的敵人會全部復活</b>。
+<p>踩到篝火按 <code>r</code> 休息:<b>回滿血和精力、冷卻歸零</b>,但<b>整層的敵人會全部復活</b>。
 死掉會回到最後坐過的篝火,一樣全部復活。</p>
 <p><b>樓層是固定的。</b> 同一層永遠長一樣、敵人永遠在同一個位置——死幾次之後你會記住它,
 而那就是這個遊戲的成長。</p>
@@ -56,11 +59,14 @@ export const HELP_HTML = `
 
 <h3>按鍵</h3>
 <table>
-<tr><td class="key">hjkl / yubn / 方向鍵</td><td>移動;走進敵人 = 攻擊</td></tr>
+<tr><td class="key">Q W E<br>A S D<br>Z X C</td>
+    <td>八方向移動,<b>S 是原地等一回合</b>。走進敵人 = 攻擊。<br>
+        就是螢幕上那九宮格,放在一隻手底下</td></tr>
+<tr><td class="key">hjkl / yubn / 方向鍵 / 數字鍵盤</td><td>同樣的八個方向</td></tr>
 <tr><td class="key">Shift + 方向</td><td>朝那個方向翻滾</td></tr>
 <tr><td class="key">1 2 3 4 5</td><td>選技能,再按方向</td></tr>
 <tr><td class="key">.</td><td>等一回合(回精力)</td></tr>
-<tr><td class="key">e</td><td>在篝火休息</td></tr>
+<tr><td class="key">r</td><td>在篝火休息</td></tr>
 <tr><td class="key">&gt; &lt;</td><td>下樓 / 上樓</td></tr>
 <tr><td class="key">:</td><td>看看附近有什麼</td></tr>
 <tr><td class="key">Ctrl-P</td><td>訊息記錄</td></tr>

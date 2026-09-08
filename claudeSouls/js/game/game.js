@@ -52,6 +52,18 @@ export const VERSION = '0.1.0';
  * whole game (the roll). A hero whose turn holds two actions needs a third
  * answer, and naming all three is clearer than a boolean plus a special case.
  */
+/**
+ * QWE / ASD / ZXC, mapped onto the vi directions the rest of the game speaks.
+ *
+ *     Q W E        y k u
+ *     A . D   ==   h . l      and `s` in the middle is waiting
+ *     Z X C        b j n
+ *
+ * Laptops have no numpad, and hjklyubn is a thing you have to have learned.
+ * This is the same nine squares that are drawn on the screen, under one hand.
+ */
+const QWE_DIR = { q: 'y', w: 'k', e: 'u', a: 'h', d: 'l', z: 'b', x: 'j', c: 'n' };
+
 const NOTHING = 0, BEAT = 1, TURN = 2;
 
 export class Game {
@@ -686,10 +698,13 @@ export class Game {
       if (k) { this.selectSkill(k); return false; } }
 
     switch (key) {
-      case '.': case ' ': return this.wait();
+      case '.': case ' ': case 's': return this.wait();
       case '>': return this.descend();
       case '<': return this.ascend();
-      case 'e': case 'E': return this.rest();
+      // `r`, not `e`. QWE/ASD/ZXC took `e` for northeast, and a movement key
+      // that sometimes sits you down at a fire instead would be the worst kind
+      // of surprise - it costs a turn and revives the floor.
+      case 'r': case 'R': return this.rest();
       case 'g': case ',': return this.openChest() || this.reclaim();
       case ':': return this.lookHere();
       case 'S': saveGame(this); this.ui?.showSaved?.(); return false;
@@ -709,15 +724,24 @@ export class Game {
     const numpad = { numpad1: 'b', numpad2: 'j', numpad3: 'n', numpad4: 'h',
                      numpad6: 'l', numpad7: 'y', numpad8: 'k', numpad9: 'u' };
     if (numpad[key]) return DIR_BY_KEY[numpad[key]];
+    // QWE/ASD/ZXC - the numpad's shape on a keyboard that has no numpad, which
+    // is most laptops. The eight around the middle are the eight directions and
+    // `s` in the centre is standing still, so the whole control sits under one
+    // hand and reads as the thing it is: a nine-square around you.
+    if (QWE_DIR[key]) return DIR_BY_KEY[QWE_DIR[key]];
     return null;
   }
 
   /** Shift + a direction rolls the full distance; Ctrl + one rolls a single tile. */
   rollDirFromKey(key) {
-    const map = { H: 'h', J: 'j', K: 'k', L: 'l', Y: 'y', U: 'u', B: 'b', N: 'n' };
+    const map = { H: 'h', J: 'j', K: 'k', L: 'l', Y: 'y', U: 'u', B: 'b', N: 'n',
+                  // The same shift rule on the other layout. No entry for `S`:
+                  // the centre is waiting, there is no such thing as rolling on
+                  // the spot, and Shift+S is already how you save.
+                  Q: 'y', W: 'k', E: 'u', A: 'h', D: 'l', Z: 'b', X: 'j', C: 'n' };
     if (map[key]) return { dir: DIR_BY_KEY[map[key]], steps: 99 };
-    const m = /^C-([hjklyubn])$/.exec(key ?? '');
-    if (m) return { dir: DIR_BY_KEY[m[1]], steps: 1 };
+    const m = /^C-([hjklyubnqweadzxc])$/.exec(key ?? '');
+    if (m) return { dir: DIR_BY_KEY[QWE_DIR[m[1]] ?? m[1]], steps: 1 };
     return null;
   }
 

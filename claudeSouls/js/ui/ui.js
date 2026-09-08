@@ -1256,7 +1256,7 @@ function normaliseKey(ev) {
   if (ev.ctrlKey) {
     const low = k.toLowerCase();
     if (low === 'p') return 'C-p';
-    return 'hjklyubn'.includes(low) && low.length === 1 ? `C-${low}` : null;
+    return 'hjklyubnqweadzxc'.includes(low) && low.length === 1 ? `C-${low}` : null;
   }
   if (k.startsWith('Arrow')) return k;
   if (k === 'Escape' || k === 'Enter') return k;
