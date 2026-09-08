@@ -68,6 +68,16 @@ export function populate(game, lvl, rng) {
   // not the difficulty dial" cuts both ways, and a crowd is not a decision.
   const want = Math.min(CROWD, Math.max(base, staged + 2 + rng.rn2(2)));
 
+  const nearAFire = (x, y) => lvl.bonfires.some((b) =>
+    Math.max(Math.abs(x - b.x), Math.abs(y - b.y)) <= 1);
+  const anywhereButTheFire = () => {
+    for (let i = 0; i < 32; i++) {
+      const spot = lvl.randomFreeSpot(rng, {});
+      if (spot && !lvl.isSanctuary(spot.x, spot.y) && !nearAFire(spot.x, spot.y)) return spot;
+    }
+    return null;
+  };
+
   const place = (key, relax = false) => {
     // Shares nothing. A situation's composition IS the situation - letting the
     // ordinary fill top it up turned a colonnade of two archers and one
@@ -81,7 +91,16 @@ export function populate(game, lvl, rng) {
     // little close to where you arrive.
     const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 7 })
              ?? (relax ? lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 3 }) : null)
-             ?? (relax ? lvl.randomFreeSpot(rng, { roomsOnly: true }) : null);
+             ?? (relax ? lvl.randomFreeSpot(rng, { roomsOnly: true }) : null)
+             // Last resort: anywhere at all, corridor included, but never in
+             // the fire's sanctuary. A six-piece floor can have every one of
+             // its rooms claimed by a garrison, and then `roomsOnly` finds
+             // nothing - which turned "must not fail quietly" into exactly
+             // that: floors with nothing quick on them and three in a hundred
+             // with no enemies at all. The sanctuary is checked here because
+             // it is a radius rather than a claim, so dropping `roomsOnly`
+             // steps straight over it.
+             ?? (relax ? anywhereButTheFire() : null);
     if (!spot) return 0;
     return spawn(game, lvl, key, spot.x, spot.y, rng);
   };
@@ -109,6 +128,18 @@ export function populate(game, lvl, rng) {
   // index, which a group spawn could step straight over.
   if (!lvl.enemies.some((e) => e.spec.speed < 12)) place('husk', true);
   if (!lvl.enemies.some((e) => e.spec.speed >= 12)) place('hound', true);
+
+  // And a floor is never nearly empty.
+  //
+  // The wanderer fill above stops when it runs out of SPOTS, not when it runs
+  // out of budget, and on a six-piece floor whose rooms are all claimed by
+  // garrisons that happened at two enemies. Two is not a floor, it is a
+  // corridor with something at the end of it. This is the same relaxation the
+  // slow/fast guarantee uses, pointed at the count.
+  const FLOOR_MIN = 3;
+  for (let guard = 0; lvl.livingEnemies().length < FLOOR_MIN && guard < 12; guard++) {
+    if (!place(pickEnemy(rng, depth).key, true)) break;
+  }
 }
 
 /**
@@ -649,7 +680,13 @@ export function placeElite(game, lvl, rng, depth) {
   // Far from the stair if it can be, nearer if it must: "one elite a floor"
   // is a promise, and a floor with no room ten tiles out is still a floor.
   const spot = lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 10 })
-            ?? lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 5 });
+            ?? lvl.randomFreeSpot(rng, { roomsOnly: true, awayFrom: lvl.upStair, minDist: 5 })
+            // ...and nearer still, anywhere, rather than not at all. "One
+            // elite a floor" is the promise; on a six-piece floor whose rooms
+            // are all claimed it was kept on 24 of 35 eligible floors, which
+            // is not a promise.
+            ?? lvl.randomFreeSpot(rng, { awayFrom: lvl.upStair, minDist: 3 })
+            ?? lvl.randomFreeSpot(rng, {});
   if (!spot) return 0;
 
   const key = pickFrom(ELITES, depth, rng);

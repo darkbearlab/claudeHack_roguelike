@@ -120,7 +120,7 @@ const isFloorAt = (p, cells) => cells.every(([x, y]) => standable(p.g[y]?.[x]));
  * cannot promise "a narrow tile AND a room AND something fast AND something
  * slow" the way sixteen could without trying.
  */
-let CURRENT = 'fill';
+let CURRENT = 'route';
 
 /** Read it, or set it once at boot from the URL. */
 export const LAYOUT = () => CURRENT;

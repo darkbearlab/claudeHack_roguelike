@@ -36,6 +36,7 @@ import { TRACKS, priceOf } from '../data/souls.js';
 import { affixesOn, AFFIX_BY_KEY } from '../data/affixes.js';
 import { TEXTURES } from '../data/textures.js';
 import { saveSettings, loadSettings } from '../game/save.js';
+import { REST_KEY } from '../game/game.js';
 import { HELP_HTML } from './help.js';
 
 const AIM_DEADZONE = 18;     // CSS px before a drag counts as a direction
@@ -956,7 +957,12 @@ export class UI {
     ov.querySelector('[data-act="close"]').addEventListener('click', close);
     ov.querySelector('[data-act="rest"]')?.addEventListener('click', () => {
       close();
-      this.feed('e');
+      // REST_KEY, not a letter typed in here. This said `'e'`, which was the
+      // rest key until QWE/ASD/ZXC took `e` for northeast - so the button
+      // walked you off the fire and did not rest you, which is exactly what it
+      // looked like. A second copy of a binding is a second thing to keep in
+      // step, and this one was not kept.
+      this.feed(REST_KEY);
     });
     for (const b of ov.querySelectorAll('[data-buy]')) {
       b.addEventListener('click', () => {

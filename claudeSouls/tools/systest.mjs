@@ -8,7 +8,7 @@
 //
 //   node tools/systest.mjs
 
-import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
+import { Game, DUNGEON_DEPTH, REST_KEY } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
 import { LAYOUT, setLayout } from '../js/map/geomorph.js';
@@ -2149,7 +2149,10 @@ check('a doorway two leaves wide does not pinch you', () => {
       }
     }
   }
-  assert(wideTried > 200 && narrowTried > 20,
+  // Scaled to what the layout produces. These were absolute counts tuned on
+  // sixteen-piece floors; a six-piece floor has a third of the doorways, and a
+  // statistic that fails because the sample shrank is measuring the sample.
+  assert(wideTried > 200 && narrowTried > 5,
          `not enough doorways sampled (${wideTried} wide, ${narrowTried} narrow)`);
   // Wide: you have room, so you may go through it corner-first.
   assert(wideOk / wideTried > 0.9,
@@ -3959,10 +3962,10 @@ check('a doorway is one door, two leaves wide, on the side you enter - or nothin
   // connection were written as doors and a door is two wide. Now the door is
   // on the tile you enter (the board game's arrow side), the other side is
   // floor, and a quarter of doorways are open archways.
-  let doorTiles = 0, doubles = 0, singles = 0, thick = 0, arches = 0, floors = 0;
+  let doorTiles = 0, doubles = 0, singles = 0, thick = 0, arches = 0, floors = 0, piecesSeen = 0;
   for (let s = 0; s < 8; s++) for (let d = 1; d < DUNGEON_DEPTH; d++) {
     const lvl = generateLevel(d, new RNG(`door:${s}:${d}`));
-    floors++;
+    floors++; piecesSeen += lvl.rooms.length;
     const isD = (x, y) => lvl.at(x, y) === T.DOOR_CLOSED;
     for (let y = 0; y < lvl.h; y++) for (let x = 0; x < lvl.w; x++) {
       if (!isD(x, y)) continue;
@@ -3983,7 +3986,20 @@ check('a doorway is one door, two leaves wide, on the side you enter - or nothin
     }
   }
   assert(thick === 0, `${thick} doors are two tiles thick`);
-  assert(doubles > floors * 5, `only ${doubles} double doors on ${floors} floors`);
+  // Per PIECE, not per floor. A floor's door count follows how many pieces it
+  // was built from, and a route floor is six where a filled one is sixteen -
+  // so a per-floor threshold was measuring the layout rather than the doors.
+  // Per PIECE, not per floor: a floor's door count follows how many pieces it
+  // was built from, and a route floor is six where a filled one is sixteen, so
+  // a per-floor threshold measured the layout rather than the doors.
+  //
+  // Half a double door per piece. Each seam between two pieces is one doorway
+  // at most, an arrow or an open edge makes none, and `doorAt` leaves one seam
+  // in four as a plain gap - so a piece contributes well under one. Measured:
+  // 0.67 per piece.
+  const pieces = piecesSeen;
+  assert(doubles > pieces * 0.5,
+         `only ${doubles} double doors across ${pieces} pieces on ${floors} floors`);
   assert(arches > floors, `only ${arches} open archways on ${floors} floors - the archway roll is not happening`);
   assert(singles > 0, 'no single-leaf doors at all - the slot tile has lost its door, and the diagonal rule its control');
 
@@ -5315,6 +5331,32 @@ check('resting moved off e, because e is now northeast', () => {
   g.doCommand('r');
   assert(g.player.hp === g.player.hpMax, 'r did not rest at the fire');
   return 'e walks northeast, r sits down';
+});
+
+
+check('the bonfire button rests you; it does not walk you off the fire', () => {
+  // Reported from play on a desktop: clicking Rest moved the character away
+  // and healed nothing. The panel's button sent the letter `e`, typed out in
+  // ui.js, which had been the rest key until the movement layout took `e` for
+  // northeast - so the button walked you off the fire.
+  //
+  // Pinned as the consequence, and on the SHARED constant, because the bug was
+  // a second copy of a binding that nobody kept in step.
+  const g = freshGame('restbtn', 'light', 'knight');
+  const b = g.level.bonfires[0];
+  assert(b, 'no fire on this floor');
+  const p = g.player;
+  p.x = b.x; p.y = b.y;
+  p.hp = 1;
+  for (const e of g.level.enemies) { e.aware = false; e.hunting = false; }
+
+  g.doCommand(REST_KEY);
+  assert(p.hp === p.hpMax, `REST_KEY (${REST_KEY}) did not rest: ${p.hp}/${p.hpMax}`);
+  assert(p.x === b.x && p.y === b.y, 'it moved the player off the fire');
+
+  // And it is not a direction, which is the mistake that caused this.
+  assert(!g.dirFromKey(REST_KEY), `REST_KEY (${REST_KEY}) is also a movement key`);
+  return `${REST_KEY} sits you down, and moves nobody`;
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

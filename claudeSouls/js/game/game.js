@@ -64,6 +64,16 @@ export const VERSION = '0.1.0';
  */
 const QWE_DIR = { q: 'y', w: 'k', e: 'u', a: 'h', d: 'l', z: 'b', x: 'j', c: 'n' };
 
+/**
+ * The key that sits you down at a fire.
+ *
+ * Exported because the bonfire panel's own button used to send a letter it had
+ * typed out itself. That letter was `e`, which stopped meaning "rest" the day
+ * the movement layout took it for northeast - so the button walked you off the
+ * fire instead. One binding, one place.
+ */
+export const REST_KEY = 'r';
+
 const NOTHING = 0, BEAT = 1, TURN = 2;
 
 export class Game {
@@ -704,7 +714,7 @@ export class Game {
       // `r`, not `e`. QWE/ASD/ZXC took `e` for northeast, and a movement key
       // that sometimes sits you down at a fire instead would be the worst kind
       // of surprise - it costs a turn and revives the floor.
-      case 'r': case 'R': return this.rest();
+      case REST_KEY: case 'R': return this.rest();
       case 'g': case ',': return this.openChest() || this.reclaim();
       case ':': return this.lookHere();
       case 'S': saveGame(this); this.ui?.showSaved?.(); return false;

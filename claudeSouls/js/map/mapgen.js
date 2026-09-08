@@ -18,7 +18,13 @@ export const DUNGEON_DEPTH = 10;
 
 export function generateLevel(depth, rng) {
   // The map is a property of the layout, not a constant - see MAP_FOR.
-  const [mw, mh] = MAP_FOR[LAYOUT()] ?? [MAP_W, MAP_H];
+  //
+  // Except on the bottom floor, which is laid by hand either way: the dragon
+  // hall is a 2x2 piece and its approach has to hold escorts and a fire. On a
+  // route-sized grid there was no room left for them and five boss floors in
+  // thirty came out with a free walk to the door.
+  const boss = depth === DUNGEON_DEPTH;
+  const [mw, mh] = (boss ? MAP_FOR.fill : MAP_FOR[LAYOUT()]) ?? [MAP_W, MAP_H];
   const lvl = new Level(depth, mw, mh);
   // The floor is assembled from tiles - see geomorph.js for the mechanism and
   // docs/DESIGN.md for why. What comes out is a level full of ordinary rooms,
