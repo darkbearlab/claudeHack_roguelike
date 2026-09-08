@@ -628,19 +628,16 @@ export class Renderer {
 
     if (e.elite) this.glow(ctx, px, py, span, 232, 150, 60);
 
-    // State badge. The player should never have to click to learn this.
-    if (winding) {
-      ctx.fillStyle = '#ff5a44';
-      ctx.font = `bold ${Math.floor(span * 0.5)}px ui-monospace, monospace`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('!', px + span / 2, py + span * 0.16);
-      // Ticks for turns remaining, so "two away" and "one away" are distinct.
-      for (let i = 0; i < e.timer; i++) {
-        ctx.fillRect(px + span * (0.62 + i * 0.12), py + span * 0.08, span * 0.08, span * 0.14);
-      }
-    } else if (e.state === STATE.RECOVER) {
-      this.glyph(ctx, '·', '#8fd48f', px + span * 0.3, py - span * 0.24, span * 0.7, 1);
-    } else if (e.state === STATE.RESTING) {
+    // The clock, above the head. Replaces the `!` and its tick marks: the
+    // exclamation said THAT something was coming and the ticks said when, in
+    // two different alphabets, and neither of them was the alphabet the
+    // player's own skill buttons already use.
+    this.drawClock(ctx, px, py, span,
+      winding ? e.timer : 0,
+      e.state === STATE.RECOVER ? e.timer : 0);
+    // Out of stamina is not a commitment - it has no length, so it gets no
+    // dots. It stays its own mark rather than borrowing the clock's.
+    if (e.state === STATE.RESTING) {
       this.glyph(ctx, '~', '#8fd48f', px + span * 0.3, py - span * 0.24, span * 0.7, 1);
     }
 
@@ -654,6 +651,59 @@ export class Renderer {
     }
 
     this.drawMarks(ctx, e, px, py, span);
+  }
+
+  /**
+   * How many turns until it happens, and how many until they can act again.
+   *
+   * Hollow before the blow, solid after. That is not a new vocabulary - it is
+   * the one the player's own skill buttons have used all along:
+   *
+   *     `${'○'.repeat(def.windup)}${'●'.repeat(def.recovery)}`
+   *
+   * The hollow half is the one that can still be taken away from you. All this
+   * does is put the same sentence over the other side of the board, which is
+   * what "every blow is announced" was always supposed to mean.
+   *
+   * Colour says what, not who: red is a wind-up wherever it appears, green is
+   * a recovery wherever it appears. An enemy wearing green is your opening; you
+   * wearing green are its opening. Colouring by side would be easier to read
+   * and would say nothing - the player already knows which one is theirs.
+   *
+   * The floor keeps the shape and this keeps the time. They never overlap.
+   */
+  drawClock(ctx, px, py, span, windup, recovery) {
+    const n = Math.min(6, (windup ?? 0) + (recovery ?? 0));
+    if (n <= 0 || span < 14) return;
+    // The row has to stay over its own creature. Six dots at a comfortable
+    // size are wider than a 35-pixel tile, and a clock that spills onto the
+    // neighbour is a clock you read off the wrong body - which in a game about
+    // reading wind-ups is worse than not drawing it at all. So the dots shrink
+    // to fit rather than the row growing.
+    const wide = span * 1.05;
+    const r = Math.max(1.6, Math.min(span * 0.085, wide / (n * 2.7)));
+    const gap = r * 2.7;
+    const y = py - r * 1.5;
+    let x = px + span / 2 - (gap * (n - 1)) / 2;
+    for (let i = 0; i < n; i++) {
+      const hollow = i < (windup ?? 0);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      // A dark disc behind either kind, so both read against pale stone and
+      // against the static.
+      ctx.fillStyle = 'rgba(0,0,0,.72)';
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, r * 0.55);
+      ctx.strokeStyle = hollow ? '#ff5a44' : '#56d364';
+      ctx.stroke();
+      if (!hollow) {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+        ctx.fillStyle = '#56d364';
+        ctx.fill();
+      }
+      x += gap;
+    }
   }
 
   /**
@@ -671,10 +721,12 @@ export class Renderer {
   drawMarks(ctx, e, px, py, span) {
     const n = e.marks?.size ?? 0;
     if (!n || span < 12) return;
-    const r = Math.max(1.5, span * 0.07);
+    const r = Math.max(1.5, span * 0.06);
     const gap = r * 2.6;
     let x = px + span / 2 - (gap * (n - 1)) / 2;
-    const y = py - r * 1.4;
+    // Along the bottom, above the health bar. The clock owns the top of the
+    // creature now, and two rows of coloured dots on one head is a smear.
+    const y = py + span - r * 3.2;
     for (const key of e.marks.keys()) {
       const m = MARK_BY_KEY[key];
       ctx.beginPath();
@@ -707,6 +759,13 @@ export class Renderer {
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
     if (hurt > 0) this.hurtWash(ctx, px, py, cell, hurt);
+
+    // The same clock the enemies wear. A declared blow of your own is one
+    // hollow dot - it lands next turn and can still be taken from you - and a
+    // recovery is that many solid ones. The buttons say what an action WILL
+    // cost; this says what you are already paying, which is the half you can
+    // no longer choose.
+    this.drawClock(ctx, px, py, cell, p.charging ? 1 : 0, p.recover ?? 0);
   }
 
   /**
