@@ -44,11 +44,29 @@ export function populate(game, lvl, rng) {
   // difficulty dial - composition is" applies to situations too: a floor with
   // a colonnade on it is not a floor with three more enemies, it is a floor
   // where three of them are standing somewhere that means something.
-  const staged = castChambers(game, lvl, rng, depth) + stageTiles(game, lvl, rng, depth);
+  const CROWD = 7 + Math.floor(depth * 1.2);
+  const cast = castChambers(game, lvl, rng, depth);
+  const staged = cast + stageTiles(game, lvl, rng, depth);
   placeElite(game, lvl, rng, depth);
 
-  // Grows slowly. Doubling the count is not how this game gets harder.
-  const want = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
+  // The budget follows the map, not the other way round.
+  //
+  // This used to be a flat "a floor has N enemies", and tile garrisons came
+  // OUT of it. That worked while three tiles in twenty-two asked for anyone;
+  // it broke the moment half of them did - measured, 54 of 595 staged rooms
+  // came up short, a cavern that asked for two or three getting one, because
+  // the floor had already spent itself before it reached them.
+  //
+  // So the tiles are paid first and the wanderers are what is left over. A
+  // floor's enemy count is now a property of the pieces it was built from,
+  // which is the thing "composition is the difficulty dial, not count" was
+  // always claiming and never quite doing. `base` is the floor a small or
+  // ungarrisoned floor cannot drop below.
+  const base = 4 + Math.floor(depth * 0.8) + rng.rn2(3);
+  // Capped. Paying the tiles first is right; letting a floor that happens to
+  // draw six garrisons come out with thirty-five enemies is not - "count is
+  // not the difficulty dial" cuts both ways, and a crowd is not a decision.
+  const want = Math.min(CROWD, Math.max(base, staged + 2 + rng.rn2(2)));
 
   const place = (key, relax = false) => {
     // Shares nothing. A situation's composition IS the situation - letting the
@@ -71,7 +89,14 @@ export function populate(game, lvl, rng) {
   // Packs first, and they come out of the same budget - a floor with a pack on
   // it is not a floor with more enemies, it is a floor where some of them are
   // standing together and threatening overlapping ground.
-  let placed = staged + placePacks(game, lvl, rng, want - staged);
+  // Packs get a reserved slice rather than the leftovers. Once tiles were paid
+  // first the leftovers were sometimes nothing, and a floor with no two
+  // enemies close enough to threaten the same ground is a floor with no pack
+  // in it - which is a shape the game needs, not a rounding error.
+  // ...but never past the crowd cap. A reserve that ignores the ceiling is not
+  // a reserve, it is a second budget, and one floor came out with 35.
+  const forPacks = Math.max(0, Math.min(Math.max(2, want - staged), CROWD - staged));
+  let placed = staged + placePacks(game, lvl, rng, forPacks);
 
   for (let guard = 0; placed < want && guard < want * 12; guard++) {
     placed += place(pickEnemy(rng, depth).key);
@@ -168,6 +193,16 @@ export function armSignals(lvl, seed) {
   }
 }
 
+/**
+ * Stand the garrisons their tiles asked for.
+ *
+ * There is no cap here, and I tried to add one. A floor that draws six
+ * garrisons does hold more bodies than one that draws two - but a marked cell
+ * is a promise that something is standing exactly there, and skipping rooms to
+ * stay under a number breaks it. The count is a consequence of the tiles the
+ * floor drew, which is what "composition is the difficulty dial" means when it
+ * is taken seriously.
+ */
 export function stageTiles(game, lvl, rng, depth) {
   let placed = 0;
   const free = (x, y) => {

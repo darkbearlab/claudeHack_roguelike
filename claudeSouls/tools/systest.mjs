@@ -307,13 +307,30 @@ check('enemies arrive in packs whose threatened ground overlaps', () => {
   // purpose - it is an addition, not a reshuffle.
   // The cap is what populate's own arithmetic permits, not a number that gets
   // nudged every time something else changes (it was 17, then 20, and each
-  // time the reason was something other than packs). At the deepest ordinary
-  // floor: want = 4 + 7 + 2 = 13, and staged situation casts count against
-  // it; plus two storeroom guards, one elite, the slow/fast guarantee (a hound
-  // brings a group of up to 3), and a pack may overrun `want` by its size
-  // minus one. 13 + 2 + 1 + 4 + 2 = 22. A floor above that has something
-  // being counted twice, which is what this test is for.
-  const CAP = (4 + Math.floor((DUNGEON_DEPTH - 1) * 0.8) + 2) + 2 + 1 + 4 + 2;
+  // time the reason was something other than packs).
+  //
+  // The arithmetic changed on purpose. Tile garrisons used to come OUT of the
+  // floor's budget; they are paid FIRST now, because eleven tiles in the pile
+  // ask for enemies rather than three, and a marked cell is a promise that
+  // something stands exactly there - a promise you cannot keep by giving every
+  // room a thinner share. So a floor's count is a consequence of the tiles it
+  // drew, which is what "composition is the difficulty dial" means taken
+  // seriously.
+  //
+  // Deepest ordinary floor, filled layout: sixteen pieces, about half of them
+  // garrisoned, one to three each - call it 14 staged. Then the wanderer floor
+  // (want is at least 4 + 7 + 2 = 13, and staged already exceeds it, so it
+  // adds `staged + 2 + rn2(2)` capped by CROWD = 7 + 10 = 17), two storeroom
+  // guards, one elite, the slow/fast guarantee bringing a group of up to 3,
+  // and a pack overrunning by its size minus one.
+  //
+  // 17 + 14 + 2 + 1 + 4 + 2 = 40 is the loose bound; measured worst is 30. The
+  // number below is the loose bound, because this test is for "something is
+  // being counted twice", not for tracking the tuning.
+  //
+  // A route floor is six pieces, so it sits far under this - which is the
+  // layout the extended catalogue was drawn for.
+  const CAP = (7 + Math.floor(DUNGEON_DEPTH * 1.2)) + 14 + 2 + 1 + 4 + 2;
   assert(worst <= CAP, `a floor held ${worst} enemies (cap ${CAP}); packs are inflating the count`);
   return `${clustered}/${floors} floors, at most ${worst} enemies on one`;
 });
@@ -4053,7 +4070,14 @@ check('an open edge is never walled or doored, and open edges merge', () => {
   // 1. the drawing rules
   const mixed = { art: ['####+.####', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '#........#', '####++####'] };
   assert(validateTile('mixed', mixed).some((m) => /half open/.test(m)), 'a half-open middle was allowed');
-  const spec = { special: 'colonnade', art: GEOMORPHS.cavern.art };
+  // Its own art, not a real tile's. This borrowed the cavern's, which broke
+  // the day the cavern grew anchors: the fixture inherited letters it had no
+  // `anchors` table to explain, and the failure read as "openOk stopped
+  // working". A fixture that quotes live data tests the data too.
+  const openArt = ['####++####', '#.........', '#.........', '#.........',
+                   '#.........', '#.........', '#.........', '#.........',
+                   '#.........', '####++####'];
+  const spec = { special: 'colonnade', art: openArt };
   assert(validateTile('spec', spec).some((m) => /openOk/.test(m)), 'an open edge on a situation was allowed without openOk');
   assert(validateTile('ok', { ...spec, openOk: true }).length === 0, 'openOk did not permit it');
   assert(validateTile('cavern', GEOMORPHS.cavern).length === 0, `cavern: ${validateTile('cavern', GEOMORPHS.cavern)}`);

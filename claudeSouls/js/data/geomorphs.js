@@ -78,15 +78,21 @@ export const GEOMORPHS = {
     '####++####',
   ]},
 
-  hall: { weight: 2, art: [
+  // Four pillars and a pair holding the middle. The pillars are not
+  // decoration: they break the archers' line and give the player something to
+  // put between themselves and a wind-up.
+  hall: { weight: 2,
+    anchors: { a: 'floor' },
+    enemies: { at: 'floor', n: [1, 2] },
+    art: [
     '####++####',
     '#........#',
+    '#.I....I.#',
+    '#....a...#',
     '#........#',
     '#........#',
-    '#........#',
-    '#........#',
-    '#........#',
-    '#........#',
+    '#...a....#',
+    '#.I....I.#',
     '#........#',
     '####++####',
   ]},
@@ -130,6 +136,97 @@ export const GEOMORPHS = {
     '###....###',
     '###a..a###',
     '####..####',
+    '####++####',
+  ]},
+
+
+  // ---- narrow ground, and things standing in it --------------------------
+  //
+  // Narrow ground existed on two tiles in the entire catalogue, and a corridor
+  // is the real answer to a pack. These add three, and every one of them
+  // brings its own garrison - a tile that says nothing about enemies is a tile
+  // the floor has to fill at random, which is how you get a fight nobody sited.
+
+  // A neck that opens into a pocket. You cannot fight what is in the pocket
+  // from the corridor, and you cannot leave the pocket except back through the
+  // neck - so the decision is whether to go in at all.
+  throat: { weight: 3,
+    anchors: { a: 'post' },
+    enemies: { at: 'post', n: [2, 3], role: 'blocker' },
+    art: [
+    '####++####',
+    '####.#####',
+    '####.#####',
+    '##a....a##',
+    '##......##',
+    '##......##',
+    '##a....a##',
+    '####.#####',
+    '####.#####',
+    '####++####',
+  ]},
+
+  // A switchback: two single-file turns, and something at the far bend that
+  // can see the whole last leg. That is the shape which makes a bow
+  // frightening rather than annoying.
+  hairpin: { weight: 3,
+    anchors: { a: 'watch' },
+    enemies: { at: 'watch', role: 'ranged', aware: true },
+    art: [
+    '####++####',
+    '####.#####',
+    '##...#####',
+    '##.#######',
+    '##.....###',
+    '######.###',
+    '####a..###',
+    '####.#####',
+    '####.#####',
+    '####++####',
+  ]},
+
+  // Two lanes around a middle you can only enter from one side. What is inside
+  // comes out at you; what you want is to meet it in a lane, not in there.
+  warren: { weight: 2,
+    anchors: { a: 'nest' },
+    // No `role`. Asking for a charger meant asking for whatever the depth
+    // calls a charger, and past floor 7 that is a 2x2 body which could not be
+    // seated in here at all - ten floors in 595 staged a nest with nothing in
+    // it, a tile whose entire idea is "something lives in there". Let the
+    // depth pick, and the chamber can always hold what it picked.
+    enemies: { at: 'nest', n: [1, 2] },
+    art: [
+    '####++####',
+    '##......##',
+    '##.####.##',
+    '##.#aaa..#',
+    '+..#aaa..+',
+    '+..#aaa..+',
+    '##.#aaa..#',
+    '##.####.##',
+    '##......##',
+    '####++####',
+  ]},
+
+  // A rubble line across a room with something shooting over it. Rubble blocks
+  // the feet and not the eye, so the archers are behind a wall that does not
+  // stop their own shot - and you have to come round it.
+  barricade: { weight: 2,
+    anchors: { a: 'front', b: 'back' },
+    enemies: [
+      { at: 'front', role: 'blocker', n: [1, 2] },
+      { at: 'back', role: 'ranged', n: [1, 2], aware: true },
+    ],
+    art: [
+    '####++####',
+    '#........#',
+    '#..a..a..#',
+    '#%%.%%.%%#',
+    '+........+',
+    '+........+',
+    '#%%.%%.%%#',
+    '#..b..b..#',
+    '#........#',
     '####++####',
   ]},
 
@@ -260,31 +357,51 @@ export const GEOMORPHS = {
 
   // Open on the east. Beside another cavern it is one wide space; beside a
   // walled tile it is a room with a rock wall; beside nothing, a cave mouth.
-  cavern: { weight: 2, art: [
+  // Rubble is cover you can see over and cannot walk through, which is what an
+  // open cave wants: the shape of the fight changes without the room getting
+  // smaller. The east side stays an open edge.
+  cavern: { weight: 2,
+    // It has an open edge AND a garrison, so it has to say so: a tile that
+    // claims its room is held to a room's rules unless it opts out.
+    openOk: true,
+    anchors: { a: 'floor' },
+    enemies: { at: 'floor', n: [1, 3] },
+    art: [
     '####++####',
-    '#.........',
-    '#.........',
-    '#.........',
-    '#.........',
-    '#.........',
-    '#.........',
-    '#.........',
-    '#.........',
+    '#%.......%',
+    '#...%.a...',
+    '#.%.......',
+    '#....a%...',
+    '#..a......',
+    '#.......%.',
+    '#..%...a..',
+    '#%....%...',
     '####++####',
   ]},
 
   // Open on two adjacent sides. Two of these corner to corner make an L; four
   // make a hall bigger than any tile.
-  court: { weight: 1, art: [
+  // A courtyard with a broken colonnade down one side, something posted in it
+  // and something watching from the far end.
+  court: { weight: 1,
+    // It has an open edge AND a garrison, so it has to say so: a tile that
+    // claims its room is held to a room's rules unless it opts out.
+    openOk: true,
+    anchors: { a: 'post', b: 'watch' },
+    enemies: [
+      { at: 'post', role: 'blocker', n: [1, 2] },
+      { at: 'watch', role: 'ranged', n: [1, 1] },
+    ],
+    art: [
     '####++####',
+    '#....b....',
+    '#.I.....I.',
     '#.........',
-    '#.........',
-    '#.........',
+    '+....a....',
     '+.........',
-    '+.........',
-    '#.........',
-    '#.........',
-    '#.........',
+    '#.I.....I.',
+    '#....a....',
+    '#.%.....%.',
     '#.........',
   ]},
 
@@ -338,16 +455,26 @@ export const GEOMORPHS = {
   ]},
 
   // A long hall in two cells, so that not every big space is a situation.
-  gallery: { weight: 1, art: [
+  // The largest piece in the random pile: 136 open cells, every one of them
+  // bare floor. Two aisles either side of a spine now, archers at the spine's
+  // ends and something heavy in each aisle - a room you cross under fire
+  // rather than a field you walk over.
+  gallery: { weight: 1,
+    anchors: { a: 'aisle', b: 'spine' },
+    enemies: [
+      { at: 'aisle', role: 'blocker', n: [1, 2] },
+      { at: 'spine', role: 'ranged', n: [1, 2] },
+    ],
+    art: [
     '####++########++####',
-    '#..................#',
-    '#..................#',
-    '#........##........#',
+    '#.......#b#........#',
+    '#.I...........I....#',
+    '#...a....##....a...#',
     '+........##........+',
     '+........##........+',
-    '#........##........#',
-    '#..................#',
-    '#..................#',
+    '#...a....##....a...#',
+    '#....I.........I...#',
+    '#.......#b#........#',
     '####++########++####',
   ]},
 
@@ -611,9 +738,11 @@ export function validateGeomorphs() {
  */
 export const NARROW = new Set(Object.entries(GEOMORPHS).filter(([, t]) => {
   const g = t.art;
+  // Ground you can stand on, not merely "not a wall". A chasm is neither, and
+  // counting it as open made a bridge over one look like an open hall.
   const open = (x, y) => {
     const c = g[y]?.[x];
-    return c != null && c !== '#' && c !== '+' && c !== '^';
+    return c != null && ('.=<>*D'.includes(c) || /[a-z]/.test(c));
   };
   for (let y = 1; y < g.length - 1; y++) {
     for (let x = 1; x < g[0].length - 1; x++) {
