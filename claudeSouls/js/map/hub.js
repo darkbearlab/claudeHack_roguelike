@@ -13,7 +13,7 @@
 
 import { Level } from './level.js';
 import { T } from './tiles.js';
-import { HEROES } from '../data/heroes.js';
+import { HEROES, PLAYABLE } from '../data/heroes.js';
 
 export const HUB_W = 21;
 export const HUB_H = 13;
@@ -55,9 +55,11 @@ export function buildHub() {
   lvl.set(gate.x, gate.y, T.STAIRS_DOWN);
   lvl.downStair = { ...gate };
 
-  // The heroes, along the near wall, in the order they are listed.
-  const top = cy - ((HEROES.length - 1) >> 1);
-  HEROES.forEach((h2, i) => {
+  // The heroes, along the near wall, in the order they are listed. PLAYABLE,
+  // not HEROES: a figure you can walk into and become has to be one that is
+  // finished, and an empty conversation is worse than an absent person.
+  const top = cy - ((PLAYABLE.length - 1) >> 1);
+  PLAYABLE.forEach((h2, i) => {
     lvl.npcs.push({ key: `hero:${h2.key}`, x: x0 + 2, y: top + i });
   });
   // And the keeper, on the other side of the fire.

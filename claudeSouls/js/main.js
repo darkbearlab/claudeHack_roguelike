@@ -7,7 +7,7 @@ import { ENEMIES } from './data/enemies.js';
 import { ITEMS, CONSUMABLES } from './data/items.js';
 import { NPC_BY_KEY } from './data/npcs.js';
 import { SKILLS } from './data/skills.js';
-import { HEROES } from './data/heroes.js';
+import { HEROES, PLAYABLE } from './data/heroes.js';
 import { saveSummary, loadGame, clearSave, saveGame } from './game/save.js';
 
 const splash = document.getElementById('splash');
@@ -26,9 +26,12 @@ function render() {
   // the variable - so it was promising a choice the screen could not make and
   // describing stamina costs that belong to the people below. The choice is a
   // room now, so this is a cast list.
+  // Everybody, including the parked one - dimmed and labelled rather than
+  // hidden. A cast list that quietly drops a name tells you nothing; one that
+  // says "not finished" tells you where the work is.
   const roster = HEROES.map((h) => `
-      <div class="choice">
-        <b>${escapeHtml(h.name)}</b>
+      <div class="choice${h.wip ? ' wip' : ''}">
+        <b>${escapeHtml(h.name)}</b>${h.wip ? '<i class="tag">未完成</i>' : ''}
         <small>${escapeHtml(h.blurb)}</small>
       </div>`).join('');
 
@@ -72,7 +75,7 @@ ${roster}
       <p><b>死了不是結束。</b>你會回到最後的篝火,整層敵人復活 ——
       但樓層是從種子長出來的,永遠一樣。死幾次之後你就記住它了,那就是成長。</p>
       <p>${DUNGEON_DEPTH} 層 &middot; ${ENEMIES.length} 種敵人 &middot;
-      ${HEROES.length} 個角色 &middot; ${SKILLS.length} 個技能 &middot; v${VERSION}</p>
+      ${PLAYABLE.length} 個角色${HEROES.length > PLAYABLE.length ? `(+${HEROES.length - PLAYABLE.length} 未完成)` : ''} &middot; ${SKILLS.length} 個技能 &middot; v${VERSION}</p>
     </div>`;
 
   body.querySelector('#btn-start').addEventListener('click', start);

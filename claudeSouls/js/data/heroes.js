@@ -21,6 +21,15 @@
 // Two pieces: a top-down figure for the map and the hall, and a flat front
 // portrait for conversation - the map sprite is a shape seen from overhead and
 // shrinking it into a dialogue box shows you the top of a head.
+/**
+ * Everybody, including the ones you cannot pick yet.
+ *
+ * `PLAYABLE` is what the hall stands up and what the title screen offers.
+ * `HEROES` stays the full list, because the rules that apply to a hero should
+ * go on applying to one who is parked - the stamina economy, the roll price,
+ * the commitment band, the art. A character taken out of the game and out of
+ * the tests at the same time comes back rotten.
+ */
 export const HEROES = [
   {
     key: 'knight',
@@ -110,6 +119,15 @@ export const HEROES = [
 
   {
     key: 'farwayer',
+    // PARKED. Playable in nothing; still in HEROES, so every rule and every
+    // test still holds her to the same standard as the other three.
+    //
+    // She works, and the numbers are honest - a punching post puts her at 1.27
+    // damage a turn against the old knight's 1.10, and her phrase beats
+    // hammering her basic attack two to one. She is parked because the SHAPE
+    // is under review, not because she is broken: see docs/FARWAYER.md, the
+    // section on what the wind-up refactor changes about the question.
+    wip: true,
     sprite: 'hero_farwayer',
     face: 'face_farwayer',
     name: '巡禮者',
@@ -159,3 +177,6 @@ export const HEROES = [
 ];
 
 export const HERO_BY_KEY = Object.fromEntries(HEROES.map((h) => [h.key, h]));
+
+/** The ones you can actually be. The hall and the title screen use this. */
+export const PLAYABLE = HEROES.filter((h) => !h.wip);

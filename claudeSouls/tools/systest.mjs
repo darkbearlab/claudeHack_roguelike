@@ -28,7 +28,7 @@ import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
-import { HEROES, HERO_BY_KEY } from '../js/data/heroes.js';
+import { HEROES, HERO_BY_KEY, PLAYABLE } from '../js/data/heroes.js';
 import { EFFORT, faceOf } from '../js/data/skills.js';
 import { MARKS, MARK_TURNS, MAX_SPARE_BEATS } from '../js/data/marks.js';
 import { hasLOS } from '../../engine/fov.js';
@@ -2491,10 +2491,18 @@ check('the hall holds every hero, and you cannot leave as nobody', () => {
   const g = freshGame('hall');
   g.enterHub();
   assert(g.inHub, 'enterHub did not put us in the hall');
-  for (const h of HEROES) {
+  for (const h of PLAYABLE) {
     assert(g.level.npcs.some((n) => n.key === `hero:${h.key}`),
            `${h.key} is in the roster but not in the hall`);
     assert(NPC_BY_KEY[`hero:${h.key}`], `${h.key} has no one to talk to`);
+  }
+  // And a parked one is not standing there. A figure you can walk into and
+  // become has to be finished; an empty conversation is worse than an absent
+  // person. Pinned so that un-parking someone is a deliberate act.
+  const parked = HEROES.filter((h) => h.wip);
+  for (const h of parked) {
+    assert(!g.level.npcs.some((n) => n.key === `hero:${h.key}`),
+           `${h.key} is marked unfinished but is standing in the hall`);
   }
   assert(g.level.bonfires.length, 'no fire in the hall');
   assert(g.level.downStair, 'no way out of the hall');
@@ -2502,11 +2510,11 @@ check('the hall holds every hero, and you cannot leave as nobody', () => {
   // Leaving without choosing would start a run as nobody.
   assert(g.descend() === false, 'you can start a run without being anybody');
   assert(g.inHub, 'a refused descent left the hall anyway');
-  return `${HEROES.length} heroes, a fire and a stair`;
+  return `${PLAYABLE.length} playable, ${parked.length} parked, a fire and a stair`;
 });
 
 check('walking up to someone is how you become them', () => {
-  for (const h of HEROES) {
+  for (const h of PLAYABLE) {
     const g = freshGame(`take-${h.key}`);
     g.ui = Object.assign(new QuietUI(), { showConversation() {} });
     g.enterHub();

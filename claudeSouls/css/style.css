@@ -399,3 +399,9 @@ body { overflow: hidden; }
 .note a { color: var(--dim); }
 .note a:hover { color: var(--ember); }
 .note b { color: var(--fg); }
+
+/* A parked character: still on the cast list, visibly not ready. */
+.choice.wip { opacity: .45; }
+.choice.wip .tag { font-style: normal; font-size: 11px; margin-left: 6px;
+                   padding: 1px 5px; border: 1px solid #6b6b6b; border-radius: 3px;
+                   color: #b8b8b8; vertical-align: middle; }
