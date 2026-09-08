@@ -454,16 +454,28 @@ export const SKILLS = [
   {
     key: 'return',
     name: 'Return',
-    hint: '第一拍轉身掃八格,留下颯印(擊退);第二拍打身後一格,留下燼印(存拍)',
-    // The second beat is `behind` on purpose, and it is the boldest thing in
-    // the kit: the strongest thing she can do for herself requires something
-    // to be at her back. It may simply never land, which is why "how often
-    // does it hit" is an acceptance item rather than an assumption.
-    // 4, not 3: eight tiles is a band-1 shape, and against a recovery of 4 a
-    // 3-point cost is zero turns of commitment. Priced by the rule.
+    hint: '第一拍轉身掃八格,留下颯印(擊退);第二拍朝正面橫掃五格,留下燼印(光環)',
+    // Turn, then sweep. The first beat catches everything already touching
+    // her; the second reaches past them, the way she is facing.
+    //
+    // The second beat used to be `behind`: you aimed one way and it struck the
+    // tile at your back, on the argument that her strongest self-buff should
+    // demand being surrounded. Two things killed it. It cannot be aimed
+    // coherently - "what is the point of attacking forwards by pulling
+    // backwards" has no answer - and it did not work either: against a single
+    // body the six-beat phrase that used it dealt 47 where a four-beat one
+    // without it dealt 131, because `behind` hits nothing when nothing is
+    // behind you.
+    //
+    // `arc5` also matches what the mark became. The ember aura slows
+    // everything around her, so the beat that lays it should be the one that
+    // sweeps wide.
+    //
+    // 4, not 3, on both: eight tiles and five tiles are band-1 shapes, and
+    // against a recovery of 4 a 3-point cost is zero turns of commitment.
     pattern: 'around', damage: 1, impact: 2, stamina: 4, cooldown: 0,
     windup: 0, recovery: 0, mark: 'gale',
-    beat2: { pattern: 'behind', damage: 3, impact: 1, stamina: 3, mark: 'ember' },
+    beat2: { pattern: 'arc5', damage: 2, impact: 1, stamina: 4, mark: 'ember' },
   },
 ];
 

@@ -22,7 +22,7 @@
 //   - close the middle door of any straight run     (six rooms in a line)
 
 import { T } from './tiles.js';
-import { GEOMORPHS, tileMinDepth } from '../data/geomorphs.js';
+import { GEOMORPHS, tileMinDepth, NARROW } from '../data/geomorphs.js';
 import { CHAMBER_BY_KEY } from '../data/chambers.js';
 
 export const U = 10;                 // one cell of the grid, in tiles
@@ -315,6 +315,8 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
   // ever rolled for mid-growth, 7% once a miss kept it pending, and the rest
   // of the way here. The per-socket roll below still adds a second one.
   let pendingSpecial = (specialNames.length && rng.rn2(2) === 0) ? pick(specialNames) : null;
+  /** What this floor has already drawn. The bag refills when it empties. */
+  const used = new Set();
   // Route mode wants a spine and then a couple of deliberate extras, so it
   // needs a length to stop at. The boss floor is laid by hand either way.
   const routing = layout === 'route' && !boss;
@@ -426,15 +428,51 @@ export function assemble(lvl, rng, { depth, boss = false, maxSpecials = 2, trace
       trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) special ${drawn}: ${options.length} placements`);
     }
     if (!options.length) {
-      const pool = stats.pieces < 5 ? weighted.filter((n) => n !== 'nook') : weighted;
-      name = pick(pool);
-      options = optionsFor(name);
-      trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) draw ${name}: ${options.length} placements`);
+      // A bag, not a die.
+      //
+      // Drawing with replacement from a weighted list means the four smallest
+      // connective tiles - squeeze 4, pinch 4, tee 3, bend 3, forty per cent
+      // of the weight between them - come up again and again while the
+      // interesting ones appear once. That was survivable on a sixteen-piece
+      // floor and is not on a six-piece one: measured, seven floors in a
+      // sample came out with no narrow ground on them AT ALL.
+      //
+      // So prefer what this floor has not used yet, and refill the bag when it
+      // empties. That is the board-game metaphor this system started from.
+      //
+      // And keep drawing on a miss rather than walling the socket. One bad
+      // draw used to kill a way out; with six pieces to a floor that is the
+      // difference between a route and a stub.
+      // One narrow tile per floor, guaranteed rather than hoped for.
+      //
+      // Exactly TWO tiles in the catalogue contain narrow ground - squeeze and
+      // slot - and a corridor is the real answer to a pack of hounds. On a
+      // sixteen-piece floor you got one by volume; on a six-piece floor,
+      // measured, six floors in a sample had none at all, which quietly takes
+      // an answer away from the player. So the floor's first draw from the
+      // pile is a narrow one if any will fit.
+      const tried = new Set();
+      const needNarrow = ![...used].some((n) => NARROW.has(n));
+      for (let i = 0; i < 6 && !options.length; i++) {
+        const fresh = weighted.filter((n) => !used.has(n) && !tried.has(n));
+        let bag = fresh.length ? fresh : weighted.filter((n) => !tried.has(n));
+        if (needNarrow && i === 0) {
+          const narrow = bag.filter((n) => NARROW.has(n));
+          if (narrow.length) bag = narrow;
+        }
+        const pool = stats.pieces < 5 ? bag.filter((n) => n !== 'nook') : bag;
+        if (!pool.length) break;
+        name = pick(pool);
+        tried.add(name);
+        options = optionsFor(name);
+        trace?.(`${pl.p.name}@${pl.ox},${pl.oy} e${s.e} -> (${wx},${wy}) draw ${name}: ${options.length} placements`);
+      }
     }
     if (!options.length) { wallAt(pl, s); stats.deadEnds++; continue; }
     const chosen = pick(options);
     trace?.(`   placed ${name} at ${chosen.ox},${chosen.oy}`);
 
+    used.add(name);
     const placed = place(chosen.p, chosen.ox, chosen.oy);
     // Which socket it was entered by - recorded, so the arrow rule can be
     // checked against what actually happened rather than inferred later.

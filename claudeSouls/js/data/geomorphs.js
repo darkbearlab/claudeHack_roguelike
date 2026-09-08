@@ -600,3 +600,27 @@ export function validateGeomorphs() {
   for (const [name, t] of Object.entries(GEOMORPHS)) bad.push(...validateTile(name, t));
   return bad;
 }
+
+/**
+ * Tiles that contain narrow ground: a floor cell walled on two opposite sides.
+ *
+ * Derived from the art rather than declared, so it cannot drift from what the
+ * tile actually looks like - the same reason `tileMinDepth` is derived from
+ * the roles a tile uses. A corridor is the real answer to a pack of hounds, so
+ * a floor with none of them has quietly removed an answer.
+ */
+export const NARROW = new Set(Object.entries(GEOMORPHS).filter(([, t]) => {
+  const g = t.art;
+  const open = (x, y) => {
+    const c = g[y]?.[x];
+    return c != null && c !== '#' && c !== '+' && c !== '^';
+  };
+  for (let y = 1; y < g.length - 1; y++) {
+    for (let x = 1; x < g[0].length - 1; x++) {
+      if (!open(x, y)) continue;
+      if (open(x, y - 1) && open(x, y + 1) && !open(x - 1, y) && !open(x + 1, y)) return true;
+      if (open(x - 1, y) && open(x + 1, y) && !open(x, y - 1) && !open(x, y + 1)) return true;
+    }
+  }
+  return false;
+}).map(([k]) => k));

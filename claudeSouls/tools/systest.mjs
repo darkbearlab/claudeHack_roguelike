@@ -11,6 +11,7 @@
 import { Game, DUNGEON_DEPTH } from '../js/game/game.js';
 import { RNG } from '../../engine/rng.js';
 import { generateLevel, MAX_STRAIT } from '../js/map/mapgen.js';
+import { LAYOUT, setLayout } from '../js/map/geomorph.js';
 import { Level } from '../js/map/level.js';
 import * as geomorphsModule from '../js/data/geomorphs.js';
 import { armSignals, SIGNAL_RADIUS, WAKE_RADIUS } from '../js/game/populate.js';
