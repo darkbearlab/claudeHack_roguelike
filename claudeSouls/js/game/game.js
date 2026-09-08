@@ -42,6 +42,7 @@ import { buildHub } from '../map/hub.js';
 import { HERO_BY_KEY } from '../data/heroes.js';
 import { NPC_BY_KEY, weaverAt } from '../data/npcs.js';
 import { saveGame, clearSave } from './save.js';
+import { loadMeta, saveMeta, ashFor, rateAt } from './meta.js';
 
 export const VERSION = '0.1.0';
 
@@ -99,6 +100,11 @@ export class Game {
     // what the game had before people existed, and still drives the bot and
     // the tests.
     this.aura = 0;                    // turns of the ember aura left
+    // What the hall is holding. Loaded fresh each run: ash is the only
+    // thing that crosses between them.
+    this.meta = loadMeta();
+    this.meta.runs++;
+    saveMeta(this.meta);
     this.player.hero = HERO_BY_KEY[hero] ?? null;
     this.hero = this.player.hero;
     this.vow = vow ?? 'light';
@@ -898,6 +904,30 @@ export class Game {
    * into a decision rather than a number: the souls are only worth something
    * once you have walked them home, and until then they are what you lose.
    */
+  /**
+   * Embers to ash, at this hearth's rate.
+   *
+   * All of them, not some: a partial exchange would be a slider, and a slider
+   * between "keep" and "bank" is a thing to fiddle with rather than a decision
+   * to make. The decision this game wants is WHERE, not how much.
+   */
+  exchange() {
+    const p = this.player;
+    if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('There is no hearth here.'); return false; }
+    if (p.souls <= 0) { this.msg('Nothing to give it.', 'warn'); return false; }
+    const gained = ashFor(p.souls, p.depth);
+    if (gained <= 0) {
+      this.msg(`${p.souls} embers are not worth an ash at this depth. Carry them down.`, 'warn');
+      return false;
+    }
+    const spent = p.souls;
+    p.souls = 0;
+    this.meta.ash += gained;
+    saveMeta(this.meta);
+    this.msg(`${spent} embers burn down to ${gained} ash. That much is yours for good.`, 'magic');
+    return false;                       // an exchange is not a turn
+  }
+
   buyRank(key) {
     const p = this.player;
     if (!isBonfire(this.level.at(p.x, p.y))) { this.msg('Not here.', 'warn'); return false; }
@@ -1006,10 +1036,19 @@ export class Game {
   dropUnbanked() {
     const p = this.player;
     const items = p.unbanked.filter((k) => p.pack.includes(k));
-    const souls = p.souls;
+    // Embers do NOT go into the corpse. They are gone.
+    //
+    // That single line is what stops the whole design being a farm. A
+    // permanent currency plus enemies that come back when you use a hearth
+    // means sitting on floor one forever, unless the walk back has to be
+    // survived - so it does. The corpse still holds what you were CARRYING,
+    // because losing an item you found and losing the money you earned are
+    // different sizes of loss.
+    const lost = p.souls;
     p.unbanked = [];
     p.souls = 0;
-    if (!items.length && !souls) return;
+    if (lost) this.msg(`${lost} embers go cold.`, 'bad');
+    if (!items.length) return;
 
     for (const k of items) {
       const i = p.pack.indexOf(k);
@@ -1021,10 +1060,8 @@ export class Game {
     const lvl = this.levelAt(p.depth);
     const under = lvl.at(p.x, p.y);
     lvl.set(p.x, p.y, T.CORPSE);
-    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, souls, under };
-    this.msg(`You drop what you were carrying.` +
-             `${items.length ? ` (${items.length})` : ''}${souls ? ` and ${souls} souls` : ''}`,
-             'bad');
+    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, souls: 0, under };
+    this.msg(`You drop what you were carrying. (${items.length})`, 'bad');
   }
 
   // ------------------------------------------------------------- equipment

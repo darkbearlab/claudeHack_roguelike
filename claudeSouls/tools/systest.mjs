@@ -35,6 +35,7 @@ import { MARKS, MARK_TURNS, AURA_TURNS, AURA_RADIUS } from '../js/data/marks.js'
 import { hasLOS } from '../../engine/fov.js';
 import { enemyTurn, tickEnemyState } from '../js/game/ai.js';
 import { saveGame, loadGame, saveSummary } from '../js/game/save.js';
+import { rateAt, ashFor, loadMeta, emptyMeta } from '../js/game/meta.js';
 import { stepProjectiles } from '../js/game/projectile.js';
 import { DIRS } from '../../engine/util.js';
 import { readFileSync, existsSync } from 'node:fs';
@@ -2240,11 +2241,16 @@ check('map memory survives death; enemies do not', () => {
   return 'you keep what you learned';
 });
 
-check('souls are carried, dropped where you die, and picked back up', () => {
-  // Same pile as the loot, different payload - which is why the corpse system
-  // was worth building first. What souls actually produce is the decision to
-  // walk back to the fire; the stat line is the pretext.
-  const g = freshGame('souls');
+check('embers die with you, and a hearth is where they stop being yours to lose', () => {
+  // The rule the whole currency design rests on. Embers used to go into the
+  // corpse and could be walked back for; now death spends them.
+  //
+  // Without this the design is a farm: a permanent currency plus enemies that
+  // come back when you use a hearth means sitting on floor one forever. Making
+  // the walk back something you have to survive is what stops it - together
+  // with the rate rising with depth, which is the other half and has its own
+  // test.
+  const g = freshGame('embers');
   const p = g.player;
   g.gotoLevel(2, 'up');
 
@@ -2254,16 +2260,19 @@ check('souls are carried, dropped where you die, and picked back up', () => {
   assert(p.souls > 0, 'killing something paid nothing');
   const carried = p.souls;
 
-  const died = { depth: p.depth, x: p.x, y: p.y };
-  g.hurtPlayer(999, 'a test');
-  assert(p.souls === 0, 'kept souls through a death');
-  assert(g.corpse?.souls === carried, 'the remains do not hold what was carried');
+  // Something unbanked in the pack, so a corpse actually gets made. Without
+  // this the assertion below passes because there is no corpse at all - which
+  // is how the first version of this test survived the rule being removed.
+  p.pack.push('flask');
+  p.unbanked.push('flask');
 
-  g.gotoLevel(died.depth, 'up');
-  p.x = died.x; p.y = died.y;
-  g.reclaim();
-  assert(p.souls === carried, 'walking back did not return them');
-  return `${carried} souls, lost and recovered`;
+  g.hurtPlayer(999, 'a test');
+  assert(p.souls === 0, 'kept embers through a death');
+  assert(g.corpse, 'no corpse was made, so this test is not testing anything');
+  assert(!g.corpse.souls, 'the remains still hold embers; they are supposed to be gone');
+  // What you were CARRYING is a different size of loss, and still drops.
+  assert(g.corpse.items.includes('flask'), 'the corpse stopped holding items too');
+  return `${carried} embers earned, ${carried} lost`;
 });
 
 check('souls buy only what no item owns, and only at a fire', () => {
@@ -5357,6 +5366,57 @@ check('the bonfire button rests you; it does not walk you off the fire', () => {
   // And it is not a direction, which is the mistake that caused this.
   assert(!g.dirFromKey(REST_KEY), `REST_KEY (${REST_KEY}) is also a movement key`);
   return `${REST_KEY} sits you down, and moves nobody`;
+});
+
+
+check('a hearth turns embers into ash, and pays better the deeper it is', () => {
+  // The other half of the anti-farm rule. Embers dying with you makes the walk
+  // back a risk; the rate rising with depth makes the shallow farm the worst
+  // deal in the game, so patience cannot substitute for going down.
+  const g = freshGame('ash');
+  const p = g.player;
+
+  // Rising, and no cliff: a jump would make one floor the only correct place
+  // to bank, where a slope makes every hearth a slightly better offer.
+  const rates = [];
+  for (let d = 1; d <= DUNGEON_DEPTH; d++) rates.push(rateAt(d));
+  for (let i = 1; i < rates.length; i++) {
+    assert(rates[i] > rates[i - 1], `the rate does not rise from depth ${i} to ${i + 1}`);
+  }
+  assert(rates[rates.length - 1] / rates[0] > 5,
+    `the bottom pays only ${(rates[rates.length - 1] / rates[0]).toFixed(1)}x the top; a farm would not care`);
+
+  // And the exchange itself.
+  const fire = g.level.bonfires[0];
+  assert(fire, 'no hearth on this floor');
+  p.x = fire.x; p.y = fire.y;
+  p.souls = 200;
+  const before = g.meta.ash;
+  assert(g.exchange() === false, 'exchanging spent a turn');
+  assert(p.souls === 0, 'it left embers behind');
+  assert(g.meta.ash === before + ashFor(200, p.depth),
+    `ash went from ${before} to ${g.meta.ash}, wanted +${ashFor(200, p.depth)}`);
+
+  // Away from a hearth it does nothing.
+  p.x = fire.x + 3; p.y = fire.y + 3;
+  p.souls = 50;
+  g.exchange();
+  assert(p.souls === 50, 'it exchanged away from a hearth');
+  return `depth 1 pays ${rates[0].toFixed(2)}, depth ${DUNGEON_DEPTH} pays ${rates[rates.length - 1].toFixed(2)}`;
+});
+
+check('farming the first hearth is the worst rate in the game', () => {
+  // Pinned as the consequence rather than the formula, because the formula is
+  // the thing under test. Same embers, banked at each depth: the deep hearth
+  // has to be worth several shallow ones, or "just farm floor one" is a
+  // strategy rather than a mistake.
+  const EMBERS = 500;
+  const shallow = ashFor(EMBERS, 1);
+  const deep = ashFor(EMBERS, DUNGEON_DEPTH);
+  assert(shallow > 0, 'the first hearth pays literally nothing, which is a different problem');
+  assert(deep >= shallow * 5,
+    `the bottom pays ${deep} where the top pays ${shallow} - only ${(deep / shallow).toFixed(1)}x`);
+  return `${EMBERS} embers: ${shallow} ash at the top, ${deep} at the bottom`;
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

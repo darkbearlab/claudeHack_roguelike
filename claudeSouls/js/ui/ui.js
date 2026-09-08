@@ -37,6 +37,7 @@ import { affixesOn, AFFIX_BY_KEY } from '../data/affixes.js';
 import { TEXTURES } from '../data/textures.js';
 import { saveSettings, loadSettings } from '../game/save.js';
 import { REST_KEY } from '../game/game.js';
+import { ashFor, rateAt } from '../game/meta.js';
 import { HELP_HTML } from './help.js';
 
 const AIM_DEADZONE = 18;     // CSS px before a drag counts as a direction
@@ -944,9 +945,14 @@ export class UI {
 
     const hunted = g.hunters();
     ov.innerHTML = `<h2>爐</h2>
-      <p>身上的燼:<b>${p.souls}</b>。<b>死了會掉在原地</b>,只有走回爐邊才算數。</p>
+      <p>身上的燼:<b>${p.souls}</b>——<b>死了就沒了</b>,燒成灰才帶得回廳堂。
+         這座爐的匯率是 <b>${(rateAt(p.depth) * 100).toFixed(0)}%</b>,越深越好。</p>
+      <p>廳堂裡的灰:<b>${g.meta?.ash ?? 0}</b>。</p>
       <table>${rows}</table>
       <div class="foot">
+        ${p.souls > 0
+          ? `<button class="btn" data-act="burn">燒成灰(${p.souls} 燼 → ${ashFor(p.souls, p.depth)} 灰)</button>`
+          : '<span class="dim">身上沒有燼可以燒。</span>'}
         ${hunted
           ? `<span class="dim">還有 ${hunted} 個東西知道你在哪,不能休息。甩掉它們。</span>`
           : '<button class="btn" data-act="rest">休息(回滿,敵人復活)</button>'}
@@ -955,6 +961,11 @@ export class UI {
 
     const close = () => this.closeOverlay();
     ov.querySelector('[data-act="close"]').addEventListener('click', close);
+    ov.querySelector('[data-act="burn"]')?.addEventListener('click', () => {
+      g.exchange();
+      this.render();
+      this.showBonfire();          // the panel shows the new totals
+    });
     ov.querySelector('[data-act="rest"]')?.addEventListener('click', () => {
       close();
       // REST_KEY, not a letter typed in here. This said `'e'`, which was the
