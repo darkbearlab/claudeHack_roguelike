@@ -39,11 +39,42 @@ export class Renderer {
     this.mode = 'tiles';
     this.zoom = 1;
     this.sprites = new Map();
+    // One silhouette per sprite per colour, made once. See `tinted`.
+    this.tints = new Map();
     this.spriteState = new Map();
     this.overlayTrail = null;
     this.aim = null;              // {tiles:[{x,y}], dir}
     this.dpr = Math.min(3, window.devicePixelRatio || 1);
     this.resize();
+  }
+
+  /**
+   * A solid silhouette of a sprite, in one colour.
+   *
+   * The old comment here said tinting was rejected because it "means an
+   * offscreen canvas per sprite per frame, and this has to run on a phone at
+   * fourteen enemies". The premise was right and the conclusion was not: it is
+   * a canvas per sprite per COLOUR, made once and kept. Two colours across
+   * about thirty sprites is sixty small canvases for the life of the page, and
+   * nothing is drawn twice.
+   *
+   * `source-in` keeps the alpha and replaces every colour, so what comes back
+   * is the shape of the figure and nothing else - which is what a hit flash is.
+   */
+  tinted(name, colour) {
+    const key = `${name}|${colour}`;
+    if (this.tints.has(key)) return this.tints.get(key);
+    const img = this.sprite(name);
+    if (!img) return null;                 // still loading; try again next frame
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = colour;
+    g.fillRect(0, 0, c.width, c.height);
+    this.tints.set(key, c);
+    return c;
   }
 
   sprite(name) {
@@ -624,7 +655,10 @@ export class Renderer {
     // An elite is a normal species with more of it, so it needs to be readable
     // as one at a glance - the sprite is the same and the name only shows in
     // the log.
-    if (hurt > 0) this.hurtWash(ctx, px, py, span, hurt);
+    if (hurt > 0) {
+      this.hurtFlash(ctx, this.mode === 'ascii' ? null : e.sprite, px, py, span, hurt,
+                     '#ffffff', spriteRotation(e.facing.dx, e.facing.dy, e.sprite));
+    }
 
     if (e.elite) this.glow(ctx, px, py, span, 232, 150, 60);
 
@@ -774,7 +808,10 @@ export class Renderer {
       if (img) this.blit(ctx, img, px, py, cell, 1, 1, spriteRotation(p.facing.dx, p.facing.dy, p.sprite));
       else this.glyph(ctx, '@', '#fff', px, py, cell, 1);
     }
-    if (hurt > 0) this.hurtWash(ctx, px, py, cell, hurt);
+    if (hurt > 0) {
+      this.hurtFlash(ctx, this.mode === 'ascii' ? null : p.sprite, px, py, cell, hurt,
+                     '#e22e28', spriteRotation(p.facing.dx, p.facing.dy, p.sprite));
+    }
 
     // The same clock the enemies wear. A declared blow of your own is one
     // hollow dot - it lands next turn and can still be taken from you - and a
@@ -793,6 +830,27 @@ export class Renderer {
    * because tinting means an offscreen canvas per sprite per frame, and this
    * has to run on a phone at fourteen enemies.
    */
+  /**
+   * The flash that says "that one landed".
+   *
+   * The whole figure, not a box around it: at 35 pixels a tile an inset
+   * rectangle reads as something happening to the FLOOR, and this is the one
+   * moment the player has to attribute to a creature.
+   *
+   * White for them, red for you. Colour is the only thing separating the two,
+   * so it carries the whole message - a flash you cannot place is worse than
+   * none, because the screen has just told you that something happened
+   * somewhere.
+   *
+   * Falls back to the old wash when there is no sprite to silhouette (ASCII
+   * mode, or art that has not loaded yet).
+   */
+  hurtFlash(ctx, name, px, py, cell, a, colour, angle = 0) {
+    const tint = name ? this.tinted(name, colour) : null;
+    if (!tint) { this.hurtWash(ctx, px, py, cell, a); return; }
+    this.blit(ctx, tint, px, py, cell, Math.min(1, a), 1, angle);
+  }
+
   hurtWash(ctx, px, py, cell, a) {
     const pad = cell * 0.11;
     ctx.save();
