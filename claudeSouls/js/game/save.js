@@ -56,7 +56,6 @@ export function saveGame(game) {
       // being written down: which chests are already empty, and where the
       // last death left what you were carrying.
       opened: [...game.opened],
-      corpse: game.corpse,
       elapsed: (game.elapsedBefore ?? 0) + (Date.now() - game.startedAt),
       player: {
         name: p.name, x: p.x, y: p.y, depth: p.depth, maxDepth: p.maxDepth,
@@ -69,7 +68,7 @@ export function saveGame(game) {
         // it stopped being a field - an old save carrying `sprite` is simply
         // ignored on load, which is the correct outcome for both.
         equip: p.equip, pack: p.pack, prep: p.prep, charges: p.charges,
-        unbanked: p.unbanked, souls: p.souls, ranks: p.ranks, affix: p.affix,
+        souls: p.souls, ranks: p.ranks, affix: p.affix,
         skills: p.skills, deaths: p.deaths, kills: p.kills, turns: p.turns,
         bonfire: p.bonfire,
       },
@@ -145,7 +144,6 @@ export function loadGame(game) {
     skills: d.player.skills,
     equip: { ...p.equip, ...(d.player.equip ?? {}) },
     pack: d.player.pack ?? [],
-    unbanked: d.player.unbanked ?? [],
     souls: d.player.souls ?? 0,
     ranks: d.player.ranks ?? {},
     affix: d.player.affix ?? {},
@@ -163,7 +161,6 @@ export function loadGame(game) {
   for (const t of TRACKS) t.apply(p, p.ranks[t.key] ?? 0);
   p.stamina = Math.min(p.stamina, p.staminaMax);
   game.opened = new Set(d.opened ?? []);
-  game.corpse = d.corpse ?? null;
 
   // Rebuild every floor from the seed, then paint the remembered map back on.
   for (const [depth, seen] of d.seen ?? []) {

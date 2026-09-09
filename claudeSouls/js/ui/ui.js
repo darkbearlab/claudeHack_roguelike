@@ -1091,6 +1091,7 @@ export class UI {
         return;
       }
       if (choice === 'seed') { lines = this.seedReport(); continue; }
+      if (choice === 'ash') { lines = this.ashReport(); continue; }
       if (choice === 'notready') {
         lines = ['你還沒決定要當誰。', '線我理好了,人得你自己挑。'];
         continue;
@@ -1119,12 +1120,19 @@ export class UI {
     }
     if (spec.opensTheWay) {
       const ready = !!this.game.hero;
+      const ash = this.game.meta?.ash ?? 0;
       return [
         { id: ready ? 'descend' : 'notready',
           label: ready ? '1  帶我下去' : '1  帶我下去(還沒選人)' },
-        { id: 'seed', label: '2  這一趟的線是哪一條?' },
-        { id: 'who', label: '3  你是誰?' },
-        { id: 'leave', label: '4  之後再說 (Esc)' },
+        // The hook for out-of-run progression. She is the one who spends ash,
+        // because she is already the one who decides what a run IS - the seed,
+        // the door, the thread. What the ash actually buys is not designed
+        // yet; this is the door to it, and it shows the balance so the number
+        // has somewhere to live in the meantime.
+        { id: 'ash', label: `2  用灰換點什麼(${ash})` },
+        { id: 'seed', label: '3  這一趟的線是哪一條?' },
+        { id: 'who', label: '4  你是誰?' },
+        { id: 'leave', label: '5  之後再說 (Esc)' },
       ];
     }
     return [
@@ -1132,6 +1140,28 @@ export class UI {
       { id: 'who', label: '2  你是誰?' },
       { id: 'leave', label: '3  離開 (Esc)' },
     ];
+  }
+
+  /**
+   * The ash, and what it is for - which is nothing yet, said honestly.
+   *
+   * A stub that lies ("come back later, I will have something") ages into a
+   * promise nobody remembers making. This one says what is true: the ash is
+   * counted, it survives, and what it buys has not been decided. The number is
+   * the point of the screen - seeing it grow across runs is what makes burning
+   * embers at a hearth feel like it went somewhere.
+   */
+  ashReport() {
+    const m = this.game.meta ?? {};
+    const ash = m.ash ?? 0;
+    return [
+      ash > 0 ? `你帶回來的灰,我這裡有 ${ash}。` : '你還沒帶灰回來給我。',
+      '燼是熱的,握不久。灰是冷的,那才留得住。',
+      ash > 0
+        ? '我還沒想好拿它換什麼。先擱著——它不會涼掉第二次。'
+        : '下去,燒點什麼回來。爐越深,換得越多。',
+      m.runs > 1 ? `你來回 ${m.runs} 趟了。` : null,
+    ].filter(Boolean);
   }
 
   /** The seed, said the way she would say it. */

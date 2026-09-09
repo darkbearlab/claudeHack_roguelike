@@ -28,6 +28,7 @@ import { attackTiles, snapDir, PATTERNS, RADIAL, spriteRotation, blocksDirection
 import { ART_FACING } from '../js/data/sprites.js';
 import { planCycle, Animator } from '../js/ui/anim.js';
 import { NPCS, NPC_BY_KEY, weaverAt } from '../js/data/npcs.js';
+import { UI } from '../js/ui/ui.js';
 import { CHAMBERS, CHAMBER_BY_KEY, castFor, ROLES } from '../js/data/chambers.js';
 import { HEROES, HERO_BY_KEY, PLAYABLE } from '../js/data/heroes.js';
 import { EFFORT, faceOf, validateSkills } from '../js/data/skills.js';
@@ -1830,7 +1831,7 @@ check('storerooms come from the seed, are guarded, and are not on floor one', ()
   return `${stores} storerooms over ${floors} floors, all guarded`;
 });
 
-check('a chest gives up its contents once per run, and death does not refill it', () => {
+check('a chest gives up its contents once per run, and resting does not refill it', () => {
   let g = null, depth = 0;
   for (let i = 0; i < 20 && !depth; i++) {
     g = freshGame(`chest-${i}`);
@@ -1847,117 +1848,36 @@ check('a chest gives up its contents once per run, and death does not refill it'
   assert(g.openChest() === true, 'the chest would not open');
   assert(p.pack.length === before + 1, 'opening the chest gave nothing');
   assert(p.pack.includes(store.loot), 'the wrong thing came out');
-  assert(p.unbanked.includes(store.loot), 'what came out was already safe');
   assert(!isChest(g.level.at(store.x, store.y)), 'the chest is still there');
 
-  // The floor is rebuilt from its seed on death - the chest must NOT come back.
+  // Resting rebuilds the floor from its seed - the chest must NOT come back.
+  // (It used to say "on death"; a death ends the run now, so the rebuild that
+  // could refill it is the one a hearth does.)
   g.respawnLevel(depth);
   assert(!isChest(g.levelAt(depth).at(store.x, store.y)),
-         'dying refilled a chest you had already emptied');
+         'resting refilled a chest you had already emptied');
   return `${store.loot}, once`;
 });
 
-check('death drops what you had not banked, and you can go and get it', () => {
-  // The Souls loop with items instead of a currency: worn equipment is never
-  // touched, only what you have picked up and not yet carried home.
-  const g = freshGame('corpse');
-  const p = g.player;
-  g.gotoLevel(2, 'up');
-  const worn = { ...p.equip };
-  g.gain('greataxe', 'test');
-  g.gain('plate', 'test');
-  assert(p.unbanked.length === 2, 'picking things up did not mark them unbanked');
+// Three tests lived here, and their subject is gone: the corpse.
+//
+//   "death drops what you had not banked, and you can go and get it"
+//   "dying again before you reach it is how things are actually lost"
+//   "dying on the square a chest was on still leaves remains you can take"
+//
+// They were right about the old rule. Death used to return you to the hearth
+// you last sat at, so a bag of your things lying where you fell was somewhere
+// you could walk back to, and losing it by dying twice was a real second
+// chance spent. A death ends the run now - you wake in the hall - so there is
+// no walking back, nothing to leave, and no rule left to test. Deleting them
+// is the honest move; keeping them passing against a stub would be worse than
+// having no test at all.
+//
+// What replaces them is below: "death takes everything except the ash".
 
-  const died = { depth: p.depth, x: p.x, y: p.y };
-  g.hurtPlayer(999, 'a test');
-
-  assert(g.corpse, 'death left no remains');
-  assert(g.corpse.items.length === 2, 'the remains are empty');
-  assert(!p.pack.includes('greataxe'), 'kept what should have been dropped');
-  assert(JSON.stringify(p.equip) === JSON.stringify(worn), 'lost something you were wearing');
-  assert(isCorpse(g.levelAt(died.depth).at(died.x, died.y)), 'nothing marks the spot');
-
-  // Walk back and take it.
-  g.gotoLevel(died.depth, 'up');
-  p.x = died.x; p.y = died.y;
-  assert(g.reclaim() === true, 'could not pick your own remains back up');
-  assert(p.pack.includes('greataxe') && p.pack.includes('plate'), 'did not get everything back');
-  assert(!g.corpse, 'the remains are still there');
-  return 'dropped, marked, recovered';
-});
-
-check('dying again before you reach it is how things are actually lost', () => {
-  const g = freshGame('corpse2');
-  const p = g.player;
-  g.gotoLevel(2, 'up');
-  g.gain('greataxe', 'test');
-  g.hurtPlayer(999, 'a test');
-  const first = g.corpse;
-  assert(first?.items.includes('greataxe'), 'first death dropped nothing');
-
-  g.gain('plate', 'test');
-  g.hurtPlayer(999, 'a test');
-  assert(g.corpse !== first, 'the second death did not move the remains');
-  assert(!g.corpse.items.includes('greataxe'), 'the first pile survived; nothing is ever lost');
-  assert(g.corpse.items.includes('plate'), 'the second pile is wrong');
-  return 'one pile at a time';
-});
-
-check('dying on the square a chest was on still leaves remains you can take', () => {
-  // Both the emptied-chest cleanup and the corpse are painted back on after a
-  // floor is rebuilt from its seed, and they were writing to the same tile in
-  // the wrong order - so a death on top of a looted chest erased the remains
-  // and everything on them was gone with no way to get it back.
-  // Any seed with a storeroom on it. A fixed seed was fine until the
-  // generator changed and that seed stopped having one; the test is about
-  // the chest, not about the seed.
-  let g = null, depth = 0;
-  for (let i = 0; i < 20 && !depth; i++) {
-    g = freshGame(`corpse-on-chest-${i}`);
-    for (let d = 2; d < DUNGEON_DEPTH; d++) if (g.levelAt(d).store) { depth = d; break; }
-  }
-  assert(depth, 'no storeroom on twenty seeds worth of floors');
-
-  g.gotoLevel(depth, 'up');
-  const store = g.level.store;
-  const p = g.player;
-  p.x = store.x; p.y = store.y;
-  assert(g.openChest(), 'the chest would not open');
-  g.gain('greataxe', 'test');
-
-  g.hurtPlayer(999, 'a test');
-  assert(g.corpse, 'death on a looted chest left no remains');
-  assert(isCorpse(g.levelAt(depth).at(store.x, store.y)),
-         'the chest cleanup painted over the remains');
-
-  g.gotoLevel(depth, 'up');
-  p.x = store.x; p.y = store.y;
-  assert(g.reclaim(), 'could not take the remains back');
-  assert(p.pack.includes('greataxe'), 'the remains gave nothing back');
-  assert(!isCorpse(g.level.at(store.x, store.y)), 'the remains are still on the map');
-  assert(isWalkable(g.level.at(store.x, store.y)), 'the tile underneath was left broken');
-  return 'the two writes no longer fight over the same tile';
-});
-
-check('sitting at a fire makes what you are carrying safe', () => {
-  const g = freshGame('bank');
-  const p = g.player;
-  g.gain('greataxe', 'test');
-  assert(p.unbanked.length === 1, 'nothing was marked unbanked');
-
-  const b = g.level.bonfires[0];
-  p.x = b.x; p.y = b.y;
-  g.rest();
-  assert(p.unbanked.length === 0, 'resting did not bank what you were carrying');
-
-  g.hurtPlayer(999, 'a test');
-  assert(!g.corpse, 'dropped something that had already been banked');
-  assert(p.pack.includes('greataxe'), 'lost a banked item');
-  return 'the walk back is the point';
-});
-
-// ===========================================================================
-console.log('\n--- projectiles -----------------------------------------------');
+// "sitting at a fire makes what you are carrying safe" was deleted with the
+// corpse. Nothing is banked any more, because nothing survives a death except
+// ash - so a fire has no safekeeping left to do, only healing and an exchange.
 
 check('arrows take turns to arrive, so they can be dodged', () => {
   const { g, e } = arena('arrow', 'archer', 8);
@@ -2036,7 +1956,11 @@ check('you cannot sit down while something is hunting you', () => {
   const p = g.player;
   const b = g.level.bonfires[0];
   p.x = b.x; p.y = b.y;
-  p.hp = 1;
+  // One short of full, not one point of health. At 1 hp the watcher's declared
+  // blow killed the player partway through the loop below, and since a death
+  // now builds a NEW Player the rest of the test was quietly driving a ghost -
+  // it read as "could not rest with nothing hunting".
+  p.hp = p.hpMax - 1;
   for (const e of g.level.enemies) { e.aware = false; e.hunting = false; }
 
   // Stand one next to you, where it cannot fail to see you, and let it look.
@@ -2054,7 +1978,7 @@ check('you cannot sit down while something is hunting you', () => {
   // rest() returns whether the turn was spent, not whether it worked - resting
   // does not advance the turn either way - so the effect is what to check.
   g.rest();
-  assert(p.hp === 1, 'rested with something hunting');
+  assert(p.hp === p.hpMax - 1, 'rested with something hunting');
 
   // Awareness decays once you are out of sight, so breaking away is the way
   // out - which makes disengaging a skill rather than a formality. Drive that
@@ -2215,30 +2139,60 @@ check('bodies block a diagonal, and a roll is the way through', () => {
   return 'pinched means pinched until you spend stamina';
 });
 
-check('death returns you to the bonfire instead of ending the run', () => {
-  const g = freshGame('death');
-  const start = { ...g.player.bonfire };
-  g.gotoLevel(2, 'up');
-  g.player.hp = 1;
-  g.hurtPlayer(99, 'a test');
-  assert(g.running, 'the run ended on a single death');
-  assert(g.player.depth === start.depth, `woke on floor ${g.player.depth}`);
-  assert(g.player.x === start.x && g.player.y === start.y, 'did not wake at the bonfire');
-  assert(g.player.hp === g.player.hpMax, 'did not wake healed');
-  assert(g.player.deaths === 1, 'death was not counted');
-  return 'death is a setback, not an ending';
+check('death ends the run and puts you back in the hall', () => {
+  // This test used to assert the opposite, and the reason it changed is worth
+  // keeping: the hearth became an exchange, and a place that both banks your
+  // embers AND cancels your death makes two promises where the second one
+  // costs the first its price. The first person to finish the game did it
+  // without dying once and without ever spending anything, which is that fact
+  // measured twice.
+  const g = freshGame('deadhall');
+  g.gotoLevel(3, 'up');
+  const before = g.player.deaths;
+
+  g.hurtPlayer(999, 'a test');
+
+  assert(g.inHub, 'death did not return you to the hall');
+  assert(g.running, 'death stopped the game instead of ending the run');
+  assert(g.player.depth === 0, `woke on floor ${g.player.depth}`);
+  assert(g.hero === null, 'the hall kept you as somebody; a new run picks again');
+  // enterHub builds a NEW Player, so anything that has to outlive a run must be
+  // carried across by hand. The tally is one of them, and losing it would show
+  // up as a death counter that reset every time you died.
+  assert(g.player.deaths === before + 1,
+    `the death tally reset: ${before} -> ${g.player.deaths}`);
+  return 'you wake in the hall, one death heavier';
 });
 
-check('map memory survives death; enemies do not', () => {
-  const g = freshGame('memory');
-  for (let i = 0; i < 200; i++) g.level.seen[i] = 1;
-  const seenBefore = g.level.seen.reduce((a, b) => a + b, 0);
-  for (const e of g.level.enemies) e.alive = false;
-  g.level.removeDead();
+check('a run keeps nothing but the ash', () => {
+  // The old rule was that the map you had learned survived a death, because
+  // you woke on that same floor and the walk back was supposed to be a walk
+  // through somewhere you knew. A death ends the run now, so the floors go
+  // with it - and the only thing that crosses is what you turned to ash.
+  const g = freshGame('keepash');
+  g.gotoLevel(3, 'up');
+  const p = g.player;
+
+  // Something learned, something carried, something banked.
+  g.level.seen.fill(1);
+  p.pack.push('flask');
+  p.souls = 400;
+  const fire = g.level.bonfires[0];
+  assert(fire, 'no hearth on this floor');
+  p.x = fire.x; p.y = fire.y;
+  g.exchange();
+  const ash = g.meta.ash;
+  assert(ash > 0, 'the exchange paid nothing, so this test proves nothing');
+  p.souls = 90;                      // earned again since, and not yet burnt
+
   g.hurtPlayer(999, 'a test');
-  assert(g.level.seen.reduce((a, b) => a + b, 0) >= seenBefore, 'the map you had learned was erased');
-  assert(g.level.livingEnemies().length > 0, 'enemies did not respawn');
-  return 'you keep what you learned';
+
+  assert(g.meta.ash === ash, `ash changed across a death: ${ash} -> ${g.meta.ash}`);
+  assert(g.player.souls === 0, 'embers survived a death');
+  assert(!g.player.pack.includes('flask'), 'the pack survived a death');
+  assert(g.levels.size === 0 || !g.levels.get(3),
+    'the floors you had learned survived a run that ended');
+  return `${ash} ash kept, 90 embers and a pack lost`;
 });
 
 check('embers die with you, and a hearth is where they stop being yours to lose', () => {
@@ -2260,18 +2214,17 @@ check('embers die with you, and a hearth is where they stop being yours to lose'
   assert(p.souls > 0, 'killing something paid nothing');
   const carried = p.souls;
 
-  // Something unbanked in the pack, so a corpse actually gets made. Without
-  // this the assertion below passes because there is no corpse at all - which
-  // is how the first version of this test survived the rule being removed.
   p.pack.push('flask');
-  p.unbanked.push('flask');
+  // The hall's purse is shared across this whole suite through one fake
+  // localStorage, so compare against what it held rather than against zero.
+  const ashBefore = g.meta.ash;
 
   g.hurtPlayer(999, 'a test');
-  assert(p.souls === 0, 'kept embers through a death');
-  assert(g.corpse, 'no corpse was made, so this test is not testing anything');
-  assert(!g.corpse.souls, 'the remains still hold embers; they are supposed to be gone');
-  // What you were CARRYING is a different size of loss, and still drops.
-  assert(g.corpse.items.includes('flask'), 'the corpse stopped holding items too');
+  // `p` is now a ghost: enterHub builds a new Player, so read the game.
+  assert(g.player.souls === 0, 'kept embers through a death');
+  assert(!g.player.pack.includes('flask'), 'the pack survived a death');
+  assert(g.meta.ash === ashBefore,
+    `embers turned into ash without an exchange: ${ashBefore} -> ${g.meta.ash}`);
   return `${carried} embers earned, ${carried} lost`;
 });
 
@@ -5417,6 +5370,65 @@ check('farming the first hearth is the worst rate in the game', () => {
   assert(deep >= shallow * 5,
     `the bottom pays ${deep} where the top pays ${shallow} - only ${(deep / shallow).toFixed(1)}x`);
   return `${EMBERS} embers: ${shallow} ash at the top, ${deep} at the bottom`;
+});
+
+
+check('death takes everything except the ash', () => {
+  // What replaced the three corpse tests. The whole loop in one assertion set:
+  // you go down, you kill things, you burn what you have at a hearth, and the
+  // only thing a death cannot reach is what you already burnt.
+  const g = freshGame('loop');
+  g.gotoLevel(4, 'up');
+  const p = g.player;
+
+  // Earn, and burn half of it.
+  p.souls = 300;
+  const fire = g.level.bonfires[0];
+  assert(fire, 'no hearth on this floor');
+  p.x = fire.x; p.y = fire.y;
+  const ashBefore = g.meta.ash;
+  g.exchange();
+  const banked = g.meta.ash - ashBefore;
+  assert(banked > 0, 'the exchange paid nothing, so this test proves nothing');
+
+  // Earn more, and do not burn it.
+  p.souls = 250;
+  p.pack.push('flask');
+
+  g.hurtPlayer(999, 'a test');
+
+  assert(g.meta.ash === ashBefore + banked, 'a death reached the ash');
+  assert(g.player.souls === 0, 'a death left embers behind');
+  assert(!g.player.pack.includes('flask'), 'a death left the pack alone');
+  assert(g.inHub, 'a death did not end the run');
+  return `${banked} ash kept; 250 embers and a flask gone`;
+});
+
+check('the weaver is where ash goes, and she does not pretend to sell anything', () => {
+  // The hook for out-of-run progression, pinned so it cannot quietly rot: she
+  // offers the choice, the choice reports the real balance, and the balance is
+  // the one the hall is holding.
+  const g = freshGame('weaverash');
+  g.enterHub();
+  g.meta.ash = 0;
+
+  const spec = { ...NPC_BY_KEY.weaver, opensTheWay: true };
+  // The real methods, called against a stand-in that has only what they read.
+  // Building a whole UI would need a document; borrowing the two functions
+  // tests the thing the player actually sees.
+  const choices = UI.prototype.conversationChoices.call({ game: g }, spec);
+  const ashChoice = choices.find((c) => c.id === 'ash');
+  assert(ashChoice, 'the weaver offers no way to spend ash');
+  assert(/0/.test(ashChoice.label), `the balance is not on the label: ${ashChoice.label}`);
+
+  g.meta.ash = 137;
+  const richer = UI.prototype.conversationChoices.call({ game: g }, spec);
+  assert(/137/.test(richer.find((c) => c.id === 'ash').label),
+    'the label does not follow the hall purse');
+
+  const lines = UI.prototype.ashReport.call({ game: g });
+  assert(lines.some((l) => l.includes('137')), 'she does not say how much she is holding');
+  return 'she counts it, and says plainly that it buys nothing yet';
 });
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

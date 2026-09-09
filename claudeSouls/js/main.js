@@ -78,8 +78,9 @@ ${roster}
       會把要打的格子染紅 —— 看到之後翻滾走開,或者打斷它。</p>
       <p><b>翻滾花精力,但不推進回合。</b>所以真正的時鐘是精力,不是回合。
       每一刻的問題都是:再貪一刀,還是留著閃?</p>
-      <p><b>死了不是結束。</b>你會回到最後的爐,整層敵人復活 ——
-      但樓層是從種子長出來的,永遠一樣。死幾次之後你就記住它了,那就是成長。</p>
+      <p><b>死了就是結束。</b>你回到灰燼之廳,身上的燼全部涼掉,背包也沒了。
+      **只有燒成灰的帶得回來**——爐邊可以把燼燒成灰,越深的爐換得越多。
+      灰交給時間編織者,那是唯一跨得過死亡的東西。</p>
       <p>${DUNGEON_DEPTH} 層 &middot; ${ENEMIES.length} 種敵人 &middot;
       ${PLAYABLE.length} 個角色${HEROES.length > PLAYABLE.length ? `(+${HEROES.length - PLAYABLE.length} 未完成)` : ''} &middot; ${SKILLS.length} 個技能 &middot; v${VERSION}</p>
     </div>`;

@@ -594,7 +594,15 @@ async function run(seed, maxTurns, vow) {
     return die(source);
   };
 
-  while (game.running && steps < maxTurns) {
+  // A run can now END while the bot is inside the loop.
+  //
+  // Death used to put you back at a hearth on the same floor, so `running` was
+  // true from the first step to the last and the bot never had to notice. It
+  // sends you to the hall now - a place where none of the bot's moves do
+  // anything - so without this it flails there until the stall detector fires
+  // and reports "stalled on floor 0 at turn 0", which is a death wearing a
+  // crash's clothes.
+  while (game.running && !game.inHub && steps < maxTurns) {
     const before = game.turn;
     const deathsBefore = game.player.deaths;
     const a = act(game, rng);
@@ -688,7 +696,8 @@ async function run(seed, maxTurns, vow) {
     seed, vow, steps, turn: game.turn,
     depth: game.player.depth, maxDepth: game.player.maxDepth,
     deaths: game.player.deaths, kills: game.stats.kills, killers, mix, stam, marks,
-    how: game.gameOver?.how ?? 'timeout',
+    // In the hall with the run over is a death, not a timeout.
+    how: game.gameOver?.how ?? (game.inHub ? 'died' : 'timeout'),
     floorDeaths: [...floorDeaths.entries()].sort((a, b) => a[0] - b[0]),
   };
 }

@@ -90,7 +90,7 @@ export class Player {
     // not that it can be interrupted, it is that he cannot stop.
     this.forced = null;               // { key, dx, dy, left }
     this.warded = 0;                  // blows a ward will still absorb
-    this.souls = 0;                   // unbanked; dropped where you die
+    this.souls = 0;                   // embers: spent by dying, see meta.js
     this.ranks = {};                  // track key -> rank bought
     // itemKey -> { granted, temp:{key,hits} }. Keyed by item rather than by
     // instance because the pack itself holds keys; if items ever gain
@@ -98,7 +98,6 @@ export class Player {
     this.affix = {};
     this.charges = {};                // key -> uses left, refilled at a bonfire
     this.pack = [];
-    this.unbanked = [];               // picked up since the last fire; dropped on death
 
     // A cooldown slot for *every* skill in the game, not just the ones you can
     // currently use. Cooldowns therefore survive a weapon swap, which matters:

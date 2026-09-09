@@ -135,7 +135,6 @@ export class Game {
     this.messages = [];
     this.stats = { kills: 0, deaths: 0, deepest: 1, rests: 0 };
     this.opened = new Set();            // chest ids taken this run
-    this.corpse = null;                 // where the last death left things
     this.running = true;
     this.gameOver = null;
     this.aiming = null;                 // {skillKey} while a skill is selected
@@ -186,13 +185,11 @@ export class Game {
     this.levels.set(depth, fresh);
     if (this.player.depth === depth) this.level = fresh;
     // The floor comes back from the seed, so anything that is not in the seed
-    // has to be painted on again - any chest you already emptied, and then your
-    // remains. Order matters: the chest cleanup writes a tile, so doing it
-    // second erased a corpse lying on the square where the chest had been.
+    // has to be painted on again - which since the corpse went away is just a
+    // chest you had already emptied.
     if (fresh.store && this.opened.has(`${depth}:${fresh.store.x},${fresh.store.y}`)) {
       fresh.set(fresh.store.x, fresh.store.y, T.FLOOR);
     }
-    this.restoreCorpse(depth);
     return fresh;
   }
 
@@ -721,7 +718,7 @@ export class Game {
       // that sometimes sits you down at a fire instead would be the worst kind
       // of surprise - it costs a turn and revives the floor.
       case REST_KEY: case 'R': return this.rest();
-      case 'g': case ',': return this.openChest() || this.reclaim();
+      case 'g': case ',': return this.openChest();
       case ':': return this.lookHere();
       case 'S': saveGame(this); this.ui?.showSaved?.(); return false;
       case '?': await this.ui?.showHelp?.(); return false;
@@ -972,96 +969,20 @@ export class Game {
   }
 
   /**
-   * Take something into the pack, and remember that it is not safe yet.
+   * Take something into the pack.
    *
-   * `unbanked` is the whole death penalty: everything you have picked up since
-   * you last sat at a fire is dropped where you die. Wearing something protects
-   * it - you never lose the sword in your hand, only the one you have not had
-   * time to carry home.
+   * Nothing is "banked" any more. This used to record what you had picked up
+   * since your last rest, because that was the death penalty - it dropped where
+   * you fell and you walked back for it. A death ends the run now, so there is
+   * no walking back and no distinction to keep: everything in the pack is lost
+   * either way, and the only thing that survives is ash.
    */
   gain(key, how = 'You take') {
     const it = ITEM_BY_KEY[key] ?? CONSUMABLE_BY_KEY[key];
     if (!it) return false;
     this.player.pack.push(key);
-    this.player.unbanked.push(key);
     this.msg(`${how}: ${it.name}.`, 'good');
     return true;
-  }
-
-  /**
-   * Pick your own remains back up.
-   *
-   * One corpse at a time, and dying again before you reach it loses what was on
-   * it. That is the Souls loop with items instead of a currency, which is worth
-   * doing this way round: the drop system had to exist anyway, and it means the
-   * thing you are walking back for is the specific sword you wanted, not a
-   * number.
-   */
-  /** Paint the corpse back on after a floor is rebuilt from its seed. */
-  restoreCorpse(depth) {
-    const c = this.corpse;
-    if (!c || c.depth !== depth) return;
-    const lvl = this.levels.get(depth);
-    if (!lvl) return;
-    // Do not re-read `under` from a corpse we already painted, or the tile
-    // underneath would become CORPSE and survive being picked up.
-    const here = lvl.at(c.x, c.y);
-    if (!isCorpse(here)) c.under = here;
-    lvl.set(c.x, c.y, T.CORPSE);
-  }
-
-  reclaim() {
-    const p = this.player;
-    const c = this.corpse;
-    if (!c || c.depth !== p.depth || c.x !== p.x || c.y !== p.y) return false;
-    for (const key of c.items) this.gain(key, 'You take back');
-    if (c.souls) { p.souls += c.souls; this.msg(`You take back ${c.souls} embers.`, 'good'); }
-    this.level.set(p.x, p.y, c.under ?? T.FLOOR);
-    this.corpse = null;
-    return true;
-  }
-
-  /** Everything you are carrying is safe now. Called when you sit down. */
-  bank() {
-    if (this.player.unbanked.length) this.msg('What you found is safe now.');
-    this.player.unbanked = [];
-  }
-
-  /**
-   * Leave a corpse holding whatever had not been banked.
-   *
-   * Worn equipment is never touched. Only one corpse exists at a time, so dying
-   * on the way back to the first one is how you actually lose things.
-   */
-  dropUnbanked() {
-    const p = this.player;
-    const items = p.unbanked.filter((k) => p.pack.includes(k));
-    // Embers do NOT go into the corpse. They are gone.
-    //
-    // That single line is what stops the whole design being a farm. A
-    // permanent currency plus enemies that come back when you use a hearth
-    // means sitting on floor one forever, unless the walk back has to be
-    // survived - so it does. The corpse still holds what you were CARRYING,
-    // because losing an item you found and losing the money you earned are
-    // different sizes of loss.
-    const lost = p.souls;
-    p.unbanked = [];
-    p.souls = 0;
-    if (lost) this.msg(`${lost} embers go cold.`, 'bad');
-    if (!items.length) return;
-
-    for (const k of items) {
-      const i = p.pack.indexOf(k);
-      if (i >= 0) p.pack.splice(i, 1);
-    }
-    // The old one is gone. This is the only way to permanently lose anything.
-    if (this.corpse) this.msg('What you left behind is gone.', 'bad');
-
-    const lvl = this.levelAt(p.depth);
-    const under = lvl.at(p.x, p.y);
-    lvl.set(p.x, p.y, T.CORPSE);
-    this.corpse = { depth: p.depth, x: p.x, y: p.y, items, souls: 0, under };
-    this.msg(`You drop what you were carrying. (${items.length})`, 'bad');
   }
 
   // ------------------------------------------------------------- equipment
@@ -1654,7 +1575,6 @@ export class Game {
     p.hp = p.hpMax;
     p.stamina = p.staminaMax;
     p.refillCharges();
-    this.bank();
     for (const s of p.skills) s.cd = 0;
     this.stats.rests++;
 
@@ -1721,46 +1641,43 @@ export class Game {
   // =========================================================================
 
   /**
-   * Death.
+   * Death. The end of the run, not of an attempt.
    *
-   * Not the end of the run - the end of the *attempt*. You wake at the last
-   * bonfire, everything is standing again, and the floor is still the floor you
-   * had already learned. That is the whole reason the levels come from a seed.
+   * You wake in the Hall of Ashes with whatever you turned to ash and nothing
+   * else. The hearth used to undo this, which is exactly what made it
+   * weightless: a place that both banks your embers AND cancels your death is
+   * making two promises, and the second one cost the first its price. The
+   * first person to finish the game did it without dying once and without ever
+   * spending anything, which is the same fact twice.
+   *
+   * What is lost: embers, the pack, the kit, the floors you had learned. What
+   * survives: ash, and what the hall remembers about you.
    */
   die(source) {
     const p = this.player;
-    // Recorded before anything else, because everything else destroys the
-    // scene: dropUnbanked, then respawnLevel rebuilds every floor, then the
-    // player is teleported to a bonfire that may be on a different depth.
-    // Particles drawn from the post-state would land on the wrong map at
-    // coordinates that no longer mean anything - so this event carries a
-    // `final` flag and the animator plays it as a screen effect rather than
-    // as something happening on a tile.
+    // Recorded before anything else, because enterHub() below throws the whole
+    // scene away - a particle drawn from the post-state would land on a map
+    // that no longer exists. The `final` flag makes the animator play it as a
+    // screen effect rather than as something happening on a tile.
     this.fx.add({ kind: 'die', uid: 0, x: p.x, y: p.y, final: true });
     p.deaths++;
     this.stats.deaths++;
     this.msg(`You are killed by ${source}.`, 'bad');
+    if (p.souls > 0) this.msg(`${p.souls} embers go cold.`, 'bad');
 
-    // Before anything else: this is where you died, and this is where what you
-    // were carrying stays. Has to happen before the level is rebuilt and before
-    // you are moved.
-    this.dropUnbanked();
+    this.meta.deaths = (this.meta.deaths ?? 0) + 1;
+    this.meta.deepest = Math.max(this.meta.deepest ?? 0, p.maxDepth ?? p.depth);
+    saveMeta(this.meta);
 
-    const b = p.bonfire;
-    if (!b) { this.finish('lost', source); return; }
-
-    p.depth = b.depth;
-    this.respawnLevel(b.depth);
-    this.level = this.levels.get(b.depth);
-    for (const d of this.levels.keys()) if (d !== b.depth) this.respawnLevel(d);
-    p.x = b.x; p.y = b.y;
-    p.hp = p.hpMax;
-    p.stamina = p.staminaMax;
-    p.refillCharges();
-    for (const s of p.skills) s.cd = 0;
-    this.level.projectiles = [];
-    this.afterMove();
-    this.msg('You wake at the hearth.', 'warn');
+    const depth = p.depth;
+    const deaths = p.deaths;
+    // enterHub() builds a NEW Player - correct, because a run is over and the
+    // next one starts from a hero's own kit. But two things have to survive it
+    // by hand, and forgetting either is silent: the tally of how many times
+    // this save has died, and the name.
+    this.enterHub();
+    this.player.deaths = deaths;
+    this.msg(`你在第 ${depth} 層死了。灰還在。`, 'warn');
     saveGame(this);
     this.ui?.onDeath?.(p.deaths);
   }
