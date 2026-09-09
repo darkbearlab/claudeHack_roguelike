@@ -104,12 +104,39 @@ body { overflow: hidden; }
    here while a finger is down - and "north-east" wraps to a line that "east"
    does not - so the map was resizing and the camera shifting mid-gesture, worst
    on the diagonals. A message bar must never be able to resize the map. */
+/* The scrolling log is off.
+   .
+   It was the only feedback for "how hard did that land", which is why it could
+   not simply be hidden - a player watching health bars move for reasons they
+   cannot read is worse off than one reading sentences. The numbers float off
+   the bodies now (see drawFloaters), so the strip has nothing left to carry
+   and its 68 pixels go back to the map - which is where the boss health bar
+   is going.
+   .
+   The log itself is still written and still readable with Ctrl-P. This hides
+   a panel, it does not stop recording. `#msgbar.on` brings it back for
+   anyone debugging. */
 #msgbar {
+  display: none;
   flex: 0 0 auto; background: var(--panel);
   border-bottom: 1px solid var(--line);
   padding: 3px 8px; height: 68px; overflow: hidden;
   font-size: 12.5px; line-height: 1.35;
 }
+#msgbar.on { display: block; }
+
+/* The aim readout is the other thing that lived up there, and it stays - as a
+   band across the bottom of the map instead of a line at the top of the
+   screen. It has to be findable instantly while a finger is down, which is
+   exactly the case where the far edge of the screen is the wrong place. */
+#aimline {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 5px 8px; pointer-events: none;
+  background: linear-gradient(to top, rgba(7,8,10,.92), rgba(7,8,10,0));
+  color: var(--cool); font-weight: 700; font-size: 12.5px;
+  text-align: center; white-space: nowrap; overflow: hidden;
+}
+#aimline[hidden] { display: none; }
 #msglines div { white-space: pre-wrap; word-break: break-word; }
 /* The aim readout, which has to be findable instantly while a finger is down. */
 #msglines .aim { color: var(--cool); font-weight: 700; }

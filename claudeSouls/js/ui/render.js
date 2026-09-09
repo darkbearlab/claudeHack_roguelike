@@ -272,6 +272,7 @@ export class Renderer {
 
     // --- death, above everything: it is the one thing you must not miss
     this.drawParticles(ctx, v);
+    this.drawFloaters(ctx, v);
 
     // --- the curtain over a floor change, above even that
     const curtain = this.anim?.curtain ?? 0;
@@ -873,6 +874,45 @@ export class Renderer {
       ctx.globalAlpha = Math.max(0, Math.min(1, q.life));
       ctx.fillStyle = q.life > 0.55 ? '#ff5a4a' : '#8e1f1c';
       ctx.fillRect(rx * v.cell + v.offX - s / 2, ry * v.cell + v.offY - s / 2, s, s);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The damage numbers, rising off whatever was hit.
+   *
+   * This is what replaced the message strip. A line of text at the top of the
+   * screen saying "You hit the sentinel for 4" asks the player to look away
+   * from the thing they are watching, read a sentence, and map it back onto a
+   * body; a 4 floating off that body asks nothing. It also stacks - two
+   * numbers at once are two events, where two lines are a paragraph.
+   *
+   * Drawn above everything, including the static, because it is a report about
+   * the rules rather than a thing in the world.
+   */
+  drawFloaters(ctx, v) {
+    const fs = this.anim?.floaters;
+    if (!fs?.length) return;
+    const size = Math.max(11, Math.round(v.cell * 0.44));
+    ctx.save();
+    ctx.font = `bold ${size}px ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, size * 0.22);
+    ctx.lineJoin = 'round';
+    for (const f of fs) {
+      const rx = f.x - v.ox, ry = f.y - v.oy;
+      if (rx < -1 || ry < -1 || rx >= v.cols + 1 || ry >= v.rows + 1) continue;
+      const x = rx * v.cell + v.offX;
+      const y = ry * v.cell + v.offY;
+      // Fades late rather than evenly: a number that starts dimming at once
+      // reads as an error, not as an answer.
+      ctx.globalAlpha = Math.max(0, Math.min(1, f.life * 2.2));
+      // Outlined, because it has to be legible over the sprite it came off.
+      ctx.strokeStyle = 'rgba(0,0,0,.85)';
+      ctx.strokeText(f.text, x, y);
+      ctx.fillStyle = f.mine ? '#ff6b60' : '#ffffff';
+      ctx.fillText(f.text, x, y);
     }
     ctx.restore();
   }

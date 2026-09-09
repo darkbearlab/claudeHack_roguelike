@@ -51,6 +51,7 @@ export class UI {
       canvas:   document.getElementById('map'),
       overlay:  document.getElementById('overlay'),
       msg:      document.getElementById('msglines'),
+      aimline:  document.getElementById('aimline'),
       hpbar:    document.getElementById('hpbar'),
       stbar:    document.getElementById('stbar'),
       status:   document.getElementById('statusline'),
@@ -678,14 +679,29 @@ export class UI {
     this.renderMessages();
   }
 
+  /**
+   * The log, and the aim readout that used to share its panel.
+   *
+   * The panel is off (see #msgbar in the stylesheet) because the numbers float
+   * off the bodies now. The log is still written and still rendered, so
+   * turning the panel back on shows a live log rather than a stale one - a
+   * hidden thing that has also stopped working is two problems the day you
+   * unhide it.
+   *
+   * The aim readout is not part of that. It goes to its own band over the foot
+   * of the map, because it is consulted with a finger already on the glass.
+   */
   renderMessages(prompt = null) {
     const max = window.innerWidth <= 560 || window.innerHeight <= 560 ? 2 : 3;
     const html = [];
-    if (prompt) html.push(`<div class="aim">${escapeHtml(prompt)}</div>`);
-    for (const m of this.recent.slice(-(prompt ? max - 1 : max))) {
+    for (const m of this.recent.slice(-max)) {
       html.push(`<div class="${m.cls ? 'm-' + m.cls : ''}">${escapeHtml(m.text)}</div>`);
     }
     this.el.msg.innerHTML = html.join('');
+    if (this.el.aimline) {
+      this.el.aimline.textContent = prompt ?? '';
+      this.el.aimline.hidden = !prompt;
+    }
   }
 
   render() {

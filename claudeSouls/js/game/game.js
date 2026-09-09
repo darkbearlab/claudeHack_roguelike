@@ -489,7 +489,10 @@ export class Game {
   hurtPlayer(amount, source, opts = {}) {
     const p = this.player;
     let dmg = amount;
-    this.fx.add({ kind: 'hit', uid: 0, x: p.x, y: p.y });
+    // Announced after the reductions below, not here - a number that ignores
+    // your armour is a number that lies about the fight you are in.
+    const hitFx = { kind: 'hit', uid: 0, x: p.x, y: p.y, mine: true };
+    this.fx.add(hitFx);
 
     // A declared blow is lost if something lands on you first. No poise check:
     // the player is one person, not a troll, and a wind-up you can carry
@@ -524,6 +527,10 @@ export class Game {
       dmg = Math.max(1, Math.round(dmg * (1 - p.armourReduce)));
     }
     p.hp -= dmg;
+    // Now that armour and a shield have had their say, the number is the one
+    // that actually happened. Announcing it up at the top would have shown the
+    // blow before the plate took a third of it off.
+    hitFx.amount = dmg;
     if (p.hp <= 0) this.die(source);
   }
 
@@ -660,7 +667,7 @@ export class Game {
     // the target, so anything that lands on it while it holds counts.
     if (e.vuln?.turns > 0) dmg += e.vuln.amount;
     e.hp -= dmg;
-    this.fx.add({ kind: 'hit', uid: e.uid, x: e.x, y: e.y });
+    this.fx.add({ kind: 'hit', uid: e.uid, x: e.x, y: e.y, amount: dmg });
     if (byPlayer && impact > 0) e.stagger(impact);
     if (e.hp <= 0) {
       // Recorded here, while it still has a position. A moment later it is off

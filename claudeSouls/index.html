@@ -27,6 +27,11 @@
 
   <main id="viewport">
     <canvas id="map" tabindex="0"></canvas>
+    <!-- The aim readout, over the foot of the map. It used to live in the
+         message strip at the top of the screen; that strip is off now, and a
+         readout you consult with a finger already on the glass belongs near
+         the finger. -->
+    <div id="aimline" hidden></div>
     <!-- Health and stamina sit over the top-left corner of the map, the way a
          Souls game puts them. Overlaying rather than taking a strip of its own
          gives the map back the height, and the corner of a dungeon view is

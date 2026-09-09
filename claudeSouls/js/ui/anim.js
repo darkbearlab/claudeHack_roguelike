@@ -26,6 +26,8 @@
 const MOVE_MS = 130;
 const ATTACK_MS = 150;
 const HIT_MS = 190;
+/** How long a damage number stays up. Long enough to read, short enough to stack. */
+const FLOAT_MS = 620;
 const DIE_MS = 340;
 const LEVEL_MS = 260;      // the curtain over a floor change
 
@@ -115,6 +117,7 @@ export class Animator {
     this.onFrame = onFrame;
     this.events = [];
     this.particles = [];
+    this.floaters = [];
     this.start = 0;
     this.span = 0;
     this.raf = 0;
@@ -138,6 +141,7 @@ export class Animator {
     this.stop();
     this.events = events.map((e) => ({ ...e }));
     this.particles = [];
+    this.floaters = [];
     this.flash = 0;
 
     const plan = planCycle(this.events);
@@ -170,14 +174,37 @@ export class Animator {
     }
     this.spawnDue(t);
     this.stepParticles();
+    this.stepFloaters();
     this.onFrame();
-    if (t >= this.span && !this.particles.length) { this.raf = 0; return; }
+    // Numbers hold the loop open the same way particles do. A damage number
+    // cut off halfway is worse than one that never appeared, because the
+    // player saw something and could not read it.
+    if (t >= this.span && !this.particles.length && !this.floaters.length) { this.raf = 0; return; }
     this.raf = requestAnimationFrame(this.tick);
   };
 
-  /** Deaths become particles at their moment, not when the event was made. */
+  /**
+   * Deaths become particles, and hits become numbers, at their moment.
+   *
+   * The number is the feedback the message strip used to carry, moved to where
+   * the event happened. It needs no reading, it is already where you were
+   * looking, and two at once are two events rather than one sentence about
+   * two events.
+   */
   spawnDue(t) {
     for (const e of this.events) {
+      if (e.kind === 'hit' && !e.floated && t >= e.at && e.amount > 0) {
+        e.floated = true;
+        this.floaters.push({
+          x: e.x + 0.5, y: e.y + 0.2,
+          text: String(e.amount),
+          // Yours in red, theirs in white - the same two colours as the flash
+          // on the body, so the number and the figure agree about whose it is.
+          mine: !!e.mine,
+          life: 1,
+          decay: 1 / (FLOAT_MS / 16.7),
+        });
+      }
       if (e.kind !== 'die' || e.spawned || t < e.at) continue;
       e.spawned = true;
       if (e.final) { this.flash = 1; continue; }   // your own death: see play()
@@ -192,6 +219,12 @@ export class Animator {
         });
       }
     }
+  }
+
+  /** Numbers drift up and fade. Nothing else reads them. */
+  stepFloaters() {
+    for (const f of this.floaters) { f.y -= 0.016; f.life -= f.decay; }
+    this.floaters = this.floaters.filter((f) => f.life > 0);
   }
 
   stepParticles() {
@@ -278,6 +311,7 @@ export class Animator {
     if (!this.raf) return;
     this.stop();
     this.particles = [];
+    this.floaters = [];
     this.flash = 0;
     this.curtain = 0;
     this.onFrame();
